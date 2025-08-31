@@ -3,16 +3,17 @@
  * @geekist/stars CLI
  *
  * Commands:
- *   geek-stars lists [--json] [--out <file>]
+ *   geek-stars lists [--json] [--out <file>] [--dir <folder>]
  *   geek-stars repos --list <name> [--json]
- *   geek-stars dump [--out <file>]        (alias of: lists --json > file)
+ *   geek-stars dump [--out <file>] [--dir <folder>]   (alias of: lists)
  *   geek-stars help
  *
  * Env:
  *   GITHUB_TOKEN  (Bun auto-loads .env)
  */
 
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import type { StarList, RepoLite } from "./lib/lists.js";
 import { getAllLists, getReposFromList } from "./lib/lists.js";
 
@@ -22,6 +23,7 @@ interface Parsed {
   command: Command;
   json: boolean;
   out?: string;
+  dir?: string;
   list?: string;
   help: boolean;
 }
@@ -29,14 +31,15 @@ interface Parsed {
 const USAGE = `geek-stars
 
 Usage:
-  geek-stars lists [--json] [--out <file>]
+  geek-stars lists [--json] [--out <file>] [--dir <folder>]
   geek-stars repos --list <name> [--json]
-  geek-stars dump [--out <file>]
+  geek-stars dump [--out <file>] [--dir <folder>]
   geek-stars help
 
 Examples:
   geek-stars lists --json
   geek-stars dump --out lists.json
+  geek-stars lists --dir exports
   geek-stars repos --list "AI" --json
 `;
 
@@ -45,6 +48,7 @@ function parseArgs(argv: string[]): Parsed {
   let command: Command = "help";
   let json = false;
   let out: string | undefined;
+  let dir: string | undefined;
   let list: string | undefined;
   let help = false;
 
@@ -66,6 +70,9 @@ function parseArgs(argv: string[]): Parsed {
       case "--out":
         out = args[++i];
         break;
+      case "--dir":
+        dir = args[++i];
+        break;
       case "--list":
         list = args[++i];
         break;
@@ -80,7 +87,7 @@ function parseArgs(argv: string[]): Parsed {
     }
   }
 
-  return { command, json, out, list, help };
+  return { command, json, out, dir, list, help };
 }
 
 function ensureToken(): string {
@@ -107,15 +114,53 @@ function printReposHuman(repos: RepoLite[]) {
   }
 }
 
-async function runLists(json: boolean, out?: string) {
+function toSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")            // drop quotes
+    .replace(/[^a-z0-9]+/g, "-")     // non-alnum -> hyphen
+    .replace(/^-+|-+$/g, "");        // trim hyphens
+}
+
+function saveListsToDir(lists: StarList[], dir: string) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  // Per-list files
+  for (const l of lists) {
+    const file = join(dir, `${toSlug(l.name) || "list"}.json`);
+    writeFileSync(file, JSON.stringify(l, null, 2));
+    console.log(`✔ ${l.name} → ${file}`);
+  }
+
+  // Write index.json for quick summary
+  const index = lists.map((l) => ({
+    name: l.name,
+    description: l.description ?? null,
+    isPrivate: l.isPrivate,
+    count: l.repos.length,
+    file: `${toSlug(l.name) || "list"}.json`,
+  }));
+  const indexFile = join(dir, "index.json");
+  writeFileSync(indexFile, JSON.stringify(index, null, 2));
+  console.log(`✔ index → ${indexFile}`);
+}
+
+async function runLists(json: boolean, out?: string, dir?: string) {
   const token = ensureToken();
-  const lists = await getAllLists(token);
+  const lists: StarList[] = await getAllLists(token);
+
+  if (dir) {
+    saveListsToDir(lists, dir);
+    return;
+  }
 
   if (out) {
     writeFileSync(out, JSON.stringify(lists, null, 2));
     console.log(`✔ Wrote ${lists.length} lists → ${out}`);
     return;
   }
+
   if (json) {
     console.log(JSON.stringify(lists, null, 2));
   } else {
@@ -129,7 +174,7 @@ async function runRepos(listName: string, json: boolean) {
     console.error("❌ --list <name> is required for 'repos'.");
     process.exit(1);
   }
-  const repos = await getReposFromList(token, listName);
+  const repos: RepoLite[] = await getReposFromList(token, listName);
   if (json) {
     console.log(JSON.stringify(repos, null, 2));
   } else {
@@ -147,15 +192,18 @@ async function main() {
 
   switch (parsed.command) {
     case "lists":
-      await runLists(parsed.json, parsed.out);
+      await runLists(parsed.json, parsed.out, parsed.dir);
       return;
+
     case "dump":
-      // Equivalent to: lists --json > file (but we handle writing for convenience)
-      await runLists(true, parsed.out ?? "lists.json");
+      // Equivalent to: lists with output options
+      await runLists(true, parsed.out ?? "lists.json", parsed.dir);
       return;
+
     case "repos":
       await runRepos(parsed.list ?? "", parsed.json);
       return;
+
     default:
       console.log(USAGE);
   }
