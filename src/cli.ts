@@ -14,18 +14,19 @@
 
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { StarList, RepoLite } from "./lib/lists.js";
+import type { RepoInfo, StarList } from "./lib/types.js";
 import { getAllLists, getReposFromList } from "./lib/lists.js";
 
-type Command = "lists" | "repos" | "dump" | "help";
+export type Command = "lists" | "repos" | "dump" | "help";
 
-interface Parsed {
+export interface Parsed {
   command: Command;
   json: boolean;
   out?: string;
   dir?: string;
   list?: string;
   help: boolean;
+  concurrency?: number;
 }
 
 const USAGE = `geek-stars
@@ -93,7 +94,9 @@ function parseArgs(argv: string[]): Parsed {
 function ensureToken(): string {
   const token = Bun.env.GITHUB_TOKEN;
   if (!token) {
-    console.error("❌ GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically).");
+    console.error(
+      "❌ GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically)."
+    );
     process.exit(1);
   }
   return token;
@@ -108,7 +111,7 @@ function printListsHuman(lists: StarList[]) {
   }
 }
 
-function printReposHuman(repos: RepoLite[]) {
+function printReposHuman(repos: RepoInfo[]) {
   for (const r of repos) {
     console.log(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
   }
@@ -118,9 +121,9 @@ function toSlug(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/['"]/g, "")            // drop quotes
-    .replace(/[^a-z0-9]+/g, "-")     // non-alnum -> hyphen
-    .replace(/^-+|-+$/g, "");        // trim hyphens
+    .replace(/['"]/g, "") // drop quotes
+    .replace(/[^a-z0-9]+/g, "-") // non-alnum -> hyphen
+    .replace(/^-+|-+$/g, ""); // trim hyphens
 }
 
 function saveListsToDir(lists: StarList[], dir: string) {
@@ -174,7 +177,7 @@ async function runRepos(listName: string, json: boolean) {
     console.error("❌ --list <name> is required for 'repos'.");
     process.exit(1);
   }
-  const repos: RepoLite[] = await getReposFromList(token, listName);
+  const repos: RepoInfo[] = await getReposFromList(token, listName);
   if (json) {
     console.log(JSON.stringify(repos, null, 2));
   } else {
