@@ -1,0 +1,505 @@
+directories:
+  package.json: |
+    {
+      "name": "@geekist/stars",
+      "version": "0.1.0",
+      "type": "module",
+      "description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/theGeekist/stars.git"
+      },
+      "homepage": "https://github.com/theGeekist/stars#readme",
+      "bugs": {
+        "url": "https://github.com/theGeekist/stars/issues"
+      },
+      "license": "MIT",
+      "author": "J (Jason) <hello@geekist.dev>",
+      "exports": {
+        ".": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.mjs"
+        }
+      },
+      "bin": {
+        "geek-stars": "./dist/cli.mjs"
+      },
+      "scripts": {
+        "dev": "bun run src/cli.ts -- --help",
+        "start": "bun run src/cli.ts",
+        "build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist",
+        "test": "bun test",
+        "lint": "biome check .",
+        "format": "biome format --write .",
+        "typecheck": "bunx tsc --noEmit"
+      },
+      "engines": {
+        "bun": ">=1.1.0"
+      }
+    }
+  LICENSE: |
+    MIT License
+
+    Copyright (c) 2025 J
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to do so, subject to the
+    following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+  README.md: |
+    # @geekist/stars
+
+    Query **GitHub Stars Lists** via GraphQL (the undocumented `viewer.lists` connection), dump JSON,
+    and lay groundwork to enrich each repo with health signals.
+
+    ## Quick start
+
+    ```bash
+    bun install
+    cp .env.example .env
+    # put your token in .env
+    bun run build
+    ./dist/cli.mjs lists --json
+    ```
+
+    Or during development:
+
+    ```bash
+    bun run src/cli.ts lists --json
+    ```
+
+    ### Auth
+    Bun loads `.env` automatically. You need:
+
+    ```
+    GITHUB_TOKEN=ghp_********************************
+    ```
+
+    The token must include `read:user` and `public_repo` (private lists require repo scope if they include private repos).
+
+    ## Commands
+
+    - `geek-stars lists`  
+      Print all lists (name, description, visibility) and a sample of items.
+
+    - `geek-stars dump --out lists.json`  
+      Dump all lists + items to a JSON file.
+
+    - `geek-stars repos --list "AI"`  
+      Print repositories (nameWithOwner, url, stars) from a specific list.
+
+    ### Notes
+    - This hits the **undocumented** `viewer.lists` field. It’s been stable, but consider this experimental.
+    - Item pagination per list is batched to 100; upgrade path is wired, see `TODO` in code.
+
+    ## Dev
+    - `bun test` — unit tests
+    - `bun run lint` / `bun run format` — Biome (install it first)
+    - `bun run typecheck` — TypeScript (via `bunx tsc`)
+
+    ## License
+    MIT
+  .env: |
+    # Bun loads this automatically
+    GITHUB_TOKEN=your_github_token_here
+  .env.example: |
+    # Copy to .env and fill your token
+    GITHUB_TOKEN=your_github_token_here
+  .editorconfig: |
+    root = true
+
+    [*]
+    charset = utf-8
+    end_of_line = lf
+    indent_style = space
+    indent_size = 2
+    insert_final_newline = true
+    trim_trailing_whitespace = true
+  .gitignore: |
+    node_modules
+    dist
+    .DS_Store
+    .env
+    *.log
+  .biome.json: |
+    {
+      "$schema": "https://biomejs.dev/schemas/1.8.0/schema.json",
+      "organizeImports": { "enabled": true },
+      "linter": {
+        "enabled": true,
+        "rules": {
+          "recommended": true
+        }
+      },
+      "formatter": { "enabled": true }
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "verbatimModuleSyntax": true,
+        "noEmit": true
+      },
+      "include": ["src", "tests"]
+    }
+  src:
+    index.ts: |
+      export * from "./lib/github.js";
+      export * from "./lib/lists.js";
+    cli.ts: |
+      #!/usr/bin/env bun
+      /**
+      * @geekist/stars CLI
+      *
+      * Commands:
+      *   geek-stars lists [--json] [--out <file>]
+      *   geek-stars repos --list <name> [--json]
+      *   geek-stars dump [--out <file>]        (alias of: lists --json > file)
+      *   geek-stars help
+      *
+      * Env:
+      *   GITHUB_TOKEN  (Bun auto-loads .env)
+      */
+
+      import { writeFileSync } from "node:fs";
+      import type { StarList, RepoLite } from "./lib/lists.js";
+      import { getAllLists, getReposFromList } from "./lib/lists.js";
+
+      type Command = "lists" | "repos" | "dump" | "help";
+
+      interface Parsed {
+        command: Command;
+        json: boolean;
+        out?: string;
+        list?: string;
+        help: boolean;
+      }
+
+      const USAGE = `geek-stars
+
+      Usage:
+        geek-stars lists [--json] [--out <file>]
+        geek-stars repos --list <name> [--json]
+        geek-stars dump [--out <file>]
+        geek-stars help
+
+      Examples:
+        geek-stars lists --json
+        geek-stars dump --out lists.json
+        geek-stars repos --list "AI" --json
+      `;
+
+      function parseArgs(argv: string[]): Parsed {
+        const args = argv.slice(2);
+        let command: Command = "help";
+        let json = false;
+        let out: string | undefined;
+        let list: string | undefined;
+        let help = false;
+
+        // First positional token is the command (if present)
+        if (args[0] && !args[0].startsWith("-")) {
+          const maybe = args[0] as Command;
+          if (["lists", "repos", "dump", "help"].includes(maybe)) {
+            command = maybe;
+            args.shift();
+          }
+        }
+
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i];
+          switch (a) {
+            case "--json":
+              json = true;
+              break;
+            case "--out":
+              out = args[++i];
+              break;
+            case "--list":
+              list = args[++i];
+              break;
+            case "-h":
+            case "--help":
+              help = true;
+              break;
+            default:
+              // Unknown flag or stray arg → show help, but don’t hard-fail
+              help = true;
+              break;
+          }
+        }
+
+        return { command, json, out, list, help };
+      }
+
+      function ensureToken(): string {
+        const token = Bun.env.GITHUB_TOKEN;
+        if (!token) {
+          console.error("❌ GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically).");
+          process.exit(1);
+        }
+        return token;
+      }
+
+      function printListsHuman(lists: StarList[]) {
+        for (const l of lists) {
+          const vis = l.isPrivate ? "private" : "public";
+          console.log(`• ${l.name} [${vis}]`);
+          if (l.description) console.log(`  ${l.description}`);
+          console.log(`  items: ${l.repos.length}`);
+        }
+      }
+
+      function printReposHuman(repos: RepoLite[]) {
+        for (const r of repos) {
+          console.log(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
+        }
+      }
+
+      async function runLists(json: boolean, out?: string) {
+        const token = ensureToken();
+        const lists = await getAllLists(token);
+
+        if (out) {
+          writeFileSync(out, JSON.stringify(lists, null, 2));
+          console.log(`✔ Wrote ${lists.length} lists → ${out}`);
+          return;
+        }
+        if (json) {
+          console.log(JSON.stringify(lists, null, 2));
+        } else {
+          printListsHuman(lists);
+        }
+      }
+
+      async function runRepos(listName: string, json: boolean) {
+        const token = ensureToken();
+        if (!listName) {
+          console.error("❌ --list <name> is required for 'repos'.");
+          process.exit(1);
+        }
+        const repos = await getReposFromList(token, listName);
+        if (json) {
+          console.log(JSON.stringify(repos, null, 2));
+        } else {
+          printReposHuman(repos);
+        }
+      }
+
+      async function main() {
+        const parsed = parseArgs(Bun.argv);
+
+        if (parsed.help || parsed.command === "help") {
+          console.log(USAGE);
+          return;
+        }
+
+        switch (parsed.command) {
+          case "lists":
+            await runLists(parsed.json, parsed.out);
+            return;
+          case "dump":
+            // Equivalent to: lists --json > file (but we handle writing for convenience)
+            await runLists(true, parsed.out ?? "lists.json");
+            return;
+          case "repos":
+            await runRepos(parsed.list ?? "", parsed.json);
+            return;
+          default:
+            console.log(USAGE);
+        }
+      }
+
+      main().catch((err) => {
+        console.error("❌ Error:", err instanceof Error ? err.message : err);
+        process.exit(1);
+      });
+    lib:
+      github.ts: |
+        // Minimal GraphQL client using fetch; no external deps.
+        // Bun.env auto-loads .env
+        export type GraphQLResponse<T> = { data?: T; errors?: { message: string }[] };
+
+        const GITHUB_GQL = "https://api.github.com/graphql";
+
+        async function githubGraphQL<T>(token: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+          const res = await fetch(GITHUB_GQL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/vnd.github+json"
+            },
+            body: JSON.stringify({ query, variables })
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`GitHub GraphQL HTTP ${res.status}: ${text}`);
+          }
+
+          const json = (await res.json()) as GraphQLResponse<T>;
+          if (json.errors && json.errors.length) {
+            throw new Error(`GitHub GraphQL error: ${json.errors.map(e => e.message).join("; ")}`);
+          }
+          if (!json.data) {
+            throw new Error("GitHub GraphQL: empty data");
+          }
+          return json.data;
+        }
+
+        export const gql = String.raw;
+        export { githubGraphQL };
+      lists.ts: |
+        import { githubGraphQL, gql } from "./github.js";
+
+        export type RepoLite = {
+          nameWithOwner: string;
+          url: string;
+          stars: number;
+        };
+
+        export type StarList = {
+          name: string;
+          description?: string | null;
+          isPrivate: boolean;
+          repos: RepoLite[];
+        };
+
+        // NOTE: Undocumented field `viewer.lists`.
+        const LISTS_QUERY = gql`
+          query ListsPage($after: String) {
+            viewer {
+              lists(first: 20, after: $after) {
+                pageInfo { endCursor hasNextPage }
+                nodes {
+                  name
+                  description
+                  isPrivate
+                  items(first: 100) {
+                    pageInfo { endCursor hasNextPage }
+                    nodes {
+                      __typename
+                      ... on Repository {
+                        nameWithOwner
+                        url
+                        stargazerCount
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `;
+
+        type ListsPage = {
+          viewer: {
+            lists: {
+              pageInfo: { endCursor: string | null; hasNextPage: boolean };
+              nodes: Array<{
+                name: string;
+                description?: string | null;
+                isPrivate: boolean;
+                items: {
+                  pageInfo: { endCursor: string | null; hasNextPage: boolean };
+                  nodes: Array<{
+                    __typename: string;
+                    nameWithOwner?: string;
+                    url?: string;
+                    stargazerCount?: number;
+                  }>;
+                };
+              }>;
+            };
+          };
+        };
+
+        export async function getAllLists(token: string): Promise<StarList[]> {
+          const out: StarList[] = [];
+          let after: string | null = null;
+
+          while (true) {
+            const data = await githubGraphQL<ListsPage>(token, LISTS_QUERY, { after });
+            const page = data.viewer.lists;
+            for (const l of page.nodes) {
+              const repos: RepoLite[] = l.items.nodes
+                .filter(n => n.__typename === "Repository")
+                .map(n => ({
+                  nameWithOwner: n.nameWithOwner!,
+                  url: n.url!,
+                  stars: n.stargazerCount ?? 0
+                }));
+
+              // TODO: If l.items.pageInfo.hasNextPage, issue a per-list follow-up query to fetch remaining items.
+              out.push({
+                name: l.name,
+                description: l.description ?? null,
+                isPrivate: l.isPrivate,
+                repos
+              });
+            }
+            if (!page.pageInfo.hasNextPage) break;
+            after = page.pageInfo.endCursor;
+          }
+          return out;
+        }
+
+        export async function getReposFromList(token: string, listName: string): Promise<RepoLite[]> {
+          const lists = await getAllLists(token);
+          const l = lists.find(x => x.name.toLowerCase() === listName.toLowerCase());
+          if (!l) throw new Error(`List not found: ${listName}`);
+          return l.repos;
+        }
+  tests:
+    lists.test.ts: |
+      import { describe, it, expect } from "bun:test";
+      import { getAllLists } from "../src/lib/lists.js";
+
+      // Smoke test (skipped by default unless token present)
+      describe("getAllLists", () => {
+        it("fetches lists when token exists", async () => {
+          if (!Bun.env.GITHUB_TOKEN) {
+            return; // skip silently in CI without secret
+          }
+          const lists = await getAllLists(Bun.env.GITHUB_TOKEN);
+          expect(Array.isArray(lists)).toBe(true);
+        });
+      });
+  .github:
+    workflows:
+      ci.yml: |
+        name: ci
+        on:
+          push:
+          pull_request:
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - uses: oven-sh/setup-bun@v1
+                with:
+                  bun-version: latest
+              - run: bun install
+              - run: bun run build
+              - run: bun test

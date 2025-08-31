@@ -1,0 +1,46 @@
+{
+  "name": "@geekist/stars",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theGeekist/stars.git"
+  },
+  "homepage": "https://github.com/theGeekist/stars#readme",
+  "bugs": {
+    "url": "https://github.com/theGeekist/stars/issues"
+  },
+  "license": "MIT",
+  "author": "J (Jason) <hello@geekist.dev>",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "bin": {
+    "geek-stars": "./dist/cli.mjs"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts -- --help",
+    "start": "bun run src/cli.ts",
+    "build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist",
+    "test": "bun test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "module": "src/index.ts",
+  "private": true,
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.2",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
