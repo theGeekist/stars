@@ -16,16 +16,23 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs"
+      "import": "./dist/index.js"
     }
   },
   "bin": {
-    "geek-stars": "./dist/cli.mjs"
+    "gk-stars": "./dist/cli.js"
   },
   "scripts": {
-    "dev": "bun run src/cli.ts -- --help",
+    "ingest": "bun run src/ingest.ts",
+    "serve": "bun run src/server.ts",
+    "rebuild": "rm -f repolists.db && bun run src/ingest.ts",
+    "dev": "bun run src/server.ts",
+    "types": "tsc -p tsconfig.json --noEmit",
+    "check": "bun run types && echo '✓ typecheck ok'",
     "start": "bun run src/cli.ts",
     "build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist",
+    "prepare": "bun run build",
+    "prepublishOnly": "bun run build",
     "test": "bun test",
     "lint": "biome check .",
     "format": "biome format --write .",
@@ -42,5 +49,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.9.5"
   }
 }
