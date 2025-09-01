@@ -4,3 +4,5 @@ dist
 .env
 *.log
 exports
+repolists*
+app.md
