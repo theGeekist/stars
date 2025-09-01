@@ -1,27 +1,3 @@
-export function scorePopularity(stars = 0, forks = 0, watchers = 0): number {
-  const base = Math.log10(1 + stars + 2 * forks + 0.5 * watchers);
-  return Number(base.toFixed(4));
-}
-
-export function scoreFreshness(iso?: string | null): number {
-  if (!iso) return 0;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return 0;
-  const days = (Date.now() - t) / 86_400_000;
-  const s = Math.max(0, 1 - days / 365);
-  return Number(s.toFixed(4));
-}
-
-export function scoreActiveness(
-  openIssues = 0,
-  openPrs = 0,
-  pushedAt?: string | null
-): number {
-  const load = Math.log10(1 + openIssues + 2 * openPrs);
-  const pushBoost = scoreFreshness(pushedAt) * 0.7;
-  return Number((Math.min(1, load / 2) * 0.6 + pushBoost).toFixed(4));
-}
-
 export function deriveTags(input: {
   topics?: string[];
   primary_language?: string | null;
@@ -39,4 +15,119 @@ export function deriveTags(input: {
   if (input.is_fork) t.add("fork");
   if (input.is_mirror) t.add("mirror");
   return Array.from(t);
+}
+// ----- POPULARITY -----------------------------------------------------------
+// Inputs vary by orders of magnitude. Use a log to compress, then a sigmoid to
+// keep values in [0,1] with a reasonable "midpoint".
+
+export function scorePopularity(
+  stars: number,
+  forks: number,
+  watchers: number,
+  dbg?: (msg: string) => void
+): number {
+  const weighted = 1 + stars + 2 * forks + 0.5 * watchers;
+  const raw = Math.log10(Math.max(1, weighted)); // 0..~5.5+
+
+  // Ceiling chosen so 99th percentile repos hit ~0.95 1.00; tweak if needed.
+  const CEIL = 5;
+  const s = Math.min(1, raw / CEIL);
+  if (dbg && (Number.isNaN(s) || s === 0 || s === 1)) {
+    console.log(
+      `[metrics] popularity dbg raw=${raw.toFixed(4)} weighted=${weighted}`
+    );
+  }
+  return Number(s.toFixed(4));
+}
+// ----- helpers --------------------------------------------------------------
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+function safeParseDate(iso?: string | null): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+function daysSince(iso?: string | null): number | null {
+  const t = safeParseDate(iso);
+  if (t == null) return null;
+  return (Date.now() - t) / 86400000;
+}
+// ----- FRESHNESS ------------------------------------------------------------
+// Exponential decay w/ half-life → perceptually nicer than linear.
+// 90d half-life means: 0.5 @ 90d, 0.25 @ 180d, ~0.06 @ 1y.
+export function scoreFreshnessFromISO(
+  iso?: string | null,
+  halfLifeDays = 90
+): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 0;
+
+  const days = (Date.now() - t) / 86400000;
+
+  // last year should still look reasonably "fresh"
+  if (days <= 365) {
+    // linear: 0d -> 1.0, 365d -> 0.5
+    const s = 1 - 0.5 * (days / 365);
+    const v = Number(Math.max(0, Math.min(1, s)).toFixed(4));
+    console.log(
+      `[metrics] freshness<1y iso=${iso} days=${days.toFixed(1)} -> ${v}`
+    );
+    return v;
+  }
+
+  // older than a year: tank with half-life
+  const extra = days - 365;
+  const HALF_LIFE_DAYS = 365; // tweakable
+  const s = 0.5 * Math.pow(2, -extra / halfLifeDays); // 2y≈0.25, 3y≈0.125
+  const v = Number(Math.max(0, Math.min(1, s)).toFixed(4));
+  console.log(
+    `[metrics] freshness>1y iso=${iso} days=${days.toFixed(1)} -> ${v}`
+  );
+  return v;
+}
+// Source precedence: code-first; updatedAt only if we have nothing else.
+export function chooseFreshnessSource(opts: {
+  pushedAt?: string | null;
+  lastCommitISO?: string | null;
+  lastReleaseISO?: string | null;
+  updatedAt?: string | null;
+}): string | null {
+  return (
+    opts.pushedAt ??
+    opts.lastCommitISO ??
+    opts.lastReleaseISO ??
+    opts.updatedAt ??
+    null
+  );
+}
+// ----- ACTIVENESS -----------------------------------------------------------
+// Two parts: (A) backlog density (log dampened, PRs > issues)
+//            (B) recent code (freshness from pushedAt)
+// Then blend and penalize if issues are disabled or repo is archived.
+export function scoreActiveness(
+  openIssues: number,
+  openPRs: number,
+  pushedAt?: string | null,
+  opts?: { hasIssuesEnabled?: boolean; isArchived?: boolean }
+): number {
+  const backlogRaw = Math.max(0, openIssues + 2 * openPRs);
+  const backlog = Math.log10(1 + backlogRaw); // dampen
+  const backlogScore = Math.min(1, backlog / 3); // cap ~1 around 10^3 density
+
+  // Recent push is the strongest live-signal
+  const pushFresh = scoreFreshnessFromISO(pushedAt, 90);
+
+  // Blend: emphasize code recency
+  let s = 0.35 * backlogScore + 0.65 * pushFresh;
+
+  // Light penalty if issues are off (reduced surface for activity)
+  if (opts?.hasIssuesEnabled === false) s *= 0.85;
+
+  // Heavy penalty for archived repos
+  if (opts?.isArchived) s *= 0.25;
+
+  return Number(clamp01(s).toFixed(4));
 }

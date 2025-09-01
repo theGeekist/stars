@@ -109,4 +109,11 @@ export type ListItemsAtEdge = {
       }>;
     };
   };
+};export type ChunkingOptions = {
+  chunkSizeTokens?: number;
+  chunkOverlapTokens?: number;
+  mode?: "sentence" | "token";
 };
+// --- typed statements --------------------------------------------------------
+export type ReadmeRow = { id: number; readme_md: string | null; readme_etag: string | null; };
+
