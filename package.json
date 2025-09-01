@@ -1,62 +1,65 @@
 {
-  "name": "@geekist/stars",
-  "version": "0.1.0",
-  "type": "module",
-  "description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/theGeekist/stars.git"
-  },
-  "homepage": "https://github.com/theGeekist/stars#readme",
-  "bugs": {
-    "url": "https://github.com/theGeekist/stars/issues"
-  },
-  "license": "MIT",
-  "author": "J (Jason) <hello@geekist.dev>",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "bin": {
-    "gk-stars": "./dist/cli.js"
-  },
-  "scripts": {
-    "ingest": "bun run src/ingest.ts",
-    "sum:one": "bun run src/lib/summarise.ts",
-    "sum:batch": "bun run src/cli-summarise.ts",
-    "serve": "bun run src/server.ts",
-    "rebuild": "rm -f repolists.db && bun run src/ingest.ts",
-    "dev": "bun run src/server.ts",
-    "types": "tsc -p tsconfig.json --noEmit",
-    "check": "bun run types && echo '✓ typecheck ok'",
-    "start": "bun run src/cli.ts",
-    "build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist",
-    "prepare": "bun run build",
-    "prepublishOnly": "bun run build",
-    "test": "bun test",
-    "lint": "biome check .",
-    "format": "biome format --write .",
-    "typecheck": "bunx tsc --noEmit"
-  },
-  "engines": {
-    "bun": ">=1.1.0"
-  },
-  "module": "src/index.ts",
-  "private": true,
-  "devDependencies": {
-    "@biomejs/biome": "^2.2.2",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "hono": "^4.9.5",
-    "llamaindex": "^0.11.28",
-    "ollama": "^0.5.17",
-    "zod": "^4.1.5",
-    "zod-to-json-schema": "^3.24.6"
-  }
+	"name": "@geekist/stars",
+	"version": "0.1.0",
+	"type": "module",
+	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/theGeekist/stars.git"
+	},
+	"homepage": "https://github.com/theGeekist/stars#readme",
+	"bugs": {
+		"url": "https://github.com/theGeekist/stars/issues"
+	},
+	"license": "MIT",
+	"author": "J (Jason) <hello@geekist.dev>",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"bin": {
+		"gk-stars": "./dist/cli.js"
+	},
+	"scripts": {
+		"ingest": "bun run src/ingest.ts",
+		"score:one": "bun run src/lib/score_one.ts",
+		"sum:one": "bun run src/lib/summarise.ts",
+		"sum:batch": "bun run src/cli-summarise.ts",
+		"serve": "bun run src/server.ts",
+		"rebuild": "rm -f repolists.db && bun run src/ingest.ts",
+		"dev": "bun run src/server.ts",
+		"types": "tsc -p tsconfig.json --noEmit",
+		"check": "bun run types && echo '✓ typecheck ok'",
+		"start": "bun run src/cli.ts",
+		"build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist",
+		"prepare": "bun run build",
+		"prepublishOnly": "bun run build",
+		"test": "bun test",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"typecheck": "bunx tsc --noEmit"
+	},
+	"engines": {
+		"bun": ">=1.1.0"
+	},
+	"module": "src/index.ts",
+	"private": true,
+	"devDependencies": {
+		"@biomejs/biome": "^2.2.2",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"@jasonnathan/llm-core": "^1.3.8",
+		"@llamaindex/readers": "^3.1.19",
+		"hono": "^4.9.5",
+		"llamaindex": "^0.11.28",
+		"ollama": "^0.5.17",
+		"zod": "^4.1.5",
+		"zod-to-json-schema": "^3.24.6"
+	}
 }

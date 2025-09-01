@@ -1,6 +1,7 @@
 import { db } from "./lib/db";
 import { Statement } from "bun:sqlite";
-import type { ListRow, ListDetail, RepoRow, ApiRepo } from "./types";
+import type { ListRow, ListDetail, ApiRepo } from "./types";
+import type { RepoRow } from "./lib/types";
 import { parseJsonArray } from "./lib/utils";
 
 let qLists!: Statement<ListRow, []>;
@@ -10,22 +11,22 @@ let qSearchFts!: Statement<RepoRow, [q: string]>;
 let qSearchLike!: Statement<RepoRow, [q1: string, q2: string]>;
 
 function mapRepoRow(row: RepoRow): ApiRepo {
-  return {
-    ...row,
-    tags: parseJsonArray(row.tags),
-  };
+	return {
+		...row,
+		tags: parseJsonArray(row.tags),
+	};
 }
 
 function prepareQueries(): void {
-  qLists = db.query<ListRow, []>(`
+	qLists = db.query<ListRow, []>(`
     SELECT id, name, description, slug, is_private FROM list ORDER BY name
   `);
 
-  qListBySlug = db.query<ListDetail, [string]>(`
+	qListBySlug = db.query<ListDetail, [string]>(`
     SELECT id, name, description FROM list WHERE slug = ?
   `);
 
-  qReposForList = db.query<RepoRow, [number]>(`
+	qReposForList = db.query<RepoRow, [number]>(`
     SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.license, r.tags, r.summary,
            r.popularity, r.freshness, r.activeness
     FROM repo r
@@ -34,7 +35,7 @@ function prepareQueries(): void {
     ORDER BY r.popularity DESC
   `);
 
-  qSearchFts = db.query<RepoRow, [string]>(`
+	qSearchFts = db.query<RepoRow, [string]>(`
     SELECT id, name_with_owner, url, description, primary_language, license, tags, summary, popularity, freshness, activeness
     FROM repo
     WHERE rowid IN (SELECT rowid FROM repo_fts WHERE repo_fts MATCH ?)
@@ -42,7 +43,7 @@ function prepareQueries(): void {
     LIMIT 100
   `);
 
-  qSearchLike = db.query<RepoRow, [string, string]>(`
+	qSearchLike = db.query<RepoRow, [string, string]>(`
     SELECT id, name_with_owner, url, description, primary_language, license, tags, summary, popularity, freshness, activeness
     FROM repo
     WHERE name_with_owner LIKE '%' || ? || '%' OR description LIKE '%' || ? || '%'
@@ -52,63 +53,63 @@ function prepareQueries(): void {
 }
 
 function json(res: unknown, init?: number | ResponseInit): Response {
-  const headers = { "content-type": "application/json; charset=utf-8" };
-  if (typeof init === "number")
-    return new Response(JSON.stringify(res), { status: init, headers });
-  return new Response(JSON.stringify(res), {
-    ...(init as ResponseInit),
-    headers,
-  });
+	const headers = { "content-type": "application/json; charset=utf-8" };
+	if (typeof init === "number")
+		return new Response(JSON.stringify(res), { status: init, headers });
+	return new Response(JSON.stringify(res), {
+		...(init as ResponseInit),
+		headers,
+	});
 }
 
 function notFound(msg = "Not found"): Response {
-  return json({ error: msg }, 404);
+	return json({ error: msg }, 404);
 }
 
 prepareQueries();
 
 Bun.serve({
-  port: 8787,
-  fetch(req) {
-    try {
-      const url = new URL(req.url);
-      const { pathname } = url;
+	port: 8787,
+	fetch(req) {
+		try {
+			const url = new URL(req.url);
+			const { pathname } = url;
 
-      if (pathname === "/health") return json({ ok: true });
+			if (pathname === "/health") return json({ ok: true });
 
-      if (pathname === "/lists") {
-        const rows = qLists.all();
-        return json(rows);
-      }
+			if (pathname === "/lists") {
+				const rows = qLists.all();
+				return json(rows);
+			}
 
-      if (pathname.startsWith("/list/")) {
-        const slug = pathname.replace("/list/", "").trim();
-        if (!slug) return notFound();
-        const list = qListBySlug.get(slug);
-        if (!list) return notFound();
+			if (pathname.startsWith("/list/")) {
+				const slug = pathname.replace("/list/", "").trim();
+				if (!slug) return notFound();
+				const list = qListBySlug.get(slug);
+				if (!list) return notFound();
 
-        const repos = qReposForList.all(list.id).map(mapRepoRow);
-        return json({ list, repos });
-      }
+				const repos = qReposForList.all(list.id).map(mapRepoRow);
+				return json({ list, repos });
+			}
 
-      if (pathname === "/search") {
-        const q = (url.searchParams.get("q") ?? "").trim();
-        if (!q) return json([]);
-        let rows: RepoRow[] = [];
-        try {
-          rows = qSearchFts.all(q);
-        } catch {
-          rows = qSearchLike.all(q, q);
-        }
-        const repos = rows.map(mapRepoRow);
-        return json(repos);
-      }
+			if (pathname === "/search") {
+				const q = (url.searchParams.get("q") ?? "").trim();
+				if (!q) return json([]);
+				let rows: RepoRow[] = [];
+				try {
+					rows = qSearchFts.all(q);
+				} catch {
+					rows = qSearchLike.all(q, q);
+				}
+				const repos = rows.map(mapRepoRow);
+				return json(repos);
+			}
 
-      return notFound();
-    } catch (err) {
-      return json({ error: String(err) }, 500);
-    }
-  },
+			return notFound();
+		} catch (err) {
+			return json({ error: String(err) }, 500);
+		}
+	},
 });
 
 console.log("API → http://localhost:8787");

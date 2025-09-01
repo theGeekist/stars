@@ -72,6 +72,33 @@ CREATE TABLE IF NOT EXISTS list_repo (
   PRIMARY KEY (list_id, repo_id)
 );
 
+-- topics: one row per canonical topic string (lowercase, kebab-case)
+CREATE TABLE IF NOT EXISTS topics (
+  topic              TEXT PRIMARY KEY,          -- e.g. "rss-reader"
+  display_name       TEXT,                      -- e.g. "RSS Reader"
+  short_description  TEXT,                      -- GitHub 'short_description' or 'description'
+  aliases_json       TEXT,                      -- JSON array of strings
+  is_featured        INTEGER NOT NULL DEFAULT 0,
+  updated_at         TEXT NOT NULL,             -- ISO8601 when we last refreshed this row
+  etag               TEXT                       -- reserved for future caching if GH adds ETags here
+);
+
+-- repo_topics: many-to-many between your repos (by internal id) and topics
+CREATE TABLE IF NOT EXISTS repo_topics (
+  repo_id   INTEGER NOT NULL,                   -- FK to your repos table's id
+  topic     TEXT NOT NULL,                      -- FK to topics.topic
+  added_at  TEXT NOT NULL,                      -- when we attached (or last confirmed) the mapping
+  PRIMARY KEY (repo_id, topic),
+  FOREIGN KEY (topic) REFERENCES topics(topic) ON DELETE CASCADE
+  -- FOREIGN KEY (repo_id) REFERENCES repos(id) ON DELETE CASCADE -- if you have it
+);
+
+-- perf helpers
+CREATE INDEX IF NOT EXISTS idx_repo_topics_repo ON repo_topics (repo_id);
+CREATE INDEX IF NOT EXISTS idx_repo_topics_topic ON repo_topics (topic);
+
+
+
 CREATE VIRTUAL TABLE IF NOT EXISTS repo_fts USING fts5(
   name_with_owner, description, readme_md, summary, topics,
   content='repo', content_rowid='id'
