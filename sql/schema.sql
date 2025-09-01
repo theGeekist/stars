@@ -45,6 +45,27 @@ CREATE TABLE IF NOT EXISTS repo (
   activeness REAL
 );
 
+-- === scoring (new tables) ===
+CREATE TABLE IF NOT EXISTS model_run (
+  id INTEGER PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS repo_list_score (
+  run_id INTEGER NOT NULL REFERENCES model_run(id) ON DELETE CASCADE,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  list_slug TEXT NOT NULL,
+  score REAL NOT NULL CHECK(score >= 0 AND score <= 1),
+  rationale TEXT,
+  PRIMARY KEY (run_id, repo_id, list_slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_score_repo ON repo_list_score(repo_id);
+CREATE INDEX IF NOT EXISTS idx_score_run ON repo_list_score(run_id);
+CREATE INDEX IF NOT EXISTS idx_score_list ON repo_list_score(list_slug);
+
+
 CREATE TABLE IF NOT EXISTS list_repo (
   list_id INTEGER NOT NULL REFERENCES list(id) ON DELETE CASCADE,
   repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,

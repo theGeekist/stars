@@ -24,6 +24,8 @@
   },
   "scripts": {
     "ingest": "bun run src/ingest.ts",
+    "sum:one": "bun run src/lib/summarise.ts",
+    "sum:batch": "bun run src/cli-summarise.ts",
     "serve": "bun run src/server.ts",
     "rebuild": "rm -f repolists.db && bun run src/ingest.ts",
     "dev": "bun run src/server.ts",
@@ -51,6 +53,10 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "hono": "^4.9.5"
+    "hono": "^4.9.5",
+    "llamaindex": "^0.11.28",
+    "ollama": "^0.5.17",
+    "zod": "^4.1.5",
+    "zod-to-json-schema": "^3.24.6"
   }
 }

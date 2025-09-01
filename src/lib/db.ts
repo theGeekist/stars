@@ -1,37 +1,102 @@
-// src/db.ts
+// src/lib/db.ts
 import { Database } from "bun:sqlite";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 export const db = new Database("repolists.db");
 
-export function initSchema() {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS list (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      is_private INTEGER NOT NULL DEFAULT 0,
-      slug TEXT UNIQUE NOT NULL
-    );
+function resolveSchemaPath(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidate = resolve(here, "../../sql/schema.sql");
 
-    CREATE TABLE IF NOT EXISTS repo (
-      id INTEGER PRIMARY KEY,
-      name_with_owner TEXT UNIQUE NOT NULL,
-      url TEXT NOT NULL,
-      description TEXT,
-      stars INTEGER DEFAULT 0,
-      forks INTEGER DEFAULT 0,
-      watchers INTEGER DEFAULT 0,
-      pushed_at TEXT,
-      updated_at TEXT,
-      popularity REAL,
-      freshness REAL,
-      activeness REAL
-    );
+  if (existsSync(candidate)) return candidate;
+  const cwdCandidate = resolve(process.cwd(), "sql/schema.sql");
+  if (existsSync(cwdCandidate)) return cwdCandidate;
 
-    CREATE TABLE IF NOT EXISTS list_repo (
-      list_id INTEGER NOT NULL REFERENCES list(id) ON DELETE CASCADE,
-      repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
-      PRIMARY KEY (list_id, repo_id)
-    );
+  throw new Error("schema.sql not found");
+}
+
+export function initSchema(): void {
+  const schemaPath = resolveSchemaPath();
+  const sql = readFileSync(schemaPath, "utf-8");
+  db.exec(sql);
+
+  migrateIfNeeded(); // optional upgrades
+}
+
+// ---- OPTIONAL migration helpers ----
+type ColInfo = { name: string };
+
+function quoteIdent(id: string): string {
+  if (!/^[A-Za-z0-9_]+$/.test(id)) {
+    throw new Error(`Invalid identifier: ${id}`);
+  }
+  // If you want to allow more, use: `"${id.replace(/"/g, '""')}"`
+  return `"${id}"`;
+}
+
+function tableColumns(name: string): Set<string> {
+  const cols = new Set<string>();
+  const ident = quoteIdent(name);
+  // No bindings here; PRAGMA doesn't accept parameters for identifiers
+  const rows = db.query<ColInfo, []>(`PRAGMA table_info(${ident})`).all();
+  for (const r of rows) cols.add(r.name);
+  return cols;
+}
+function addColumnIfMissing(table: string, col: string, sqlType: string) {
+  const cols = tableColumns(table);
+  if (!cols.has(col))
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${sqlType}`);
+}
+function migrateIfNeeded(): void {
+  // Only add *new* columns if missing. Do NOT alter existing cols or tables.
+  addColumnIfMissing("repo", "readme_etag", "TEXT");
+  addColumnIfMissing("repo", "readme_fetched_at", "TEXT");
+
+  // Ensure helpful indexes exist (no-ops if already present)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_list_slug ON list(slug);
+    CREATE INDEX IF NOT EXISTS idx_repo_name ON repo(name_with_owner);
+    CREATE INDEX IF NOT EXISTS idx_repo_updated ON repo(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_listrepo_list ON list_repo(list_id);
+    CREATE INDEX IF NOT EXISTS idx_listrepo_repo ON list_repo(repo_id);
   `);
+
+  // Ensure FTS & triggers exist (idempotent, non-destructive)
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS repo_fts USING fts5(
+      name_with_owner, description, readme_md, summary, topics,
+      content='repo', content_rowid='id'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS repo_ai AFTER INSERT ON repo BEGIN
+      INSERT INTO repo_fts(rowid, name_with_owner, description, readme_md, summary, topics)
+      VALUES (new.id, new.name_with_owner, new.description, new.readme_md, new.summary, new.topics);
+    END;
+    CREATE TRIGGER IF NOT EXISTS repo_ad AFTER DELETE ON repo BEGIN
+      INSERT INTO repo_fts(repo_fts, rowid, name_with_owner, description, readme_md, summary, topics)
+      VALUES('delete', old.id, old.name_with_owner, old.description, old.readme_md, old.summary, old.topics);
+    END;
+    CREATE TRIGGER IF NOT EXISTS repo_au AFTER UPDATE ON repo BEGIN
+      INSERT INTO repo_fts(repo_fts, rowid, name_with_owner, description, readme_md, summary, topics)
+      VALUES('delete', old.id, old.name_with_owner, old.description, old.readme_md, old.summary, old.topics);
+      INSERT INTO repo_fts(rowid, name_with_owner, description, readme_md, summary, topics)
+      VALUES (new.id, new.name_with_owner, new.description, new.readme_md, new.summary, new.topics);
+    END;
+  `);
+
+  // Optional: backfill FTS only if empty (safe; insert-only)
+  const ftsCount =
+    db
+      .query<{ c: number }, []>(
+        `SELECT COALESCE(COUNT(*),0) AS c FROM repo_fts`
+      )
+      .get()?.c ?? 0;
+  if (ftsCount === 0) {
+    db.exec(`
+      INSERT INTO repo_fts(rowid, name_with_owner, description, readme_md, summary, topics)
+      SELECT id, name_with_owner, description, readme_md, summary, topics FROM repo;
+    `);
+  }
 }
