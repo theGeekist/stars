@@ -1,10 +1,19 @@
 // src/lib/summarise.ts
 import { gen } from "./ollama";
-import { fetchAndChunkReadmeCached } from "./readme";
+import { fetchReadmeWithCache, cleanMarkdown, chunkMarkdown } from "./readme";
+import { OllamaService } from "@jasonnathan/llm-core";
+import {
+  wordCount,
+  enforceWordCap,
+  linkDensity,
+  cosine,
+  isAwesomeList,
+  summariseAwesomeList,
+} from "./utils";
 
 type Metrics = { popularity?: number; freshness?: number; activeness?: number };
 type Meta = {
-  repoId?: number;               // ← add this
+  repoId?: number;
   nameWithOwner: string;
   url: string;
   description?: string | null;
@@ -13,28 +22,8 @@ type Meta = {
   metrics?: Metrics;
 };
 
-function wordCount(s: string): number {
-  return s.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function enforceWordCap(s: string, cap = 100): string {
-  const words = s.trim().split(/\s+/);
-  if (words.length <= cap) return s.trim();
-  return words
-    .slice(0, cap)
-    .join(" ")
-    .replace(/[.,;:!?-]*$/, ".");
-}
-
 export async function summariseRepoOneParagraph(meta: Meta): Promise<string> {
-  // 1) chunk the README (sentence-aware)
-  const chunks = await fetchAndChunkReadmeCached(
-    meta.repoId ?? 0,
-    meta.nameWithOwner,
-    { chunkSizeTokens: 768, chunkOverlapTokens: 80, mode: "sentence" }
-  );
-
-  // Base hints from metadata
+  // Base hints (stable)
   const baseHints = [
     meta.description ?? "",
     meta.primaryLanguage ? `Primary language: ${meta.primaryLanguage}` : "",
@@ -48,24 +37,73 @@ export async function summariseRepoOneParagraph(meta: Meta): Promise<string> {
     .filter(Boolean)
     .join(" | ");
 
-  // If no README, do single-shot
+  // Fast awesome-list check from metadata first
+  let awesome = isAwesomeList(meta.nameWithOwner, meta.description, meta.topics);
+
+  // Only touch GitHub if not obviously awesome
+  let clean = "";
+  let chunks: string[] = [];
+  if (!awesome) {
+    const raw = await fetchReadmeWithCache(meta.repoId ?? 0, meta.nameWithOwner);
+    if (raw) {
+      clean = cleanMarkdown(raw);
+      const firstLine = clean.split(/\r?\n/).find((l) => l.trim().length > 0);
+      if (isAwesomeList(meta.nameWithOwner, meta.description, meta.topics, firstLine)) {
+        awesome = true;
+      } else {
+        chunks = chunkMarkdown(clean, {
+          chunkSizeTokens: 768,
+          chunkOverlapTokens: 80,
+          mode: "sentence",
+        });
+      }
+    }
+  }
+
+  // Short-circuit awesome lists
+  if (awesome) return summariseAwesomeList(meta.description, meta.topics);
+
+  // No README → single-shot summary on metadata only
   if (chunks.length === 0) {
     const prompt = `
 Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.
-Include purpose, core tech, standout capability, maturity/activity signal (if any), ideal use case.
-No bullet points or headings. Neutral tone. Do not invent facts. You must base activity on last update and scores.
+Include purpose, core tech, standout capability, maturity signal (if any), ideal use case.
+No bullet points or headings or em dashes. Neutral tone. Do not invent facts.
+Your summary must stand the test of time; do not mention scores.
 
 Project: ${meta.nameWithOwner}
 URL: ${meta.url}
 Hints: ${baseHints || "(none)"}
 `.trim();
-    return enforceWordCap(await gen(prompt, { temperature: 0.2 }), 100);
+    const p = await gen(prompt, { temperature: 0.2 });
+    return enforceWordCap(p, 100);
   }
 
-  // 2) MAP: extract short bullets from a few chunks (keep reducer size small)
+  // Large README → pick informative chunks with embeddings; else lightly filter
+  const LARGE_README_CHARS = 25_000;
+  let picked = chunks;
+
+  if (clean.length >= LARGE_README_CHARS && chunks.length > 6) {
+    // NOTE: use an embedding model; do NOT send prompts to it.
+    const svc = new OllamaService("all-minilm:l6-v2");
+    const query =
+      "what is this project, its core purpose, technical approach, and standout capability";
+    const [qv] = await svc.embedTexts([query]);
+    const cvs = await svc.embedTexts(chunks);
+    const scored = cvs.map((v, i) => ({
+      t: chunks[i],
+      s: cosine(v, qv) - linkDensity(chunks[i]) * 0.2, // down-weight link-heavy catalogue sections
+    }));
+    picked = scored.sort((a, b) => b.s - a.s).slice(0, 8).map((x) => x.t);
+  } else {
+    picked = chunks.filter((t) => linkDensity(t) < 0.4).slice(0, 12);
+    if (picked.length === 0) picked = chunks.slice(0, 8);
+  }
+
+  // MAP → bullets
   const mapHeader = `
-From the following text, extract 2–3 concise bullets (10–18 words each), no fluff.
-Focus on: purpose, core tech/architecture, standout capabilities, maturity/activity signals. You must base activity on last update and scores.
+From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.
+Focus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).
 Return only bullets prefixed with "- ".
 `.trim();
 
@@ -73,7 +111,7 @@ Return only bullets prefixed with "- ".
   const MAX_MAP_CHARS = 7000;
   let used = 0;
 
-  for (const chunk of chunks) {
+  for (const chunk of picked) {
     if (used > MAX_MAP_CHARS) break;
     const resp = await gen(`${mapHeader}\n\n${chunk}`, { temperature: 0.2 });
     const lines = resp
@@ -88,23 +126,13 @@ Return only bullets prefixed with "- ".
 
   if (baseHints) bullets.push(`- ${baseHints}`);
 
-  // 3) REDUCE: final paragraph ≤100 words
+  // REDUCE → final paragraph (≤100 words)
   const reducePrompt = `
-Write ONE paragraph (≤100 words) for an experienced engineer.
-Include: purpose, core tech/approach, one standout capability, maturity/activity signal (if present), ideal use case.
-No marketing language. Present tense. If something isn’t in the notes, omit it, do not guess. You must base activity on last update and scores.
-Return only the paragraph. British English.
+Write ONE paragraph (≤100 words) for the general public.
+Include: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.
+No marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.
+Return only the paragraph. Do not mention numeric scores.
 
-Example:
-Bullets:
-- Full-stack React framework with file-system routing and hybrid SSR/SSG.
-- Built on React Server Components, bundling and dev server tooling included.
-- Strong docs, large ecosystem, active development by Vercel; widely adopted in production.
-
-Output:
-Next.js is a full-stack React framework that combines server- and client-rendered pages with file-system routing and modern bundling. It builds on React Server Components and ships cohesive tooling for routing, data fetching, and performance optimisation. Its edge is a hybrid SSR/SSG model with seamless API routes and deployment integrations. Backed by strong documentation, active development, and broad production use, it suits teams who want predictable React rendering, fast iteration, and straightforward deployment from prototypes to large-scale apps.
-
-Now summarise these notes as one paragraph (≤100 words):
 Bullets:
 ${bullets.join("\n")}
 `.trim();
@@ -113,7 +141,7 @@ ${bullets.join("\n")}
   return enforceWordCap(paragraph, 100);
 }
 
-// --- CLI: run one repo: `bun run src/lib/summarise.ts owner/repo`
+/* ---------- CLI: `bun run src/lib/summarise.ts owner/repo` ---------- */
 if (import.meta.main) {
   const repo = Bun.argv[2];
   if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) {
