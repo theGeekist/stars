@@ -1,33 +1,20 @@
 import { db } from "./lib/db";
 import { Statement } from "bun:sqlite";
-
-type ListRow = {
-  id: number;
-  name: string;
-  description: string | null;
-  slug: string;
-  is_private: number;
-};
-type ListDetail = { id: number; name: string; description: string | null };
-type RepoRow = {
-  id: number;
-  name_with_owner: string;
-  url: string;
-  description: string | null;
-  primary_language: string | null;
-  license: string | null;
-  tags: string | null;
-  summary: string | null;
-  popularity: number | null;
-  freshness: number | null;
-  activeness: number | null;
-};
+import type { ListRow, ListDetail, RepoRow, ApiRepo } from "./types";
+import { parseJsonArray } from "./lib/utils";
 
 let qLists!: Statement<ListRow, []>;
 let qListBySlug!: Statement<ListDetail, [slug: string]>;
 let qReposForList!: Statement<RepoRow, [list_id: number]>;
 let qSearchFts!: Statement<RepoRow, [q: string]>;
 let qSearchLike!: Statement<RepoRow, [q1: string, q2: string]>;
+
+function mapRepoRow(row: RepoRow): ApiRepo {
+  return {
+    ...row,
+    tags: parseJsonArray(row.tags),
+  };
+}
 
 function prepareQueries(): void {
   qLists = db.query<ListRow, []>(`
@@ -66,9 +53,14 @@ function prepareQueries(): void {
 
 function json(res: unknown, init?: number | ResponseInit): Response {
   const headers = { "content-type": "application/json; charset=utf-8" };
-  if (typeof init === "number") return new Response(JSON.stringify(res), { status: init, headers });
-  return new Response(JSON.stringify(res), { ...(init as ResponseInit), headers });
+  if (typeof init === "number")
+    return new Response(JSON.stringify(res), { status: init, headers });
+  return new Response(JSON.stringify(res), {
+    ...(init as ResponseInit),
+    headers,
+  });
 }
+
 function notFound(msg = "Not found"): Response {
   return json({ error: msg }, 404);
 }
@@ -85,7 +77,7 @@ Bun.serve({
       if (pathname === "/health") return json({ ok: true });
 
       if (pathname === "/lists") {
-        const rows = qLists.all(); // [] bindings
+        const rows = qLists.all();
         return json(rows);
       }
 
@@ -95,7 +87,7 @@ Bun.serve({
         const list = qListBySlug.get(slug);
         if (!list) return notFound();
 
-        const repos = qReposForList.all(list.id);
+        const repos = qReposForList.all(list.id).map(mapRepoRow);
         return json({ list, repos });
       }
 
@@ -106,9 +98,10 @@ Bun.serve({
         try {
           rows = qSearchFts.all(q);
         } catch {
-          rows = qSearchLike.all(q,q);
+          rows = qSearchLike.all(q, q);
         }
-        return json(rows);
+        const repos = rows.map(mapRepoRow);
+        return json(repos);
       }
 
       return notFound();

@@ -16,18 +16,7 @@ import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { RepoInfo, StarList } from "./lib/types.js";
 import { getAllLists, getReposFromList } from "./lib/lists.js";
-
-export type Command = "lists" | "repos" | "dump" | "help";
-
-export interface Parsed {
-  command: Command;
-  json: boolean;
-  out?: string;
-  dir?: string;
-  list?: string;
-  help: boolean;
-  concurrency?: number;
-}
+import type { Parsed, Command } from "./types.js";
 
 const USAGE = `geek-stars
 
