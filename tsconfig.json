@@ -8,7 +8,14 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"verbatimModuleSyntax": true,
-		"noEmit": true
+		"noEmit": true,
+		"baseUrl": ".",
+		"paths": {
+			"@lib/*": ["src/lib/*"],
+			"@features/*": ["src/features/*"],
+			"@src/*": ["src/*"]
+		},
+		"types": ["bun"]
 	},
 	"include": ["src", "tests"]
 }
