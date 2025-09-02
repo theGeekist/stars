@@ -1,45 +1,14 @@
 // src/lib/summarise_batch.ts
 
 import { createSummariseService } from "@features/summarise/service";
-import { initSchema } from "@lib/db";
+import { db, initSchema } from "@lib/db";
 import { summariseRepoOneParagraph } from "@lib/summarise";
+import { createLogger } from "@lib/logger";
+import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import type { RepoRow } from "@lib/types";
 
 initSchema();
-// ---- CLI args ---------------------------------------------------------------
-export type Args = {
-	limit: number; // how many to process
-	dry: boolean; // don't write to DB
-	resummarise: boolean; // include repos that already have summary
-	slug?: string; // only repos from a specific list slug
-};
-
-function parseArgs(argv: string[]): Args {
-	let limit = 10;
-	let dry = false;
-	let resummarise = false;
-	let slug: string | undefined;
-
-	for (let i = 2; i < argv.length; i++) {
-		const a = argv[i];
-		if (/^\d+$/.test(a)) {
-			limit = Number(a);
-			continue;
-		}
-		if (a === "--dry") {
-			dry = true;
-			continue;
-		}
-		if (a === "--resummarise" || a === "--resummarize") {
-			resummarise = true;
-			continue;
-		}
-		if (a === "--slug" && argv[i + 1]) {
-			slug = argv[++i];
-		}
-	}
-	return { limit, dry, resummarise, slug };
-}
+// ---- CLI args (simplified via src/lib/cli.ts) --------------------------------
 
 // No local prepared queries — handled by summarise service
 
@@ -103,25 +72,27 @@ function annotateHeader(r: RepoRow): string {
 }
 
 // ---- Main -------------------------------------------------------------------
-export async function summariseBatch(args: Args): Promise<void> {
+export async function summariseBatchAll(
+	limit: number,
+	apply: boolean,
+): Promise<void> {
+	const log = createLogger();
 	const svc = createSummariseService();
-	const rows = svc.selectRepos({
-		limit: args.limit,
-		slug: args.slug,
-		resummarise: args.resummarise,
-	});
+	const rows = svc.selectRepos({ limit, resummarise: false });
 
 	if (!rows.length) {
-		console.log("No repos matched the criteria.");
+		log.info("No repos matched the criteria.");
 		return;
 	}
 
 	for (const r of rows) {
-		console.log(annotateHeader(r));
-		console.log("   --- generating summary ...");
+		log.header(r.name_with_owner);
+		log.info("URL:", r.url);
+		log.info("Lang:", r.primary_language ?? "-");
+		log.info("--- generating summary ...");
 
 		const paragraph = await summariseRepoOneParagraph({
-			repoId: r.id, // ← pass it
+			repoId: r.id,
 			nameWithOwner: r.name_with_owner,
 			url: r.url,
 			description: r.description,
@@ -134,24 +105,82 @@ export async function summariseBatch(args: Args): Promise<void> {
 			},
 		});
 
-		// Show result to console
-		console.log(`\n${paragraph}\n(${wc(paragraph)} words)\n`);
+		log.line("\n" + paragraph);
+		log.info(`(${wc(paragraph)} words)`);
 
-		if (!args.dry) {
+		if (apply) {
 			svc.saveSummary(r.id, paragraph);
-			console.log("   ✓ saved to repo.summary\n");
+			log.success("saved to repo.summary\n");
 		} else {
-			console.log("   • dry run (not saved)\n");
+			log.info("dry run (not saved)\n");
 		}
 	}
 }
 
-// CLI entry
+export async function summariseOne(
+	selector: string,
+	apply: boolean,
+): Promise<void> {
+	const log = createLogger();
+	const row = db
+		.query<RepoRow, [string]>(
+			`SELECT id, name_with_owner, url, description, primary_language, topics,
+              stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
+       FROM repo WHERE name_with_owner = ?`,
+		)
+		.get(selector);
+
+	if (!row) {
+		log.error(`repo not found: ${selector}`);
+		return;
+	}
+
+	log.header(row.name_with_owner);
+	log.info("URL:", row.url);
+	log.info("Lang:", row.primary_language ?? "-");
+	log.info("--- generating summary ...");
+
+	const paragraph = await summariseRepoOneParagraph({
+		repoId: row.id,
+		nameWithOwner: row.name_with_owner,
+		url: row.url,
+		description: row.description,
+		primaryLanguage: row.primary_language ?? undefined,
+		topics: parseStringArray(row.topics),
+		metrics: {
+			popularity: row.popularity ?? 0,
+			freshness: row.freshness ?? 0,
+			activeness: row.activeness ?? 0,
+		},
+	});
+
+	log.line("\n" + paragraph);
+	log.info(`(${wc(paragraph)} words)`);
+
+	if (apply) {
+		const svc = createSummariseService();
+		svc.saveSummary(row.id, paragraph);
+		log.success("saved to repo.summary\n");
+	} else {
+		log.info("dry run (not saved)\n");
+	}
+}
+
+// CLI entry (unified simple flags)
 if (import.meta.main) {
-	const args = parseArgs(Bun.argv);
-	console.log(
-		`Batch summarise: limit=${args.limit} dry=${args.dry} resummarise=${args.resummarise}` +
-			(args.slug ? ` slug=${args.slug}` : ""),
-	);
-	await summariseBatch(args);
+	const log = createLogger();
+	const s = parseSimpleArgs(Bun.argv);
+
+	if (s.mode === "one") {
+		if (!s.one) {
+			log.error("--one requires a value");
+			log.line(SIMPLE_USAGE);
+			process.exit(1);
+		}
+		await summariseOne(s.one, s.apply);
+	} else {
+		const limit = Math.max(1, s.limit ?? 10);
+		log.info(`Summarise --all limit=${limit} apply=${s.apply}`);
+		await summariseBatchAll(limit, s.apply);
+	}
 }

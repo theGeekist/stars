@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import { OllamaService } from "@jasonnathan/llm-core";
-import { initSchema } from "@lib/db";
+import { db, initSchema } from "@lib/db";
 import {
 	type ListDef,
 	type RepoFacts,
@@ -13,61 +13,10 @@ import {
 } from "@lib/score";
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
+import { createLogger } from "@lib/logger";
+import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 
 initSchema();
-
-// ---- CLI args ---------------------------------------------------------------
-export type Args = {
-	limit: number;
-	dry: boolean;
-	slug?: string;
-	notes?: string;
-	apply?: boolean;
-	resume?: number | "last"; // optional
-};
-
-function parseArgs(argv: string[]): Args {
-	let limit = 10;
-	let dry = false;
-	let slug: string | undefined;
-	let notes: string | undefined;
-	let apply = false;
-	let resume: number | "last" | undefined;
-
-	for (let i = 2; i < argv.length; i++) {
-		const a = argv[i];
-		if (/^\d+$/.test(a)) {
-			limit = Number(a);
-			continue;
-		}
-		if (a === "--dry") {
-			dry = true;
-			continue;
-		}
-		if (a === "--apply") {
-			apply = true;
-			continue;
-		}
-		if (a === "--slug" && argv[i + 1]) {
-			slug = argv[++i];
-			continue;
-		}
-		if (a === "--notes" && argv[i + 1]) {
-			notes = argv[++i];
-			continue;
-		}
-		if (a === "--resume" && argv[i + 1]) {
-			const v = argv[++i];
-			resume =
-				v === "last"
-					? "last"
-					: Number.isFinite(Number(v))
-						? Number(v)
-						: undefined;
-		}
-	}
-	return { limit, dry, slug, notes, apply, resume };
-}
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -154,30 +103,28 @@ function annotateHeader(r: RepoRow): string {
 }
 
 // ---- Main -------------------------------------------------------------------
-export async function scoreBatch(args: Args): Promise<void> {
+export async function scoreBatchAll(
+	limit: number,
+	apply: boolean,
+): Promise<void> {
+	const log = createLogger();
 	const scoring = createScoringService();
 
-	// 0) Run context (tiny + predictable)
+	// Run context
 	const { runId, filterRunId } = scoring.resolveRunContext({
-		dry: args.dry,
-		notes: args.notes,
-		resume: args.resume,
+		dry: !apply,
 	});
-	if (runId) console.log(`model_run id=${runId}`);
-	else console.log("dry run (no model_run row created)");
+	if (runId) log.info(`model_run id=${runId}`);
+	else log.info("dry run (no model_run row created)");
 
-	// 1) Select repos AFTER we know the filter
-	const repos = scoring.selectRepos(
-		{ limit: args.limit, listSlug: args.slug },
-		filterRunId,
-	);
-
+	// Select repos
+	const repos = scoring.selectRepos({ limit }, filterRunId);
 	if (!repos.length) {
-		console.log("No repos matched the criteria.");
+		log.info("No repos matched the criteria.");
 		return;
 	}
 
-	// 2) Lists to score against (via Lists service)
+	// Lists + GH prerequisites
 	const listsSvc = createListsService();
 	const listRows = await listsSvc.read.getListDefs();
 	const lists: ListDef[] = listRows.map((l) => ({
@@ -186,18 +133,16 @@ export async function scoreBatch(args: Args): Promise<void> {
 		description: l.description ?? undefined,
 	}));
 
-	// 3) Ensure GH ids once per run
 	const token = Bun.env.GITHUB_TOKEN ?? "";
-	if (!token) throw new Error("GITHUB_TOKEN not set");
-	await listsSvc.apply.ensureListGhIds(token);
+	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
+	if (token) await listsSvc.apply.ensureListGhIds(token);
 
-	// 4) LLM client
 	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
 
-	// 5) Process
 	for (const r of repos) {
-		console.log(annotateHeader(r));
-		console.log("   --- scoring ...");
+		log.header(r.name_with_owner);
+		log.info("URL:", r.url);
+		log.info("--- scoring ...");
 
 		const facts: RepoFacts = {
 			nameWithOwner: r.name_with_owner,
@@ -213,20 +158,18 @@ export async function scoreBatch(args: Args): Promise<void> {
 			.sort((a, b) => b.score - a.score)
 			.slice(0, 3);
 		for (const s of top3) {
-			console.log(
-				`   - ${s.list}: ${s.score.toFixed(2)}${s.why ? ` — ${s.why}` : ""}`,
+			log.info(
+				`- ${s.list}: ${s.score.toFixed(2)}${s.why ? ` — ${s.why}` : ""}`,
 			);
 		}
 
-		// Persist scores (UPSERT makes this resume-safe)
 		if (runId != null) {
 			scoring.persistScores(runId, r.id, result.scores);
-			console.log("   ✓ saved scores");
+			log.success("saved scores");
 		} else {
-			console.log("   • dry run (not saved)");
+			log.info("dry run (not saved)");
 		}
 
-		// Decide membership via scoring policy
 		const currentSlugs = await listsSvc.read.currentMembership(r.id);
 		const plan = scoring.planMembership(
 			r,
@@ -234,7 +177,6 @@ export async function scoreBatch(args: Args): Promise<void> {
 			result.scores,
 			DEFAULT_POLICY,
 		);
-
 		const {
 			add,
 			remove,
@@ -246,16 +188,15 @@ export async function scoreBatch(args: Args): Promise<void> {
 			fallbackUsed,
 		} = plan;
 
-		if (add.length) console.log("   Suggest ADD   :", add.join(", "));
-		if (remove.length) console.log("   Suggest REMOVE:", remove.join(", "));
-		if (review.length) console.log("   Review        :", review.join(", "));
+		if (add.length) log.info("Suggest ADD   :", add.join(", "));
+		if (remove.length) log.info("Suggest REMOVE:", remove.join(", "));
+		if (review.length) log.info("Review        :", review.join(", "));
 
-		if (fallbackUsed)
-			console.log(
-				`   ⚠️ fallback -> using review '${
-					fallbackUsed.list
-				}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
+		if (fallbackUsed) {
+			log.warn(
+				`fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
 			);
+		}
 
 		if (blocked) {
 			if (blockReason?.includes("listless")) {
@@ -266,40 +207,164 @@ export async function scoreBatch(args: Args): Promise<void> {
 					scores: JSON.stringify(result.scores),
 					note: blockReason ?? "blocked",
 				});
-				console.log("   ⚠️ would become listless → logged and skipped apply\n");
+				log.warn("would become listless → logged and skipped apply\n");
 			} else {
-				console.log(`   • ${blockReason} → not applying`);
-				console.log("   • not applied (use --apply) or no change\n");
+				log.info(`${blockReason} → not applying`);
+				log.info("not applied (use --apply) or no change\n");
 			}
 			continue;
 		}
 
-		if (!(args.apply && runId != null && changed)) {
-			console.log("   • not applied (use --apply) or no change\n");
+		if (!(apply && runId != null && changed)) {
+			log.info("not applied (use --apply) or no change\n");
 			continue;
 		}
 
-		// Apply to GH + reconcile DB
 		try {
 			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
 			const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
 			await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
 			await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
-			console.log("   ✅ applied to GitHub and reconciled locally\n");
+			log.success("applied to GitHub and reconciled locally\n");
 		} catch (e) {
-			console.error("   ⚠️ apply failed:", e, "\n");
+			const msg = e instanceof Error ? e.message : String(e);
+			log.warn(`apply failed: ${msg}`);
 		}
 	}
 }
 
-// CLI entry
-if (import.meta.main) {
-	const args = parseArgs(Bun.argv);
-	console.log(
-		`Batch score: limit=${args.limit} dry=${args.dry}` +
-			(args.slug ? ` slug=${args.slug}` : "") +
-			(args.notes ? ` notes=${args.notes}` : "") +
-			(args.apply ? ` apply=true` : ""),
+export async function scoreOne(
+	selector: string,
+	apply: boolean,
+): Promise<void> {
+	const log = createLogger();
+	const row = db
+		.query<RepoRow, [string]>(
+			`SELECT id, name_with_owner, url, description, primary_language, topics,
+              stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
+       FROM repo WHERE name_with_owner = ?`,
+		)
+		.get(selector);
+
+	if (!row) {
+		log.error(`repo not found: ${selector}`);
+		return;
+	}
+
+	const scoring = createScoringService();
+	const { runId } = scoring.resolveRunContext({ dry: !apply });
+
+	const listsSvc = createListsService();
+	const listRows = await listsSvc.read.getListDefs();
+	const lists: ListDef[] = listRows.map((l) => ({
+		slug: l.slug,
+		name: l.name,
+		description: l.description ?? undefined,
+	}));
+	const token = Bun.env.GITHUB_TOKEN ?? "";
+	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
+	if (token) await listsSvc.apply.ensureListGhIds(token);
+
+	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
+
+	log.header(row.name_with_owner);
+	log.info("URL:", row.url);
+	log.info("--- scoring ...");
+
+	const facts: RepoFacts = {
+		nameWithOwner: row.name_with_owner,
+		url: row.url,
+		summary: row.summary ?? undefined,
+		description: row.description ?? undefined,
+		primaryLanguage: row.primary_language ?? undefined,
+		topics: parseStringArray(row.topics),
+	};
+	const result = await scoreRepoAgainstLists(lists, facts, svc);
+	const top3 = [...result.scores].sort((a, b) => b.score - a.score).slice(0, 3);
+	for (const s of top3)
+		log.info(`- ${s.list}: ${s.score.toFixed(2)}${s.why ? ` — ${s.why}` : ""}`);
+
+	if (runId != null) {
+		scoring.persistScores(runId, row.id, result.scores);
+		log.success("saved scores");
+	} else {
+		log.info("dry run (not saved)");
+	}
+
+	const currentSlugs = await listsSvc.read.currentMembership(row.id);
+	const plan = scoring.planMembership(
+		row,
+		currentSlugs,
+		result.scores,
+		DEFAULT_POLICY,
 	);
-	await scoreBatch(args);
+	const {
+		add,
+		remove,
+		review,
+		finalPlanned,
+		changed,
+		blocked,
+		blockReason,
+		fallbackUsed,
+	} = plan;
+	if (add.length) log.info("Suggest ADD   :", add.join(", "));
+	if (remove.length) log.info("Suggest REMOVE:", remove.join(", "));
+	if (review.length) log.info("Review        :", review.join(", "));
+	if (fallbackUsed)
+		log.warn(
+			`fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
+		);
+
+	if (blocked) {
+		if (blockReason?.includes("listless")) {
+			logListlessCSV({
+				nameWithOwner: row.name_with_owner,
+				url: row.url,
+				current: currentSlugs,
+				scores: JSON.stringify(result.scores),
+				note: blockReason ?? "blocked",
+			});
+			log.warn("would become listless → logged and skipped apply\n");
+		} else {
+			log.info(`${blockReason} → not applying`);
+			log.info("not applied (use --apply) or no change\n");
+		}
+		return;
+	}
+
+	if (!(apply && runId != null && changed)) {
+		log.info("not applied (use --apply) or no change\n");
+		return;
+	}
+
+	try {
+		const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, row.id);
+		const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
+		await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
+		await listsSvc.apply.reconcileLocal(row.id, finalPlanned);
+		log.success("applied to GitHub and reconciled locally\n");
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : String(e);
+		log.warn(`apply failed: ${msg}`);
+	}
+}
+
+// CLI entry (unified simple flags)
+if (import.meta.main) {
+	const log = createLogger();
+	const s = parseSimpleArgs(Bun.argv);
+
+	if (s.mode === "one") {
+		if (!s.one) {
+			log.error("--one requires a value");
+			log.line(SIMPLE_USAGE);
+			process.exit(1);
+		}
+		await scoreOne(s.one, s.apply);
+	} else {
+		const limit = Math.max(1, s.limit ?? 10);
+		log.info(`Score --all limit=${limit} apply=${s.apply}`);
+		await scoreBatchAll(limit, s.apply);
+	}
 }

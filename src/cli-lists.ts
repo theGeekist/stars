@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
 import type { RepoInfo, StarList } from "@lib/types";
 import type { Command, Parsed } from "./types.js";
+import { createLogger } from "@lib/logger";
 
 const USAGE = `geek-stars
 
@@ -83,8 +84,9 @@ function parseArgs(argv: string[]): Parsed {
 function ensureToken(): string {
 	const token = Bun.env.GITHUB_TOKEN;
 	if (!token) {
-		console.error(
-			"❌ GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically).",
+		const log = createLogger();
+		log.error(
+			"GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically).",
 		);
 		process.exit(1);
 	}
@@ -92,17 +94,19 @@ function ensureToken(): string {
 }
 
 function printListsHuman(lists: StarList[]) {
+	const log = createLogger();
 	for (const l of lists) {
 		const vis = l.isPrivate ? "private" : "public";
-		console.log(`• ${l.name} [${vis}]`);
-		if (l.description) console.log(`  ${l.description}`);
-		console.log(`  items: ${l.repos.length}`);
+		log.info(`${l.name} [${vis}]`);
+		if (l.description) log.line(`  ${l.description}`);
+		log.line(`  items: ${l.repos.length}`);
 	}
 }
 
 function printReposHuman(repos: RepoInfo[]) {
+	const log = createLogger();
 	for (const r of repos) {
-		console.log(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
+		log.line(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
 	}
 }
 
@@ -116,6 +120,7 @@ function toSlug(name: string): string {
 }
 
 async function runLists(json: boolean, out?: string, dir?: string) {
+	const log = createLogger();
 	const token = ensureToken();
 
 	// Stream to disk to avoid holding all lists in memory
@@ -134,7 +139,7 @@ async function runLists(json: boolean, out?: string, dir?: string) {
 		for await (const l of getAllListsStream(token)) {
 			const file = join(dir, `${toSlug(l.name) || "list"}.json`);
 			writeFileSync(file, JSON.stringify(l, null, 2));
-			console.log(`✔ ${l.name} → ${file}`);
+			log.success(`${l.name} → ${file}`);
 			index.push({
 				listId: l.listId,
 				name: l.name,
@@ -148,8 +153,8 @@ async function runLists(json: boolean, out?: string, dir?: string) {
 
 		const indexFile = join(dir, "index.json");
 		writeFileSync(indexFile, JSON.stringify(index, null, 2));
-		console.log(`✔ index → ${indexFile}`);
-		console.log(`✔ Wrote ${total} lists to ${dir}`);
+		log.success(`index → ${indexFile}`);
+		log.success(`Wrote ${total} lists to ${dir}`);
 		return;
 	}
 
@@ -158,26 +163,27 @@ async function runLists(json: boolean, out?: string, dir?: string) {
 
 	if (out) {
 		writeFileSync(out, JSON.stringify(lists, null, 2));
-		console.log(`✔ Wrote ${lists.length} lists → ${out}`);
+		log.success(`Wrote ${lists.length} lists → ${out}`);
 		return;
 	}
 
 	if (json) {
-		console.log(JSON.stringify(lists, null, 2));
+		log.json(lists);
 	} else {
 		printListsHuman(lists);
 	}
 }
 
 async function runRepos(listName: string, json: boolean) {
+	const log = createLogger();
 	const token = ensureToken();
 	if (!listName) {
-		console.error("❌ --list <name> is required for 'repos'.");
+		log.error("--list <name> is required for 'repos'.");
 		process.exit(1);
 	}
 	const repos: RepoInfo[] = await getReposFromList(token, listName);
 	if (json) {
-		console.log(JSON.stringify(repos, null, 2));
+		log.json(repos);
 	} else {
 		printReposHuman(repos);
 	}
@@ -187,7 +193,8 @@ async function main() {
 	const parsed = parseArgs(Bun.argv);
 
 	if (parsed.help || parsed.command === "help") {
-		console.log(USAGE);
+		const log = createLogger();
+		log.line(USAGE);
 		return;
 	}
 
@@ -205,12 +212,15 @@ async function main() {
 			await runRepos(parsed.list ?? "", parsed.json);
 			return;
 
-		default:
-			console.log(USAGE);
+		default: {
+			const log = createLogger();
+			log.line(USAGE);
+		}
 	}
 }
 
 main().catch((err) => {
-	console.error("❌ Error:", err instanceof Error ? err.message : err);
+	const log = createLogger();
+	log.error("Error:", err instanceof Error ? err.message : err);
 	process.exit(1);
 });

@@ -3,6 +3,7 @@
 import type { Statement } from "bun:sqlite";
 import { db } from "@lib/db";
 import { githubREST, jitter, sleep } from "@lib/github";
+import { createLogger } from "@lib/logger";
 import type {
 	NoRow,
 	RepoRef,
@@ -168,6 +169,7 @@ export async function repoTopicsManyUsing(
 	repos: RepoRef[],
 	opts: { concurrency?: number } = {},
 ): Promise<Map<string, string[]>> {
+	const log = createLogger();
 	const out = new Map<string, string[]>();
 	const concurrency = Math.max(1, Math.min(8, opts.concurrency ?? 4));
 	let i = 0;
@@ -185,7 +187,9 @@ export async function repoTopicsManyUsing(
 					);
 					out.set(key, normalizeTopics(json.names ?? []));
 				} catch (err) {
-					console.error(`[topics] failed ${key}:`, err);
+					// Avoid printing full stacks in CI. Surface message only.
+					const msg = err instanceof Error ? err.message : String(err);
+					log.warn(`[topics] failed ${key}: ${msg}`);
 					out.set(key, []);
 				}
 				await sleep(jitter(75));
@@ -209,6 +213,7 @@ export async function topicMetaManyUsing(
 	topics: string[],
 	opts: { concurrency?: number } = {},
 ): Promise<Map<string, TopicMeta | null>> {
+	const log = createLogger();
 	const uniq = normalizeTopics(topics);
 	const out = new Map<string, TopicMeta | null>();
 	const concurrency = Math.max(1, Math.min(6, opts.concurrency ?? 3));
@@ -242,7 +247,8 @@ export async function topicMetaManyUsing(
 							: null,
 					);
 				} catch (err) {
-					console.error(`[topicMeta] failed "${t}":`, err);
+					const msg = err instanceof Error ? err.message : String(err);
+					log.warn(`[topicMeta] failed "${t}": ${msg}`);
 					out.set(t, null);
 				}
 				await sleep(jitter(100));
