@@ -39,7 +39,9 @@ export async function githubGraphQL<T>(
 	token: string,
 	query: string,
 	variables?: Record<string, unknown>,
+	fetchImpl?: typeof fetch,
 ): Promise<T> {
+	const doFetch = fetchImpl ?? fetch;
 	const ua =
 		Bun.env.GQL_USER_AGENT ??
 		"geek-stars/0.1 (+https://github.com/theGeekist/stars)";
@@ -59,7 +61,7 @@ export async function githubGraphQL<T>(
 						variables ?? {},
 					)}`,
 				);
-			const res = await fetch(GITHUB_GQL, {
+			const res = await doFetch(GITHUB_GQL, {
 				method: "POST",
 				signal: controller.signal,
 				headers: {
@@ -112,12 +114,14 @@ export async function githubREST<T>(
 	token: string,
 	path: string,
 	opts: { method?: string; acceptPreview?: boolean } = {},
+	fetchImpl?: typeof fetch,
 ): Promise<T> {
+	const doFetch = fetchImpl ?? fetch;
 	const url = `https://api.github.com${path}`;
 	const headers = ghHeaders(token, opts.acceptPreview);
 
 	for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-		const res = await fetch(url, { method: opts.method ?? "GET", headers });
+		const res = await doFetch(url, { method: opts.method ?? "GET", headers });
 
 		if (shouldRetry(res.status) && attempt < MAX_RETRIES - 1) {
 			const backoff = jitter(Math.min(32000, BASE_DELAY_MS * 2 ** attempt));
