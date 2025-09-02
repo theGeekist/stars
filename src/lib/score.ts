@@ -136,14 +136,15 @@ export async function scoreRepoAgainstLists(
 	const userPrompt =
 		`Your task is to score the repository against EACH list from 0 to 1. where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria. 
 Scoring Guide (if the repo does not or barely meets the criteria, score **MUST** be < 0.5):
-    productivity = only score if the repo saves time or automates repetitive developer workflows.
-    monetise = only score if the repo **explicitly** helps generate revenue, payments, or monetisation strategies.
-    networking = only score if the repo **explicitly** builds or supports communities, connections, or collaboration.
-    ai = only score if the repo’s **primary** focus is AI/ML models, frameworks, or tooling.
-    blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, or financial systems.
-    learning = only score if the repo **explicitly** teaches through **courses, tutorials, exercises, or curricula**.
-    self-marketing = only score if the repo **explicitly** promotes an individual (portfolio, blogging, profile, personal analytics).
-    team-management = only score if the repo **explicitly** helps manage, scale, or structure developer teams (onboarding, ladders, rituals).    
+	productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).  
+	monetise = only score if the repo **explicitly** helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).  
+	networking = only score if the repo **explicitly** builds or supports communities, connections, or collaboration (social, professional, or technical).  
+	ai = only score if the repo’s **primary** focus is AI/ML models, frameworks, applications, or tooling.  
+	blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, financial systems, or digital assets.  
+	learning = only score if the repo **explicitly** teaches through **courses, tutorials, exercises, or curricula** (any subject, not just programming).  
+	self-marketing = only score if the repo **explicitly** promotes an individual (portfolio, profile, blogging, personal branding, analytics).  
+	team-management = only score if the repo **explicitly** helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).  
+  
 
 Lists:
   ${listsBlock(lists)}
