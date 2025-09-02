@@ -37,7 +37,8 @@
 		"build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli-lists.ts --target bun --outfile dist/cli.js",
 		"prepare": "bun run build",
 		"prepublishOnly": "bun run build",
-		"test": "bun test",
+		"test": "bun test src/features",
+		"coverage": "bun --coverage test src/features",
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"typecheck": "bunx tsc --noEmit"
