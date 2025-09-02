@@ -7,22 +7,39 @@ export type GenOpts = {
 	maxTokens?: number; // maps to num_predict
 };
 
-export async function gen(prompt: string, opts: GenOpts = {}): Promise<string> {
+export type OllamaLike = {
+	generate: (args: {
+		model: string;
+		prompt: string;
+		stream: false;
+		options: { temperature?: number; num_predict?: number };
+	}) => Promise<{ response: string }>;
+};
+
+/**
+ * Generate a completion via Ollama.
+ * Accepts an optional client to facilitate testing.
+ */
+export async function gen(
+	prompt: string,
+	opts: GenOpts = {},
+	client: OllamaLike = ollama,
+): Promise<string> {
 	const {
 		model = Bun.env.OLLAMA_MODEL ?? "",
 		temperature = 0.2,
 		maxTokens,
 	} = opts;
 
-	const res = await ollama.generate({
+	const res = await client.generate({
 		model,
 		prompt,
 		stream: false,
 		options: {
 			temperature,
-			...(maxTokens ? { num_predict: maxTokens } : {}),
+			...(typeof maxTokens === "number" ? { num_predict: maxTokens } : {}),
 		},
 	});
 
-	return res.response.trim();
+	return (res.response ?? "").trim();
 }
