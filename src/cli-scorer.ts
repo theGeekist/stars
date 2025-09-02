@@ -2,34 +2,21 @@
 import { db, initSchema } from "./lib/db";
 import type { Statement } from "bun:sqlite";
 import { OllamaService } from "@jasonnathan/llm-core";
-import { scoreRepoAgainstLists, type ListDef, type RepoFacts } from "./lib/score";
+import {
+	scoreRepoAgainstLists,
+	type ListDef,
+	type RepoFacts,
+} from "./lib/score";
 import { createListsService } from "./features/lists";
+import { createScoringService, DEFAULT_POLICY } from "./features/scoring";
 import type { RepoRow } from "./lib/types";
 import { mkdirSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseStringArray, formatNum } from "./lib/utils";
-import { createScoringService } from "./features/scoring";
 
 initSchema();
 
-const PRESERVE_SLUGS = new Set([
-	"valuable-resources",
-	"interesting-to-explore",
-]);
-
-const ADD_THRESHOLDS: Record<string, number> = {
-	ai: 0.8,
-	monetise: 0.7,
-	productivity: 0.7,
-	networking: 0.7,
-	learning: 0.75,
-	"blockchain-finance": 0.8,
-	"self-marketing": 0.7,
-	"team-management": 0.7,
-};
-const DEFAULT_ADD = 0.7;
-const REMOVE_THRESHOLD = 0.3;
-const MIN_STARS = 50; // optional safety filter
+// Policy lives in features/scoring/config; CLI can override later via flags
 
 // ---- CLI args ---------------------------------------------------------------
 export type Args = {
@@ -160,50 +147,7 @@ function prepareQueries(): void {
 }
 
 // ---- Helpers ----------------------------------------------------------------
-function targetSlugsFromScores(
-	current: string[],
-	scores: { list: string; score: number }[],
-	preserve: Set<string>,
-): {
-	planned: string[];
-	add: string[];
-	remove: string[];
-	keep: string[];
-	review: string[];
-} {
-	const byList = new Map<string, number>(scores.map((s) => [s.list, s.score]));
-	const keep = current.filter(
-		(slug) => (byList.get(slug) ?? 0) > REMOVE_THRESHOLD,
-	);
-
-	const review = scores
-		.filter(
-			(s) =>
-				s.score > REMOVE_THRESHOLD &&
-				s.score < (ADD_THRESHOLDS[s.list] ?? DEFAULT_ADD),
-		)
-		.map((s) => s.list);
-
-	const add = scores
-		.filter((s) => {
-			const th = ADD_THRESHOLDS[s.list] ?? DEFAULT_ADD;
-			return s.score >= th && !keep.includes(s.list);
-		})
-		.map((s) => s.list);
-
-	const plannedBase = [...new Set([...keep, ...add])];
-
-	// Always preserve personal lists already on the repo
-	const preservedOnRepo = current.filter((s) => preserve.has(s));
-	const planned = [...new Set([...plannedBase, ...preservedOnRepo])];
-
-	// Compute removes (excluding preserved)
-	const remove = current.filter(
-		(s) => !planned.includes(s) && !preserve.has(s),
-	);
-
-	return { planned, add, remove, keep, review };
-}
+// thresholds/guards centralized in scoring service (DEFAULT_POLICY)
 
 function ensureDir(p: string) {
 	if (!existsSync(p)) mkdirSync(p, { recursive: true });
@@ -336,39 +280,42 @@ function resolveRunContext(opts: {
 
 // ---- Main -------------------------------------------------------------------
 export async function scoreBatch(args: Args): Promise<void> {
-    prepareQueries();
+	prepareQueries();
 
-    const scoring = createScoringService();
-    // 0) Run context (tiny + predictable)
-    const { runId, filterRunId } = scoring.resolveRunContext({
-        dry: args.dry,
-        notes: args.notes,
-        resume: args.resume,
-    });
+	const scoring = createScoringService();
+	// 0) Run context (tiny + predictable)
+	const { runId, filterRunId } = scoring.resolveRunContext({
+		dry: args.dry,
+		notes: args.notes,
+		resume: args.resume,
+	});
 	if (runId) console.log(`model_run id=${runId}`);
 	else console.log("dry run (no model_run row created)");
 
 	// 1) Select repos AFTER we know the filter
-    const repos = scoring.selectRepos({ limit: args.limit, listSlug: args.slug }, filterRunId);
+	const repos = scoring.selectRepos(
+		{ limit: args.limit, listSlug: args.slug },
+		filterRunId,
+	);
 
 	if (!repos.length) {
 		console.log("No repos matched the criteria.");
 		return;
 	}
 
-    // 2) Lists to score against (via Lists service)
-    const listsSvc = createListsService();
-    const listRows = await listsSvc.read.getListDefs();
-    const lists: ListDef[] = listRows.map((l) => ({
-        slug: l.slug,
-        name: l.name,
-        description: l.description ?? undefined,
-    }));
+	// 2) Lists to score against (via Lists service)
+	const listsSvc = createListsService();
+	const listRows = await listsSvc.read.getListDefs();
+	const lists: ListDef[] = listRows.map((l) => ({
+		slug: l.slug,
+		name: l.name,
+		description: l.description ?? undefined,
+	}));
 
 	// 3) Ensure GH ids once per run
-    const token = Bun.env.GITHUB_TOKEN ?? "";
-    if (!token) throw new Error("GITHUB_TOKEN not set");
-    await listsSvc.apply.ensureListGhIds(token);
+	const token = Bun.env.GITHUB_TOKEN ?? "";
+	if (!token) throw new Error("GITHUB_TOKEN not set");
+	await listsSvc.apply.ensureListGhIds(token);
 
 	// 4) LLM client
 	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
@@ -398,78 +345,74 @@ export async function scoreBatch(args: Args): Promise<void> {
 		}
 
 		// Persist scores (UPSERT makes this resume-safe)
-        if (runId != null) {
-            scoring.persistScores(runId, r.id, result.scores);
-            console.log("   ✓ saved scores");
-        } else {
-            console.log("   • dry run (not saved)");
-        }
+		if (runId != null) {
+			scoring.persistScores(runId, r.id, result.scores);
+			console.log("   ✓ saved scores");
+		} else {
+			console.log("   • dry run (not saved)");
+		}
 
-		// Decide membership (your existing helper)
-        const currentSlugs = await listsSvc.read.currentMembership(r.id);
+		// Decide membership via scoring policy
+		const currentSlugs = await listsSvc.read.currentMembership(r.id);
+		const plan = scoring.planMembership(
+			r,
+			currentSlugs,
+			result.scores,
+			DEFAULT_POLICY,
+		);
 
-        const { planned, add, remove, review } = scoring.planTargets(currentSlugs, result.scores, {
-            addBySlug: ADD_THRESHOLDS,
-            defaultAdd: DEFAULT_ADD,
-            remove: REMOVE_THRESHOLD,
-            preserve: PRESERVE_SLUGS,
-        });
+		const {
+			add,
+			remove,
+			review,
+			finalPlanned,
+			changed,
+			blocked,
+			blockReason,
+			fallbackUsed,
+		} = plan;
 
 		if (add.length) console.log("   Suggest ADD   :", add.join(", "));
 		if (remove.length) console.log("   Suggest REMOVE:", remove.join(", "));
 		if (review.length) console.log("   Review        :", review.join(", "));
 
-		// Optional safety
-		if ((r.stars ?? 0) < MIN_STARS) {
-			console.log("   • safety: low stars → not applying");
-			console.log("   • not applied (use --apply) or no change\n");
-			continue;
-		}
+		if (fallbackUsed)
+			console.log(
+				`   ⚠️ fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
+			);
 
-		// Guard: avoid listless
-		let finalPlanned = planned.slice();
-		if (finalPlanned.length === 0) {
-			const topReview = [...result.scores]
-				.filter((s) => review.includes(s.list))
-				.sort((a, b) => b.score - a.score)[0];
-
-			if (topReview) {
-				finalPlanned = [topReview.list];
-				console.log(
-					`   ⚠️ fallback -> using review '${topReview.list}' (${topReview.score.toFixed(2)}) to avoid listless`,
-				);
-			} else {
+		if (blocked) {
+			if (blockReason?.includes("listless")) {
 				logListlessCSV({
 					nameWithOwner: r.name_with_owner,
 					url: r.url,
 					current: currentSlugs,
 					scores: JSON.stringify(result.scores),
-					note: "No adds; removals would leave repo listless. Skipped apply.",
+					note: blockReason ?? "blocked",
 				});
 				console.log("   ⚠️ would become listless → logged and skipped apply\n");
-				continue;
+			} else {
+				console.log(`   • ${blockReason} → not applying`);
+				console.log("   • not applied (use --apply) or no change\n");
 			}
+			continue;
 		}
 
-		const plannedChanged =
-			finalPlanned.slice().sort().join(",") !==
-			currentSlugs.slice().sort().join(",");
-
-		if (!(args.apply && runId != null && plannedChanged)) {
+		if (!(args.apply && runId != null && changed)) {
 			console.log("   • not applied (use --apply) or no change\n");
 			continue;
 		}
 
 		// Apply to GH + reconcile DB
-        try {
-            const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
-            const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
-            await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-            await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
-            console.log("   ✅ applied to GitHub and reconciled locally\n");
-        } catch (e) {
-            console.error("   ⚠️ apply failed:", e, "\n");
-        }
+		try {
+			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
+			const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
+			await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
+			await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
+			console.log("   ✅ applied to GitHub and reconciled locally\n");
+		} catch (e) {
+			console.error("   ⚠️ apply failed:", e, "\n");
+		}
 	}
 }
 
