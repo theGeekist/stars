@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ main, master ]
+    paths-ignore:
+      - "badges/coverage.svg"
   pull_request:
     branches: [ "**" ]
 
