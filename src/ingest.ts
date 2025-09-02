@@ -28,6 +28,8 @@ function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 			throw new Error("Index item.file must be string");
 		if (it.description != null && typeof it.description !== "string")
 			throw new Error("Index item.description must be string|null");
+		if (it.listId != null && typeof it.listId !== "string")
+			throw new Error("Index item.listId must be string|null");
 	}
 }
 function assertRepoInfo(x: unknown): asserts x is RepoInfo {
@@ -60,26 +62,30 @@ let linkListRepo!: Statement<unknown, LinkListRepoBind>;
 
 function prepareStatements(): void {
 	upsertList = db.prepare<IdRow, UpsertListBind>(`
-    INSERT INTO list(name, description, is_private, slug)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO list(name, description, is_private, slug, list_id)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
-      name=excluded.name, description=excluded.description, is_private=excluded.is_private
+      name=excluded.name, 
+			description=excluded.description, 
+			is_private=excluded.is_private, 
+			list_id=COALESCE(list.list_id, excluded.list_id)
     RETURNING id
   `);
 
 	upsertRepo = db.prepare<IdRow, UpsertRepoBind>(`
   INSERT INTO repo(
-    name_with_owner, url, description, homepage_url, stars, forks, watchers, open_issues, open_prs,
+    repo_id, name_with_owner, url, description, homepage_url, stars, forks, watchers, open_issues, open_prs,
     default_branch, last_commit_iso, last_release_iso, topics, primary_language, languages, license,
     is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled, pushed_at, updated_at, created_at,
     disk_usage, readme_md, summary, tags, popularity, freshness, activeness
   ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?        -- ← 7 placeholders here
   )
   ON CONFLICT(name_with_owner) DO UPDATE SET
+		repo_id = COALESCE(repo.repo_id, excluded.repo_id),
     url=excluded.url, description=excluded.description, homepage_url=excluded.homepage_url,
     stars=excluded.stars, forks=excluded.forks, watchers=excluded.watchers,
     open_issues=excluded.open_issues, open_prs=excluded.open_prs,
@@ -132,6 +138,7 @@ function normaliseRepo(r: RepoInfo) {
 	for (const t of r.topics ?? []) if (t) tags.push(t);
 
 	const bind: UpsertRepoBind = [
+		r.repoId,
 		r.nameWithOwner,
 		r.url,
 		r.description ?? null,
@@ -192,9 +199,10 @@ db.transaction(() => {
 		// Upsert list
 		const listIdRow = upsertList.get(
 			meta.name,
-			meta.description ?? null,
+			meta.description ?? "",
 			meta.isPrivate ? 1 : 0,
 			slugify(meta.name),
+			meta.listId ?? data.listId ?? null,
 		) as IdRow;
 
 		// Upsert repos + link
