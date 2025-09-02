@@ -52,7 +52,8 @@
 		"@biomejs/biome": "^2.2.2",
 		"@types/bun": "latest",
 		"husky": "^9.1.7",
-		"lint-staged": "^16.1.6"
+		"lint-staged": "^16.1.6",
+		"prettier": "^3.6.2"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
@@ -73,12 +74,12 @@
 		"zod-to-json-schema": "^3.24.6"
 	},
 	"lint-staged": {
-		"*.{ts,tsx,js,jsx,cjs,mjs,json,md,csv}": [
+		"*.{ts,tsx,js,jsx,cjs,mjs,json}": [
 			"bunx biome format --write",
 			"bunx biome lint --fix"
 		],
-		"*.{json,css,md,mdx}": [
-			"bunx biome format --write"
+		"*.{md,mdx,css}": [
+			"bunx prettier --write"
 		]
 	}
 }
