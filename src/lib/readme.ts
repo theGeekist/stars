@@ -1,28 +1,11 @@
 // src/lib/readme.ts
-import { db, initSchema } from "./db";
+import { db as defaultDb } from "./db";
+import type { Database } from "bun:sqlite";
 import { ghHeaders } from "./github";
 import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
 import type { ChunkingOptions, ReadmeRow } from "./types";
 
-initSchema();
-const qReadme = db.query<ReadmeRow, [number]>(`
-  SELECT id, readme_md, readme_etag FROM repo WHERE id = ?
-`);
-
-const uReadmeAll = db.query<
-	unknown,
-	[string | null, string | null, string, number]
->(`
-  UPDATE repo
-  SET readme_md = ?, readme_etag = ?, readme_fetched_at = ?
-  WHERE id = ?
-`);
-
-const uReadmeFetchedAt = db.query<unknown, [string, number]>(`
-  UPDATE repo
-  SET readme_fetched_at = ?
-  WHERE id = ?
-`);
+// NOTE: No module-level prepared statements; use provided DB or default DB per call.
 
 // --- helpers -----------------------------------------------------------------
 function getGitHubToken(): string | undefined {
@@ -55,9 +38,15 @@ export async function fetchReadmeWithCache(
 	maxBytes = 200_000,
 	forceRefresh = false,
 	fetchImpl?: typeof fetch,
+	database?: Database,
 ): Promise<string | null> {
 	const [owner, repo] = nameWithOwner.split("/");
-	const existing = qReadme.get(repoId);
+	const db = database ?? defaultDb;
+	const existing = db
+		.query<ReadmeRow, [number]>(
+			`SELECT id, readme_md, readme_etag FROM repo WHERE id = ?`,
+		)
+		.get(repoId);
 	const etagHint = forceRefresh
 		? undefined
 		: (existing?.readme_etag ?? undefined);
@@ -73,7 +62,9 @@ export async function fetchReadmeWithCache(
 	// 304 → unchanged, bump fetched_at and return cached
 	if (res.status === 304) {
 		if (existing?.readme_md) {
-			uReadmeFetchedAt.run(now, repoId); // keep a record that we checked
+			db.query<unknown, [string, number]>(
+				`UPDATE repo SET readme_fetched_at = ? WHERE id = ?`,
+			).run(now, repoId); // keep a record that we checked
 			return existing.readme_md;
 		}
 		// theoretically 304 with no cache; treat as miss
@@ -92,7 +83,10 @@ export async function fetchReadmeWithCache(
 				remain ?? "?"
 			}, reset=${reset ?? "?"})`,
 		);
-		if (existing?.readme_md) uReadmeFetchedAt.run(now, repoId);
+		if (existing?.readme_md)
+			db.query<unknown, [string, number]>(
+				`UPDATE repo SET readme_fetched_at = ? WHERE id = ?`,
+			).run(now, repoId);
 		return existing?.readme_md ?? null;
 	}
 
@@ -101,7 +95,9 @@ export async function fetchReadmeWithCache(
 	const md = body.slice(0, maxBytes);
 	const etag = res.headers.get("ETag") ?? null;
 
-	uReadmeAll.run(md, etag, now, repoId);
+	db.query<unknown, [string | null, string | null, string, number]>(
+		`UPDATE repo SET readme_md = ?, readme_etag = ?, readme_fetched_at = ? WHERE id = ?`,
+	).run(md, etag, now, repoId);
 	return md;
 }
 
@@ -144,8 +140,17 @@ export async function fetchAndChunkReadmeCached(
 	repoId: number,
 	nameWithOwner: string,
 	options?: ChunkingOptions,
+	fetchImpl?: typeof fetch,
+	database?: Database,
 ): Promise<string[]> {
-	const raw = await fetchReadmeWithCache(repoId, nameWithOwner);
+	const raw = await fetchReadmeWithCache(
+		repoId,
+		nameWithOwner,
+		undefined,
+		false,
+		fetchImpl,
+		database,
+	);
 	if (!raw) return [];
 	const clean = cleanMarkdown(raw);
 	return chunkMarkdown(clean, options);
