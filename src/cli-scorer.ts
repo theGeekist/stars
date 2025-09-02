@@ -2,11 +2,7 @@
 import { db, initSchema } from "./lib/db";
 import type { Statement } from "bun:sqlite";
 import { OllamaService } from "@jasonnathan/llm-core";
-import {
-	scoreRepoAgainstLists,
-	type ListDef,
-	type RepoFacts,
-} from "./lib/score";
+import { scoreRepoAgainstLists, type ListDef, type RepoFacts } from "./lib/score";
 import { createListsService } from "./features/lists";
 import type { RepoRow } from "./lib/types";
 import { mkdirSync, existsSync, appendFileSync } from "node:fs";

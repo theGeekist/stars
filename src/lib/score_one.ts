@@ -1,11 +1,6 @@
 // src/lib/score_one.ts
 import { OllamaService } from "@jasonnathan/llm-core";
-import {
-	scoreRepoAgainstLists,
-	diffMembership,
-	type ListDef,
-	type RepoFacts,
-} from "./score";
+import { scoreRepoAgainstLists, type ListDef, type RepoFacts } from "./score";
 import { initSchema, db } from "./db";
 import type { RepoRow } from "./types";
 import { createListsService } from "../features/lists";
@@ -48,7 +43,15 @@ function printReport(
 	const mapName: Record<string, string> = Object.fromEntries(
 		lists.map((l) => [l.slug, l.name]),
 	);
-	const { top, add, remove, keep, review } = diffMembership(current, scores);
+	// Minimal in-file view; planning in batch CLI via Scoring service
+	const sorted = [...scores].sort((a, b) => b.score - a.score);
+	const top = sorted.slice(0, 3);
+	const add = sorted.filter((s) => s.score >= 0.7 && !current.includes(s.list));
+	const remove = sorted.filter((s) => s.score <= 0.3 && current.includes(s.list));
+	const keep = sorted.filter((s) => s.score > 0.3 && current.includes(s.list));
+	const review = sorted.filter(
+		(s) => !current.includes(s.list) && s.score > 0.3 && s.score < 0.7,
+	);
 
 	console.log(`\n▶ ${repo.name_with_owner}`);
 	console.log(`   URL    : ${repo.url}`);
