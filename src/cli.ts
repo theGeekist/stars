@@ -15,7 +15,7 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { RepoInfo, StarList } from "./lib/types.js";
-import { getAllLists, getReposFromList } from "./lib/lists.js";
+import { getAllLists, getAllListsStream, getReposFromList } from "./lib/lists.js";
 import type { Parsed, Command } from "./types.js";
 
 const USAGE = `geek-stars
@@ -141,12 +141,44 @@ function saveListsToDir(lists: StarList[], dir: string) {
 
 async function runLists(json: boolean, out?: string, dir?: string) {
 	const token = ensureToken();
-	const lists: StarList[] = await getAllLists(token);
 
+	// Stream to disk to avoid holding all lists in memory
 	if (dir) {
-		saveListsToDir(lists, dir);
+		if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+		const index: Array<{
+			listId: string;
+			name: string;
+			description: string | null;
+			isPrivate: boolean;
+			count: number;
+			file: string;
+		}> = [];
+
+		let total = 0;
+		for await (const l of getAllListsStream(token)) {
+			const file = join(dir, `${toSlug(l.name) || "list"}.json`);
+			writeFileSync(file, JSON.stringify(l, null, 2));
+			console.log(`✔ ${l.name} → ${file}`);
+			index.push({
+				listId: l.listId,
+				name: l.name,
+				description: l.description ?? null,
+				isPrivate: l.isPrivate,
+				count: l.repos.length,
+				file: `${toSlug(l.name) || "list"}.json`,
+			});
+			total++;
+		}
+
+		const indexFile = join(dir, "index.json");
+		writeFileSync(indexFile, JSON.stringify(index, null, 2));
+		console.log(`✔ index → ${indexFile}`);
+		console.log(`✔ Wrote ${total} lists to ${dir}`);
 		return;
 	}
+
+	// Non-dir paths keep original behavior for backwards compatibility
+	const lists: StarList[] = await getAllLists(token);
 
 	if (out) {
 		writeFileSync(out, JSON.stringify(lists, null, 2));

@@ -371,6 +371,53 @@ export async function getAllLists(token: string): Promise<StarList[]> {
 	return lists;
 }
 
+/**
+ * Stream all lists one-by-one to reduce memory usage when exporting to disk.
+ * Yields full StarList objects in the same shape as getAllLists(), but
+ * does not accumulate them in memory. Order matches GitHub pagination.
+ */
+export async function* getAllListsStream(
+  token: string,
+): AsyncGenerator<StarList, void, void> {
+  let after: string | null = null;
+  let previousEdgeCursor: string | null = null;
+
+  // Page through viewer.lists edges and yield each list as soon as we fetch its items
+  // The API uses the cursor BEFORE the desired list to select it (first:1, after: edgeBefore)
+  for (;;) {
+    const pageData: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+      token,
+      LISTS_EDGES_PAGE,
+      { after },
+    );
+    const edges = pageData.viewer.lists.edges;
+
+    for (const edge of edges) {
+      const meta = {
+        edgeBefore: previousEdgeCursor,
+        listId: edge.node.listId,
+        name: edge.node.name,
+        description: edge.node.description ?? null,
+        isPrivate: edge.node.isPrivate,
+      };
+
+      const repos = await fetchAllItemsAtEdge(token, meta.edgeBefore, meta.name);
+      yield {
+        listId: meta.listId,
+        name: meta.name,
+        description: meta.description ?? undefined,
+        isPrivate: meta.isPrivate,
+        repos,
+      };
+
+      previousEdgeCursor = edge.cursor;
+    }
+
+    if (!pageData.viewer.lists.pageInfo.hasNextPage) break;
+    after = pageData.viewer.lists.pageInfo.endCursor;
+  }
+}
+
 /** Fetch repos for a specific list by name (case-insensitive), fully paginated. */
 export async function getReposFromList(
 	token: string,
