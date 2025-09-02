@@ -99,36 +99,4 @@ All model inference happens locally with Ollama. The database lives on disk and 
 
 Geekist Stars shows that private, local tooling can turn a large and noisy star collection into a structured and navigable corpus. The combination of editable prompts, simple metrics, explainable scoring, and a topic layer derived from a local source yields a curated environment that remains under the user’s control.
 
-## Usage
-
-Environment prerequisites:
-
-- `GITHUB_TOKEN`: required for ingesting lists/repos and applying list updates
-- `OLLAMA_MODEL`: local model name for LLM prompts (e.g. `llama3.1:8b`)
-- `GH_EXPLORE_PATH`: local clone of `github/explore` for topic enrichment (e.g. `/path/to/github/explore`)
-
-CLI commands:
-
-- Lists and repos
-  - `gk-stars lists [--json] [--out <file>] [--dir <folder>]`
-  - `gk-stars repos --list <name> [--json]`
-- Scoring
-  - `gk-stars score (--one <owner/repo> | --all [--limit N]) [--dry] [--resume <id|last>] [--notes <text>] [--fresh]`
-- Summarisation
-  - `gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry] [--resummarise]`
-- Ingest
-  - `gk-stars ingest [--dir <folder>]` (defaults to `EXPORTS_DIR` or `./exports`)
-- Topics
-  - `gk-stars topics:enrich [--active] [--ttl <days>]`
-  - `gk-stars topics:report [--missing] [--recent] [--json] [--full]`
-- Setup
-  - `gk-stars setup` (generates `prompts.yaml` criteria from your GitHub lists; uses Ollama when available, otherwise writes placeholders)
-
-Build:
-
-```
-bun install
-bun run build
-```
-
-The build emits `dist/index.js` and `dist/cli.js` and copies `features/setup/.prompts.tmpl.yaml` into the distribution so `gk-stars setup` can run from a package install.
+> Looking for hands‑on CLI usage? See usage.md for command‑by‑command examples and flags.

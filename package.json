@@ -41,7 +41,7 @@
 		"test": "bun test src/features src/lib",
 		"coverage": "bun --coverage test src/features src/lib",
 		"lint": "biome check src tests",
-		"format": "biome format --write src tests README.md usage.md"
+		"format": "biome format --write src tests README.md usage.md src/features/**/README.md"
 	},
 	"engines": {
 		"bun": ">=1.1.0"
