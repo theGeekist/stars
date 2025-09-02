@@ -1,12 +1,11 @@
-// src/features/topics/service.ts
 import type { Statement } from "bun:sqlite";
-import { db, initSchema } from "@lib/db";
+import { db } from "@lib/db";
 import * as api from "./api";
-import type { Deps, RepoMini, RepoRef } from "./types";
+import type { RepoMini, RepoRef } from "./types";
 
 let qReposAll!: Statement<RepoMini, []>;
 let qReposActive!: Statement<RepoMini, []>;
-initSchema();
+
 function prepare() {
 	if (qReposAll && qReposActive) return;
 	qReposAll = db.query<RepoMini, []>(
@@ -17,7 +16,7 @@ function prepare() {
 	);
 }
 
-/* ── Small helpers to keep createTopicsService lean ──────────────────────── */
+/* ── Small helpers ──────────────────────────────────────────────────────── */
 export function listRepoRefsFromDb(onlyActive?: boolean): RepoMini[] {
 	prepare();
 	return (onlyActive ? qReposActive : qReposAll).all();
@@ -48,26 +47,42 @@ export function reconcileRowsAndCollectUniverse(
 	return universe;
 }
 
+/* ── Deps shape for DI ──────────────────────────────────────────────────── */
+export type Deps = {
+	normalizeTopics: typeof api.normalizeTopics;
+	reconcileRepoTopics: typeof api.reconcileRepoTopics;
+	repoTopicsMany: typeof api.repoTopicsMany; // sync (DB-only)
+	selectStaleTopics: typeof api.selectStaleTopics;
+	topicMetaMany: typeof api.topicMetaMany; // sync (reads GH_EXPLORE_PATH)
+	upsertTopic: typeof api.upsertTopic;
+	upsertTopicAliases: typeof api.upsertTopicAliases;
+	upsertTopicRelated: typeof api.upsertTopicRelated;
+};
+
+/** DB-only metadata refresh (sync). */
 export function refreshStaleTopicMeta(
 	universe: Set<string>,
 	ttlDays: number,
 	selectStaleTopics: typeof api.selectStaleTopics,
 	topicMetaMany: typeof api.topicMetaMany,
 	upsertTopic: typeof api.upsertTopic,
-	_topicConcurrency = Number(Bun.env.TOPIC_META_CONCURRENCY ?? 3),
+	upsertTopicAliases: typeof api.upsertTopicAliases,
+	upsertTopicRelated: typeof api.upsertTopicRelated,
 ): number {
 	const stale = selectStaleTopics(JSON.stringify([...universe]), ttlDays).map(
 		(x) => x.topic,
 	);
 	if (!stale.length) return 0;
 
+	// DB-only; token unused but signature retained → pass empty
 	const metaMap = topicMetaMany(stale, {});
-	let refreshed = 0;
 
+	let refreshed = 0;
 	for (const t of stale) {
 		const m = metaMap.get(t);
 
 		if (!m) {
+			// Minimal row so FKs are satisfied; no aliases/related
 			upsertTopic({
 				topic: t,
 				display_name: t,
@@ -78,17 +93,18 @@ export function refreshStaleTopicMeta(
 				released: null,
 				wikipedia_url: null,
 				logo: null,
+				etag: null,
 			});
-			// no aliases/related for unknown meta
 			refreshed++;
 			continue;
 		}
 
+		// Prefer canonical from meta; fall back to incoming slug
 		const canonical = m.name || t;
 
 		upsertTopic({
 			topic: canonical,
-			display_name: m.displayName ?? canonical,
+			display_name: m.displayName ?? m.name ?? t,
 			short_description: m.shortDescription ?? null,
 			long_description_md: m.longDescriptionMd ?? null,
 			is_featured: !!m.isFeatured,
@@ -96,17 +112,19 @@ export function refreshStaleTopicMeta(
 			released: m.released ?? null,
 			wikipedia_url: m.wikipediaUrl ?? null,
 			logo: m.logo ?? null,
+			etag: null,
 		});
 
-		// NEW: persist aliases + related
-		api.upsertTopicAliases(canonical, m.aliases ?? []);
-		api.upsertTopicRelated(canonical, m.related ?? []);
+		// Maintain alias and related edges
+		upsertTopicAliases(canonical, m.aliases ?? []);
+		upsertTopicRelated(canonical, m.related ?? []);
 
 		refreshed++;
 	}
 	return refreshed;
 }
 
+/* ── Public service (sync) ──────────────────────────────────────────────── */
 export function createTopicsService(deps: Partial<Deps> = {}) {
 	const {
 		normalizeTopics,
@@ -115,6 +133,8 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 		selectStaleTopics,
 		topicMetaMany,
 		upsertTopic,
+		upsertTopicAliases,
+		upsertTopicRelated,
 	} = { ...api, ...deps } as Deps;
 
 	function listRepoRefs(onlyActive?: boolean): RepoMini[] {
@@ -124,15 +144,21 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 	function enrichAllRepoTopics(opts?: {
 		onlyActive?: boolean;
 		ttlDays?: number;
-	}) {
+	}): { repos: number; unique_topics: number; refreshed: number } {
 		const TTL_DAYS = Number(Bun.env.TOPIC_TTL_DAYS ?? 30);
-		const ttlDays = opts?.ttlDays ?? TTL_DAYS;
+		const CONCURRENCY_REPOS = Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
 
+		const ttlDays = opts?.ttlDays ?? TTL_DAYS;
 		const rows = listRepoRefsFromDb(opts?.onlyActive);
 		if (!rows.length) return { repos: 0, unique_topics: 0, refreshed: 0 };
 
 		const refs: RepoRef[] = buildRepoRefs(rows);
-		const topicsByRepo = repoTopicsMany(refs, {});
+
+		// DB-only: collect topics from repo.topics JSON (no network)
+		const topicsByRepo = repoTopicsMany(refs, {
+			concurrency: CONCURRENCY_REPOS,
+		});
+
 		const universe = reconcileRowsAndCollectUniverse(
 			rows,
 			topicsByRepo,
@@ -146,6 +172,8 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 			selectStaleTopics,
 			topicMetaMany,
 			upsertTopic,
+			upsertTopicAliases,
+			upsertTopicRelated,
 		);
 
 		return { repos: rows.length, unique_topics: universe.size, refreshed };

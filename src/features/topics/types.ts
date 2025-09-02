@@ -60,4 +60,5 @@ export type Deps = {
 	selectStaleTopics: typeof api.selectStaleTopics;
 	topicMetaMany: typeof api.topicMetaMany;
 	upsertTopic: typeof api.upsertTopic;
+	upsertTopicAliases: typeof api.upsertTopicAliases;
 };

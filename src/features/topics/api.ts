@@ -360,14 +360,15 @@ export function selectStaleTopics(
 	universeJson: string,
 	ttlDays: number,
 ): { topic: string }[] {
+	// Treat rows with missing meta as stale regardless of TTL.
 	const q = db.query<{ topic: string }, [string, number]>(`
     SELECT u.topic
     FROM (SELECT value AS topic FROM json_each(?)) AS u
     LEFT JOIN topics t ON t.topic = u.topic
     WHERE t.topic IS NULL
-       OR t.short_description   IS NULL
+       OR t.short_description IS NULL
        OR t.long_description_md IS NULL
-       OR julianday('now') - julianday(t.updated_at) > ?
+       OR (julianday('now') - julianday(COALESCE(t.updated_at, '1970-01-01'))) > ?
   `);
 	return q.all(universeJson, ttlDays);
 }
