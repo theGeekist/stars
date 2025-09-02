@@ -67,22 +67,22 @@ function getAllTopics() {
 		[]
 	>(`
     SELECT
-      rt.topic,
-      COALESCE(t.display_name, rt.topic) AS display_name,
+      t.topic,
+      COALESCE(t.display_name, t.topic)            AS display_name,
       t.short_description,
       t.long_description_md,
-      COUNT(*) AS cnt,
+      COUNT(rt.repo_id)                            AS cnt,
       (
         SELECT GROUP_CONCAT(a.alias, ', ')
-        FROM (SELECT DISTINCT alias FROM topic_alias WHERE topic = rt.topic) a
-      ) AS alias_csv,
+        FROM (SELECT DISTINCT alias FROM topic_alias WHERE topic = t.topic) a
+      )                                            AS alias_csv,
       (
-        SELECT COUNT(*) FROM (SELECT DISTINCT alias FROM topic_alias WHERE topic = rt.topic)
-      ) AS alias_count
-    FROM repo_topics rt
-    LEFT JOIN topics t ON t.topic = rt.topic
-    GROUP BY rt.topic
-    ORDER BY cnt DESC, rt.topic ASC
+        SELECT COUNT(*) FROM (SELECT DISTINCT alias FROM topic_alias WHERE topic = t.topic)
+      )                                            AS alias_count
+    FROM topics t
+    LEFT JOIN repo_topics rt ON rt.topic = t.topic
+    GROUP BY t.topic
+    ORDER BY cnt DESC, t.topic ASC
   `);
 	return q.all();
 }

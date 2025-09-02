@@ -1,6 +1,4 @@
 // src/enrich-topics.ts
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import * as api from "@features/topics/api";
 import {
 	buildRepoRefs,
@@ -11,18 +9,16 @@ import {
 import { log } from "@lib/bootstrap";
 
 /**
- * Enrich topics for all repos with pretty CLI output.
- * Fully synchronous; DB-only (no network).
+ * Enrich topics for all repos with pretty CLI output (DB-only).
  */
-export function enrichAllRepoTopics(opts?: {
+export async function enrichAllRepoTopics(opts?: {
 	onlyActive?: boolean;
 	ttlDays?: number;
-}): void {
+}): Promise<void> {
 	const ONLY_ACTIVE = !!opts?.onlyActive;
 	const TTL_DAYS = opts?.ttlDays ?? Number(Bun.env.TOPIC_TTL_DAYS ?? 30);
 	const CONCURRENCY_REPOS = Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
 
-	// Phase 0 — repo selection
 	const rows = listRepoRefsFromDb(ONLY_ACTIVE);
 	if (!rows.length) {
 		log.info("No repositories found to enrich (check your DB).");
@@ -36,7 +32,7 @@ export function enrichAllRepoTopics(opts?: {
 		}  •  TTL: ${TTL_DAYS}d`,
 	);
 
-	// Phase 1 — read topics from our own DB (repo.topics JSON)
+	// Phase 1 — collect topics from repo.topics (DB-only)
 	let sp = log
 		.spinner(
 			`Fetching topics for ${rows.length} repos (concurrency=${CONCURRENCY_REPOS})...`,
@@ -44,7 +40,7 @@ export function enrichAllRepoTopics(opts?: {
 		.start();
 
 	const refs = buildRepoRefs(rows);
-	// DB-only: repoTopicsMany ignores token and is sync
+	// DB-only: reads repo.topics JSON; no network
 	const topicsByRepo = api.repoTopicsMany(refs, {
 		concurrency: CONCURRENCY_REPOS,
 	});
@@ -65,35 +61,21 @@ export function enrichAllRepoTopics(opts?: {
 
 	sp.succeed(`Reconciled. Unique topics discovered: ${universe.size}`);
 
-	// Phase 3 — refresh topic metadata from local github/explore clone (if available)
-	const exploreBase = Bun.env.GH_EXPLORE_PATH;
-	const exploreOk =
-		!!exploreBase &&
-		existsSync(exploreBase) &&
-		existsSync(join(exploreBase, "topics"));
+	// Phase 3 — refresh topic metadata from GH_EXPLORE_PATH (DB-only)
+	sp = log.spinner(`Refreshing topic metadata (TTL=${TTL_DAYS}d)...`).start();
 
-	let refreshed = 0;
+	// NOTE: new signature — pass the three writer functions (no concurrency arg)
+	const refreshed = refreshStaleTopicMeta(
+		universe,
+		TTL_DAYS,
+		api.selectStaleTopics,
+		api.topicMetaMany,
+		api.upsertTopic,
+		api.upsertTopicAliases,
+		api.upsertTopicRelated,
+	);
 
-	if (!exploreOk) {
-		log.warn(
-			"GH_EXPLORE_PATH not set or invalid; skipping topic metadata refresh. " +
-				"Set GH_EXPLORE_PATH to your local clone of github/explore.",
-		);
-	} else {
-		sp = log.spinner(`Refreshing topic metadata (TTL=${TTL_DAYS}d)...`).start();
-
-		// DB-only: refreshStaleTopicMeta + topicMetaMany are sync
-		refreshed = refreshStaleTopicMeta(
-			universe,
-			TTL_DAYS,
-			api.selectStaleTopics,
-			api.topicMetaMany,
-			api.upsertTopic,
-			/* _topicConcurrency ignored in DB-only path */ 0,
-		);
-
-		sp.succeed(`Refreshed metadata for ${refreshed} topics`);
-	}
+	sp.succeed(`Refreshed metadata for ${refreshed} topics`);
 
 	// Final summary
 	log.success(
@@ -101,7 +83,7 @@ export function enrichAllRepoTopics(opts?: {
 	);
 }
 
-// CLI entry (standalone usage)
+// CLI entry
 if (import.meta.main) {
 	const onlyActive = Bun.argv.includes("--active");
 	const ttlIdx = Bun.argv.indexOf("--ttl");
@@ -117,10 +99,8 @@ if (import.meta.main) {
 		}`,
 	);
 
-	try {
-		enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
-	} catch (e) {
+	await enrichAllRepoTopics({ onlyActive, ttlDays: ttl }).catch((e) => {
 		log.error(e instanceof Error ? e.message : String(e));
 		process.exit(1);
-	}
+	});
 }
