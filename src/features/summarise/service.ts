@@ -50,8 +50,8 @@ export function createSummariseService() {
 		const limit = Math.max(1, Number(sel.limit ?? 10));
 		if (sel.slug) {
 			return sel.resummarise
-				? qBatchBySlugRe.all(limit, sel.slug)
-				: qBatchBySlug.all(limit, sel.slug);
+				? qBatchBySlugRe.all(sel.slug, limit)
+				: qBatchBySlug.all(sel.slug, limit);
 		}
 		return sel.resummarise
 			? qBatchDefaultRe.all(limit)
