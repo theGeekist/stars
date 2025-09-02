@@ -1,5 +1,6 @@
 // src/lib/readme.ts
 import { db, initSchema } from "./db";
+import { ghHeaders } from "./github";
 import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
 import type { ChunkingOptions, ReadmeRow } from "./types";
 
@@ -29,15 +30,15 @@ function getGitHubToken(): string | undefined {
 	return Bun.env.GITHUB_TOKEN ?? Bun.env.GH_TOKEN ?? undefined;
 }
 
-function headersWithAuth(etag?: string) {
-	const h: Record<string, string> = {
-		Accept: "application/vnd.github.v3.raw",
-		"User-Agent": "geekist-readme-fetcher",
-	};
+function headersWithAuth(etag?: string): Record<string, string> {
 	const token = getGitHubToken();
-	if (token) h.Authorization = `Bearer ${token}`;
-	if (etag) h["If-None-Match"] = etag;
-	return h;
+	// Start from shared GH headers for consistency
+	const base = ghHeaders(token ?? "", false);
+	if (!token) delete base.Authorization;
+	// Force raw Accept for README content
+	base.Accept = "application/vnd.github.v3.raw";
+	if (etag) base["If-None-Match"] = etag;
+	return base;
 }
 
 // --- fetch + cache -----------------------------------------------------------
@@ -53,6 +54,7 @@ export async function fetchReadmeWithCache(
 	nameWithOwner: string,
 	maxBytes = 200_000,
 	forceRefresh = false,
+	fetchImpl?: typeof fetch,
 ): Promise<string | null> {
 	const [owner, repo] = nameWithOwner.split("/");
 	const existing = qReadme.get(repoId);
@@ -60,7 +62,8 @@ export async function fetchReadmeWithCache(
 		? undefined
 		: (existing?.readme_etag ?? undefined);
 
-	const res = await fetch(
+	const doFetch = fetchImpl ?? fetch;
+	const res = await doFetch(
 		`https://api.github.com/repos/${owner}/${repo}/readme`,
 		{ headers: headersWithAuth(etagHint) },
 	);
