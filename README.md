@@ -1,3 +1,22 @@
+<div align="center">
+
+  <h1>Geekist Stars</h1>
+
+  <p>A Local, Auditable Pipeline for Curating GitHub Repositories</p>
+
+  <p>
+    <a href="https://github.com/theGeekist/stars/actions/workflows/ci.yml">
+      <img alt="CI" src="https://github.com/theGeekist/stars/actions/workflows/ci.yml/badge.svg" />
+    </a>
+    <a href="badges/coverage.svg">
+      <img alt="Coverage" src="badges/coverage.svg" />
+    </a>
+    <img alt="Bun" src="https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=fff" />
+    <img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg" />
+  </p>
+
+</div>
+
 # Geekist Stars: A Local, Auditable Pipeline for Curating GitHub Repositories
 
 ## Abstract
