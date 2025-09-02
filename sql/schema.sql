@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS list_repo (
   PRIMARY KEY (list_id, repo_id)
 );
 
+-- core indexes
+CREATE INDEX IF NOT EXISTS idx_list_slug ON list(slug);
+CREATE INDEX IF NOT EXISTS idx_repo_name ON repo(name_with_owner);
+CREATE INDEX IF NOT EXISTS idx_repo_updated ON repo(updated_at);
+CREATE INDEX IF NOT EXISTS idx_listrepo_list ON list_repo(list_id);
+CREATE INDEX IF NOT EXISTS idx_listrepo_repo ON list_repo(repo_id);
+
 -- topics: one row per canonical topic string (lowercase, kebab-case)
 CREATE TABLE IF NOT EXISTS topics (
   topic              TEXT PRIMARY KEY,          -- e.g. "rss-reader"
