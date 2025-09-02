@@ -1,5 +1,5 @@
 import { db as defaultDb } from "@lib/db";
-import type { ScoreItem } from "@lib/score";
+import type { ScoreItem } from "./llm";
 import type { RepoRow } from "@lib/types";
 import type {
 	ApplyPolicy,

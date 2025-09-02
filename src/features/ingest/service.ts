@@ -16,6 +16,26 @@ import type {
 	UpsertRepoBind,
 } from "@src/types";
 
+/* ------------------------ Optional progress reporter ----------------------- */
+
+export type IngestReporter = {
+	/** Called after index.json is read & validated */
+	start?: (totalLists: number) => void;
+	/** Called before importing a list */
+	listStart?: (
+		meta: IndexEntry,
+		index: number, // 0-based
+		total: number,
+		repoCount: number,
+	) => void;
+	/** Called after a list (and all repos) are upserted */
+	listDone?: (meta: IndexEntry, repoCount: number) => void;
+	/** Called after all work is done */
+	done?: (summary: { lists: number; repos: number }) => void;
+};
+
+/* ------------------------------- Validators -------------------------------- */
+
 function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 	if (!Array.isArray(x)) throw new Error("exports/index.json must be an array");
 	for (const it of x) {
@@ -52,9 +72,11 @@ function assertRepoInfo(x: unknown): asserts x is RepoInfo {
 
 function assertStarList(x: unknown): asserts x is StarList {
 	if (!isObject(x)) throw new Error("StarList must be an object");
-	if (!Array.isArray(x.repos))
+	if (!Array.isArray((x as StarList).repos))
 		throw new Error("StarList.repos must be an array");
 }
+
+/* --------------------------- Prepared statements --------------------------- */
 
 let upsertList!: Statement<IdRow, UpsertListBind>;
 let upsertRepo!: Statement<IdRow, UpsertRepoBind>;
@@ -103,6 +125,8 @@ function prepareStatements(): void {
 		`INSERT OR IGNORE INTO list_repo(list_id, repo_id) VALUES (?, ?)`,
 	);
 }
+
+/* ----------------------------- Normalisation ------------------------------- */
 
 function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 	const languageNames = (r.languages ?? [])
@@ -166,8 +190,8 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 		r.updatedAt ?? null,
 		r.createdAt ?? null,
 		r.diskUsage ?? null,
-		null,
-		null,
+		null, // readme_md
+		null, // summary
 		JSON.stringify(tags),
 		popularity,
 		freshness,
@@ -176,21 +200,37 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 	return bind;
 }
 
+/* --------------------------------- Ingest ---------------------------------- */
+
 export async function ingestFromExports(
 	dir: string,
+	reporter?: IngestReporter,
 ): Promise<{ lists: number }> {
 	const indexRaw = (await Bun.file(`${dir}/index.json`).json()) as unknown;
 	assertIndexEntryArray(indexRaw);
 
+	reporter?.start?.(indexRaw.length);
+
 	const listsPreloaded: Array<{ meta: IndexEntry; data: StarList }> = [];
-	for (const meta of indexRaw) {
+	let totalRepos = 0;
+
+	for (let i = 0; i < indexRaw.length; i++) {
+		const meta = indexRaw[i];
+
 		const dataRaw = (await Bun.file(`${dir}/${meta.file}`).json()) as unknown;
 		assertStarList(dataRaw);
-		listsPreloaded.push({ meta, data: dataRaw as StarList });
-		for (const r of (dataRaw as StarList).repos) assertRepoInfo(r);
+
+		const starList = dataRaw as StarList;
+		for (const r of starList.repos) assertRepoInfo(r);
+
+		listsPreloaded.push({ meta, data: starList });
+		totalRepos += starList.repos.length;
+
+		reporter?.listStart?.(meta, i, indexRaw.length, starList.repos.length);
 	}
 
 	prepareStatements();
+
 	db.transaction(() => {
 		for (const { meta, data } of listsPreloaded) {
 			const listIdRow = upsertList.get(
@@ -206,8 +246,11 @@ export async function ingestFromExports(
 				const repoIdRow = upsertRepo.get(...repoBind) as IdRow;
 				linkListRepo.run(listIdRow.id, repoIdRow.id);
 			}
+
+			reporter?.listDone?.(meta, data.repos.length);
 		}
 	})();
 
+	reporter?.done?.({ lists: listsPreloaded.length, repos: totalRepos });
 	return { lists: listsPreloaded.length };
 }

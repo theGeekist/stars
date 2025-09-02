@@ -1,46 +1,120 @@
 // src/lib/logger.ts
-// Simple, consistent logger with DEBUG-aware output.
 
-type Level = "info" | "debug" | "warn" | "error" | "success";
+import type { ConsolaReporter, LogObject } from "consola";
+import { createConsola } from "consola";
+import ora, { type Ora } from "ora";
 
-function ts(): string {
-	const d = new Date();
-	return d.toISOString().replace("T", " ").substring(0, 19);
-}
+type Variadic = [unknown?, ...unknown[]];
 
-function prefix(level: Level): string {
-	switch (level) {
-		case "info":
-			return "ℹ";
-		case "debug":
-			return "·";
-		case "warn":
-			return "⚠";
-		case "error":
-			return "✖";
-		case "success":
-			return "✔";
-	}
-}
+const ANSI = {
+	reset: "\x1b[0m",
+	bold: "\x1b[1m",
+	dim: "\x1b[2m",
+	gray: "\x1b[90m",
+	cyan: "\x1b[36m",
+};
+const ICON: Record<string, string> = {
+	info: "ℹ",
+	success: "✔",
+	warn: "⚠",
+	error: "✖",
+	debug: "·",
+};
 
-function format(level: Level, parts: unknown[]): string {
-	return `${ts()} ${prefix(level)} ${parts.map(String).join(" ")}`;
+const reporter: ConsolaReporter = {
+	log(obj: LogObject) {
+		// Build a clean, timestamp-free line
+		const icon = ICON[obj.type] ?? "•";
+		const parts = [obj.message, ...(obj.args || [])]
+			.filter((v) => v !== undefined)
+			.map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
+		const line = `${icon} ${parts.join(" ")}`;
+		const dest = obj.type === "error" ? process.stderr : process.stdout;
+		dest.write(`${line}\n`);
+	},
+};
+
+function divider(width = Math.min(process.stdout.columns ?? 80, 100)) {
+	return "─".repeat(Math.max(16, Math.min(width - 2, 80)));
 }
 
 export function createLogger(opts?: { debug?: boolean }) {
-	const debug = opts?.debug ?? !!Bun.env.DEBUG;
+	// 4 = debug, 3 = info+
+	const level = (opts?.debug ?? !!Bun.env.DEBUG) ? 4 : 3;
+	const c = createConsola({ level, reporters: [reporter] });
+
+	/** Spinner wrapper with automatic succeed/fail messaging */
+	async function withSpinner<T>(
+		text: string,
+		run: (s: Ora) => Promise<T> | T,
+		opts?: { succeedText?: string; failText?: string },
+	): Promise<T> {
+		const s = ora({ text }).start();
+		try {
+			const out = await run(s);
+			s.succeed(opts?.succeedText ?? text);
+			return out;
+		} catch (e) {
+			s.fail(opts?.failText ?? text);
+			throw e;
+		}
+	}
+
+	/** Minimal aligned columns printer (no extra deps) */
+	function columns(
+		rows: Array<Record<string, string | number | null | undefined>>,
+		order: string[],
+		header?: Record<string, string>,
+	): void {
+		const str = (v: unknown) => (v == null ? "" : String(v));
+		const widths = order.map((k) =>
+			Math.max(
+				header ? str(header[k]).length : 0,
+				...rows.map((r) => str(r[k]).length),
+				1,
+			),
+		);
+		const pad = (val: string, w: number) => (val + " ".repeat(w)).slice(0, w);
+		const line = (cells: string[]) =>
+			`  ${cells.map((v, i) => pad(v, widths[i])).join("   ")}`;
+
+		if (header) {
+			c.log("");
+			c.log(line(order.map((k) => header[k] ?? k)));
+			c.log(line(order.map((_k, i) => "─".repeat(widths[i]))));
+		}
+		for (const r of rows) c.log(line(order.map((k) => str(r[k]))));
+		c.log("");
+	}
 
 	return {
-		info: (...args: unknown[]) => console.log(format("info", args)),
-		success: (...args: unknown[]) => console.log(format("success", args)),
-		warn: (...args: unknown[]) => console.warn(format("warn", args)),
-		error: (...args: unknown[]) => console.error(format("error", args)),
-		debug: (...args: unknown[]) => {
-			if (debug) console.log(format("debug", args));
+		// same API you already use
+		info: (...args: Variadic) => c.info(...args),
+		success: (...args: Variadic) => c.success(...args),
+		warn: (...args: Variadic) => c.warn(...args),
+		error: (...args: Variadic) => c.error(...args),
+		debug: (...args: Variadic) => c.debug(...args),
+		json: (obj: unknown) => c.log(JSON.stringify(obj, null, 2)),
+		header: (title: string) => {
+			const line = divider();
+			process.stdout.write(
+				`\n${ANSI.bold}${ANSI.cyan}${title}${ANSI.reset}\n${ANSI.gray}${line}${ANSI.reset}\n`,
+			);
 		},
-		json: (obj: unknown) => console.log(JSON.stringify(obj, null, 2)),
-		header: (title: string) => console.log(`\n▶ ${title}`),
-		line: (s = "") => console.log(s),
+
+		subheader: (title: string) => {
+			process.stdout.write(`${ANSI.bold}${title}${ANSI.reset}\n`);
+		},
+
+		list: (items: string[]) => {
+			for (const it of items) process.stdout.write(`  • ${it}\n`);
+		},
+
+		line: (s = "") => process.stdout.write(`${s}\n`),
+		spinner: (text: string) => ora({ text }).start(),
+		// new helpers
+		withSpinner,
+		columns,
 	} as const;
 }
 

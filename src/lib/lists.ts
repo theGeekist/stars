@@ -8,6 +8,12 @@ import type {
 	StarList,
 } from "./types.js";
 
+/* Reporter interface */
+export type ListsReporter = {
+	debug: (...args: unknown[]) => void;
+};
+const NoopReporter: ListsReporter = { debug: () => {} };
+
 function resolveConfig(
 	env: Record<string, string | undefined> = Bun.env,
 ): ListsConfig {
@@ -16,18 +22,9 @@ function resolveConfig(
 		Math.min(100, Number(env.LISTS_PAGE_SIZE ?? 25)),
 	);
 	const concurrency = Number(env.LISTS_CONCURRENCY ?? 3);
+	// keep for compatibility, but we won’t write directly to console anymore
 	const debug = !!env.DEBUG;
 	return { pageSize, concurrency, debug };
-}
-function makeDlog(debug: boolean) {
-	const t0 = Date.now();
-	return (...args: unknown[]) => {
-		if (!debug) return;
-		console.info(
-			`[debug +${String(Date.now() - t0).padStart(4, " ")}ms]`,
-			...args,
-		);
-	};
 }
 
 // ──────────────────────────────── queries ──────────────────────────────────
@@ -202,13 +199,14 @@ async function fetchAllItemsAtEdge(
 	listNameForLogs: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	pageSize = 25,
-	dlog: (...args: unknown[]) => void = () => {},
+	reporter: ListsReporter = NoopReporter,
 ): Promise<RepoInfo[]> {
+	const { debug } = reporter;
 	const repos: RepoInfo[] = [];
 	let itemsAfter: string | null = null;
 	let pageNo = 0;
 
-	dlog(
+	debug(
 		`items: start list="${listNameForLogs}" edgeBefore=${JSON.stringify(
 			listEdgeCursorBefore,
 		)} pageSize=${pageSize}`,
@@ -221,7 +219,7 @@ async function fetchAllItemsAtEdge(
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		pageNo++;
-		dlog(
+		debug(
 			`items: query page #${pageNo} list="${listNameForLogs}" itemsAfter=${JSON.stringify(
 				itemsAfter,
 			)}`,
@@ -230,19 +228,13 @@ async function fetchAllItemsAtEdge(
 		const data: ListItemsAtEdge = await gh<ListItemsAtEdge>(
 			token,
 			LIST_ITEMS_AT_EDGE,
-			{
-				listAfter: listEdgeCursorBefore,
-				itemsAfter,
-				pageSize,
-			},
+			{ listAfter: listEdgeCursorBefore, itemsAfter, pageSize },
 		);
 
 		const listNode: ListNode | undefined = data.viewer.lists.nodes[0];
 		if (!listNode) {
 			throw new Error(
-				`List node not found at edge=${String(
-					listEdgeCursorBefore,
-				)} (hint: ${listNameForLogs})`,
+				`List node not found at edge=${String(listEdgeCursorBefore)} (hint: ${listNameForLogs})`,
 			);
 		}
 
@@ -254,7 +246,7 @@ async function fetchAllItemsAtEdge(
 			if (mapped) repos.push(mapped);
 		}
 
-		dlog(
+		debug(
 			`items: page #${pageNo} got=${repos.length - before} total=${
 				repos.length
 			} hasNext=${items.pageInfo.hasNextPage} endCursor=${JSON.stringify(
@@ -266,7 +258,7 @@ async function fetchAllItemsAtEdge(
 		itemsAfter = items.pageInfo.endCursor;
 	}
 
-	dlog(`items: done list="${listNameForLogs}" total=${repos.length}`);
+	debug(`items: done list="${listNameForLogs}" total=${repos.length}`);
 	return repos;
 }
 
@@ -275,21 +267,22 @@ async function pMap<T, R>(
 	input: T[],
 	concurrency: number,
 	fn: (value: T, index: number) => Promise<R>,
-	logger: (...args: unknown[]) => void = () => {},
+	reporter: ListsReporter = NoopReporter,
 ): Promise<R[]> {
+	const { debug } = reporter;
 	const results: R[] = new Array(input.length) as R[];
 	let i = 0;
 	const workers = Array.from(
 		{ length: Math.min(concurrency, input.length) },
 		async (_, w) => {
-			logger(`pMap: worker#${w} start`);
+			debug(`pMap: worker#${w} start`);
 			for (;;) {
 				const idx = i++;
 				if (idx >= input.length) {
-					logger(`pMap: worker#${w} done`);
+					debug(`pMap: worker#${w} done`);
 					return;
 				}
-				logger(`pMap: worker#${w} running index=${idx}`);
+				debug(`pMap: worker#${w} running index=${idx}`);
 				results[idx] = await fn(input[idx], idx);
 			}
 		},
@@ -300,29 +293,31 @@ async function pMap<T, R>(
 
 // ─────────────────────────────── public API ────────────────────────────────
 
-/** Fetch all lists and all items (fully paginated). */
 export async function getAllLists(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
+	reporter: ListsReporter = NoopReporter,
 ): Promise<StarList[]> {
 	const cfg = resolveConfig();
-	const log = makeDlog(cfg.debug);
-	log("env:", {
+	const { debug } = reporter;
+
+	debug("env:", {
 		DEBUG: String(cfg.debug),
 		LISTS_CONCURRENCY: String(cfg.concurrency),
 		LISTS_PAGE_SIZE: String(cfg.pageSize),
 	});
 
-	const metas = await collectListMetas(token, gh, log);
-	log(`lists: collected metas=${metas.length}, concurrency=${cfg.concurrency}`);
+	const metas = await collectListMetas(token, gh, reporter);
+	debug(
+		`lists: collected metas=${metas.length}, concurrency=${cfg.concurrency}`,
+	);
+
 	const lists: StarList[] = await pMap(
 		metas,
 		cfg.concurrency,
 		async (m, idx) => {
-			log(
-				`list#${idx}: fetch items "${m.name}" edgeBefore=${JSON.stringify(
-					m.edgeBefore,
-				)}`,
+			debug(
+				`list#${idx}: fetch items "${m.name}" edgeBefore=${JSON.stringify(m.edgeBefore)}`,
 			);
 			const repos: RepoInfo[] = await fetchAllItemsAtEdge(
 				token,
@@ -330,29 +325,27 @@ export async function getAllLists(
 				m.name,
 				gh,
 				cfg.pageSize,
-				log,
+				reporter,
 			);
-			const out: StarList = {
+			return {
 				listId: m.listId,
 				name: m.name,
 				description: m.description,
 				isPrivate: m.isPrivate,
 				repos,
 			};
-			return out;
 		},
-		log,
+		reporter,
 	);
 
-	log(`lists: done, total lists=${lists.length}`);
+	debug(`lists: done, total lists=${lists.length}`);
 	return lists;
 }
 
-/** Collect all list-edge metadata across pages. */
 export async function collectListMetas(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
-	dlog: (...args: unknown[]) => void = () => {},
+	reporter: ListsReporter = NoopReporter,
 ): Promise<
 	Array<{
 		edgeBefore: string | null;
@@ -362,6 +355,7 @@ export async function collectListMetas(
 		isPrivate: boolean;
 	}>
 > {
+	const { debug } = reporter;
 	type Meta = {
 		edgeBefore: string | null;
 		listId: string;
@@ -369,26 +363,30 @@ export async function collectListMetas(
 		description: string | null;
 		isPrivate: boolean;
 	};
+
 	const metas: Meta[] = [];
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
 	let pageNo = 0;
 
-	dlog("lists: begin paging metadata");
+	debug("lists: begin paging metadata");
 	for (;;) {
 		pageNo++;
-		dlog(`lists: query page #${pageNo} after=${JSON.stringify(after)}`);
+		debug(`lists: query page #${pageNo} after=${JSON.stringify(after)}`);
+
 		const data: ListsEdgesPage = await gh<ListsEdgesPage>(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
 		);
+
 		const page = data.viewer.lists;
-		dlog(
+		debug(
 			`lists: page #${pageNo} edges=${page.edges.length} hasNext=${
 				page.pageInfo.hasNextPage
 			} endCursor=${JSON.stringify(page.pageInfo.endCursor)}`,
 		);
+
 		for (const edge of page.edges) {
 			metas.push({
 				edgeBefore: previousEdgeCursor,
@@ -397,41 +395,37 @@ export async function collectListMetas(
 				description: edge.node.description ?? null,
 				isPrivate: edge.node.isPrivate,
 			});
-			dlog(
+			debug(
 				`lists: push meta name="${edge.node.name}" edgeBefore=${JSON.stringify(
 					previousEdgeCursor,
 				)}`,
 			);
 			previousEdgeCursor = edge.cursor;
 		}
+
 		if (!page.pageInfo.hasNextPage) break;
 		after = page.pageInfo.endCursor;
 	}
 	return metas;
 }
 
-/**
- * Stream all lists one-by-one to reduce memory usage when exporting to disk.
- * Yields full StarList objects in the same shape as getAllLists(), but
- * does not accumulate them in memory. Order matches GitHub pagination.
- */
 export async function* getAllListsStream(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
+	reporter: ListsReporter = NoopReporter,
 ): AsyncGenerator<StarList, void, void> {
 	const cfg = resolveConfig();
-	const dlog = makeDlog(cfg.debug);
+
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
 
-	// Page through viewer.lists edges and yield each list as soon as we fetch its items
-	// The API uses the cursor BEFORE the desired list to select it (first:1, after: edgeBefore)
 	for (;;) {
 		const pageData: ListsEdgesPage = await gh<ListsEdgesPage>(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
 		);
+
 		const edges = pageData.viewer.lists.edges;
 
 		for (const edge of edges) {
@@ -449,8 +443,9 @@ export async function* getAllListsStream(
 				meta.name,
 				gh,
 				cfg.pageSize,
-				dlog,
+				reporter,
 			);
+
 			yield {
 				listId: meta.listId,
 				name: meta.name,
@@ -467,25 +462,26 @@ export async function* getAllListsStream(
 	}
 }
 
-/** Fetch repos for a specific list by name (case-insensitive), fully paginated. */
 export async function getReposFromList(
 	token: string,
 	listName: string,
 	gh: typeof githubGraphQL = githubGraphQL,
+	reporter: ListsReporter = NoopReporter,
 ): Promise<RepoInfo[]> {
 	const cfg = resolveConfig();
-	const dlog = makeDlog(cfg.debug);
+	const { debug } = reporter;
+
 	const target: string = listName.toLowerCase();
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
 	let pageNo = 0;
 
-	dlog(`reposByName: search "${listName}"`);
+	debug(`reposByName: search "${listName}"`);
 
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		pageNo++;
-		dlog(
+		debug(
 			`reposByName: query lists page #${pageNo} after=${JSON.stringify(after)}`,
 		);
 
@@ -498,20 +494,20 @@ export async function getReposFromList(
 		const { edges, pageInfo } = data.viewer.lists;
 
 		for (const edge of edges) {
-			dlog(
+			debug(
 				`reposByName: inspect name="${
 					edge.node.name
 				}" prevEdge=${JSON.stringify(previousEdgeCursor)}`,
 			);
 			if (edge.node.name.toLowerCase() === target) {
-				dlog(`reposByName: match "${edge.node.name}" → fetch items`);
+				debug(`reposByName: match "${edge.node.name}" → fetch items`);
 				return fetchAllItemsAtEdge(
 					token,
 					previousEdgeCursor,
 					edge.node.name,
 					gh,
 					cfg.pageSize,
-					dlog,
+					reporter,
 				);
 			}
 			previousEdgeCursor = edge.cursor;

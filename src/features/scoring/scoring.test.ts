@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createScoringService } from "@features/scoring";
-import type { ScoreItem } from "@lib/score";
+import type { ScoreItem } from "@features/scoring/llm";
 import type { RepoRow } from "@lib/types";
 
 const makeRepoRow = (id: number, stars: number): RepoRow => ({

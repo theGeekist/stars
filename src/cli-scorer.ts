@@ -1,19 +1,19 @@
 // src/cli-scorer.ts
-
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
-import type { ScoringLLM } from "@features/scoring/llm";
+import {
+	type ListDef,
+	type RepoFacts,
+	type ScoringLLM,
+	scoreRepoAgainstLists,
+} from "@features/scoring/llm";
 import { OllamaService } from "@jasonnathan/llm-core";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { db } from "@lib/db";
-import {
-	type ListDef,
-	type RepoFacts,
-	scoreRepoAgainstLists,
-} from "@lib/score";
+
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
 
@@ -56,18 +56,6 @@ function chooseFreshnessSource(opts: {
 	last_commit_iso?: string | null;
 	last_release_iso?: string | null;
 	updated_at?: string | null;
-}): string | null;
-function chooseFreshnessSource(opts: {
-	pushed_at?: string | null;
-	last_commit_iso?: string | null;
-	last_release_iso?: string | null;
-	updated_at?: string | null;
-}): string | null;
-function chooseFreshnessSource(opts: {
-	pushed_at?: string | null;
-	last_commit_iso?: string | null;
-	last_release_iso?: string | null;
-	updated_at?: string | null;
 }): string | null {
 	return (
 		opts.pushed_at ??
@@ -78,27 +66,79 @@ function chooseFreshnessSource(opts: {
 	);
 }
 
-function _annotateHeader(r: RepoRow): string {
-	const tags = parseStringArray(r.topics).slice(0, 6).join(", ");
-	const stars = formatNum(r.stars);
-	const forks = formatNum(r.forks);
-	const pop = r.popularity?.toFixed(2) ?? "-";
-	const fresh = r.freshness?.toFixed(2) ?? "-";
-	const act = r.activeness?.toFixed(2) ?? "-";
-	const upd = chooseFreshnessSource(r);
+function showRepoHeader(r: RepoRow, idx?: number, total?: number) {
+	const title =
+		typeof idx === "number" && typeof total === "number"
+			? `[${idx}/${total}] ${r.name_with_owner}`
+			: r.name_with_owner;
+	log.header(title);
 
-	return [
-		`▶ ${r.name_with_owner}`,
-		`   URL      : ${r.url}`,
-		`   Lang     : ${r.primary_language ?? "-"}`,
-		`   Stars    : ${stars}   Forks: ${forks}`,
-		`   Metrics  : popularity=${pop}  freshness=${fresh}  activeness=${act}`,
-		`   Updated  : ${upd}`,
-		`   Topics   : ${tags || "-"}`,
-		r.description ? `   Desc     : ${r.description}` : undefined,
-	]
-		.filter(Boolean)
-		.join("\n");
+	const tags = parseStringArray(r.topics).slice(0, 6).join(", ");
+	const upd = chooseFreshnessSource(r) ?? "-";
+
+	log.columns(
+		[
+			{
+				URL: r.url,
+				Lang: r.primary_language ?? "-",
+				"★": formatNum(r.stars),
+				Forks: formatNum(r.forks),
+				Pop: r.popularity?.toFixed(2) ?? "-",
+				Fresh: r.freshness?.toFixed(2) ?? "-",
+				Act: r.activeness?.toFixed(2) ?? "-",
+				Updated: upd,
+			},
+		],
+		["URL", "Lang", "★", "Forks", "Pop", "Fresh", "Act", "Updated"],
+		{
+			URL: "URL",
+			Lang: "Lang",
+			"★": "★",
+			Forks: "Forks",
+			Pop: "Pop",
+			Fresh: "Fresh",
+			Act: "Act",
+			Updated: "Updated",
+		},
+	);
+
+	if (tags) log.line(`  Topics: ${tags}`);
+	if (r.description) log.line(`  Desc  : ${r.description}`);
+	log.line();
+}
+
+function showTopScores(
+	scores: Array<{ list: string; score: number; why?: string }>,
+) {
+	const sorted = [...scores].sort((a, b) => b.score - a.score);
+	log.columns(
+		sorted.map((s) => ({
+			List: s.list,
+			Score: s.score.toFixed(2),
+			Why: s.why ?? "",
+		})),
+		["List", "Score", "Why"],
+		{ List: "List", Score: "Score", Why: "Why" },
+	);
+}
+
+function showPlan(plan: {
+	add: string[];
+	remove: string[];
+	review: string[];
+	fallbackUsed?: { list: string; score: number } | null;
+}) {
+	const { add, remove, review, fallbackUsed } = plan;
+	if (add.length) log.info("Suggest ADD   :", add.join(", "));
+	if (remove.length) log.info("Suggest REMOVE:", remove.join(", "));
+	if (review.length) log.info("Review        :", review.join(", "));
+	if (fallbackUsed) {
+		log.warn(
+			`fallback → using review '${
+				fallbackUsed.list
+			}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
+		);
+	}
 }
 
 // ---- Main -------------------------------------------------------------------
@@ -130,7 +170,9 @@ export async function scoreBatchAll(
 
 	// Lists + GH prerequisites
 	const listsSvc = createListsService();
-	const listRows = await listsSvc.read.getListDefs();
+	const listRows = await log.withSpinner("Loading list definitions", () =>
+		listsSvc.read.getListDefs(),
+	);
 	const lists: ListDef[] = listRows.map((l) => ({
 		slug: l.slug,
 		name: l.name,
@@ -139,7 +181,11 @@ export async function scoreBatchAll(
 
 	const token = Bun.env.GITHUB_TOKEN ?? "";
 	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
-	if (apply && token) await listsSvc.apply.ensureListGhIds(token);
+	if (apply && token) {
+		await log.withSpinner("Ensuring GitHub list IDs", () =>
+			listsSvc.apply.ensureListGhIds(token),
+		);
+	}
 
 	const svc =
 		llm ??
@@ -147,9 +193,7 @@ export async function scoreBatchAll(
 
 	for (let i = 0; i < repos.length; i++) {
 		const r = repos[i];
-		log.header(`[${i + 1}/${total}] ${r.name_with_owner}`);
-		log.info("URL:", r.url);
-		log.info("--- scoring ...");
+		showRepoHeader(r, i + 1, total);
 
 		const facts: RepoFacts = {
 			nameWithOwner: r.name_with_owner,
@@ -160,21 +204,18 @@ export async function scoreBatchAll(
 			topics: parseStringArray(r.topics),
 		};
 
-		const result = await scoreRepoAgainstLists(lists, facts, svc);
-		const top3 = [...result.scores]
-			.sort((a, b) => b.score - a.score)
-			.slice(0, 3);
-		for (const s of top3) {
-			log.info(
-				`- ${s.list}: ${s.score.toFixed(2)}${s.why ? ` — ${s.why}` : ""}`,
-			);
-		}
+		const result = await log.withSpinner("Scoring", () =>
+			scoreRepoAgainstLists(lists, facts, svc),
+		);
+		showTopScores(result.scores);
 
 		if (runId != null) {
-			scoring.persistScores(runId, r.id, result.scores);
-			log.success("saved scores");
+			await log.withSpinner("Saving scores", () =>
+				scoring.persistScores(runId, r.id, result.scores),
+			);
+			log.success("Saved");
 		} else {
-			log.info("dry run (not saved)");
+			log.info("Dry run (not saved)");
 		}
 
 		const currentSlugs = await listsSvc.read.currentMembership(r.id);
@@ -195,15 +236,7 @@ export async function scoreBatchAll(
 			fallbackUsed,
 		} = plan;
 
-		if (add.length) log.info("Suggest ADD   :", add.join(", "));
-		if (remove.length) log.info("Suggest REMOVE:", remove.join(", "));
-		if (review.length) log.info("Review        :", review.join(", "));
-
-		if (fallbackUsed) {
-			log.warn(
-				`fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
-			);
-		}
+		showPlan({ add, remove, review, fallbackUsed });
 
 		if (blocked) {
 			if (blockReason?.includes("listless")) {
@@ -214,29 +247,35 @@ export async function scoreBatchAll(
 					scores: JSON.stringify(result.scores),
 					note: blockReason ?? "blocked",
 				});
-				log.warn("would become listless → logged and skipped apply\n");
+				log.warn("Would become listless → logged and skipped apply");
 			} else {
 				log.info(`${blockReason} → not applying`);
-				log.info("not applied (use --apply) or no change\n");
+				log.info("Not applied (use --apply) or no change");
 			}
+			log.line();
 			continue;
 		}
 
 		if (!(apply && runId != null && changed)) {
-			log.info("not applied (use --apply) or no change\n");
+			log.info("Not applied (use --apply) or no change");
+			log.line();
 			continue;
 		}
 
+		// Apply to GH + reconcile DB
 		try {
-			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
-			const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
-			await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-			await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
-			log.success("applied to GitHub and reconciled locally\n");
+			await log.withSpinner("Applying to GitHub", async () => {
+				const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
+				const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
+				await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
+				await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
+			});
+			log.success("Applied and reconciled");
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
-			log.warn(`apply failed: ${msg}`);
+			log.warn(`Apply failed: ${msg}`);
 		}
+		log.line();
 	}
 }
 
@@ -262,7 +301,9 @@ export async function scoreOne(
 	const { runId } = scoring.resolveRunContext({ dry: !apply });
 
 	const listsSvc = createListsService();
-	const listRows = await listsSvc.read.getListDefs();
+	const listRows = await log.withSpinner("Loading list definitions", () =>
+		listsSvc.read.getListDefs(),
+	);
 	const lists: ListDef[] = listRows.map((l) => ({
 		slug: l.slug,
 		name: l.name,
@@ -270,15 +311,17 @@ export async function scoreOne(
 	}));
 	const token = Bun.env.GITHUB_TOKEN ?? "";
 	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
-	if (apply && token) await listsSvc.apply.ensureListGhIds(token);
+	if (apply && token) {
+		await log.withSpinner("Ensuring GitHub list IDs", () =>
+			listsSvc.apply.ensureListGhIds(token),
+		);
+	}
 
 	const svc =
 		llm ??
 		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
-	log.header(row.name_with_owner);
-	log.info("URL:", row.url);
-	log.info("--- scoring ...");
+	showRepoHeader(row);
 
 	const facts: RepoFacts = {
 		nameWithOwner: row.name_with_owner,
@@ -288,16 +331,18 @@ export async function scoreOne(
 		primaryLanguage: row.primary_language ?? undefined,
 		topics: parseStringArray(row.topics),
 	};
-	const result = await scoreRepoAgainstLists(lists, facts, svc);
-	const top3 = [...result.scores].sort((a, b) => b.score - a.score).slice(0, 3);
-	for (const s of top3)
-		log.info(`- ${s.list}: ${s.score.toFixed(2)}${s.why ? ` — ${s.why}` : ""}`);
+	const result = await log.withSpinner("Scoring", () =>
+		scoreRepoAgainstLists(lists, facts, svc),
+	);
+	showTopScores(result.scores);
 
 	if (runId != null) {
-		scoring.persistScores(runId, row.id, result.scores);
-		log.success("saved scores");
+		await log.withSpinner("Saving scores", () =>
+			scoring.persistScores(runId, row.id, result.scores),
+		);
+		log.success("Saved");
 	} else {
-		log.info("dry run (not saved)");
+		log.info("Dry run (not saved)");
 	}
 
 	const currentSlugs = await listsSvc.read.currentMembership(row.id);
@@ -317,13 +362,8 @@ export async function scoreOne(
 		blockReason,
 		fallbackUsed,
 	} = plan;
-	if (add.length) log.info("Suggest ADD   :", add.join(", "));
-	if (remove.length) log.info("Suggest REMOVE:", remove.join(", "));
-	if (review.length) log.info("Review        :", review.join(", "));
-	if (fallbackUsed)
-		log.warn(
-			`fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
-		);
+
+	showPlan({ add, remove, review, fallbackUsed });
 
 	if (blocked) {
 		if (blockReason?.includes("listless")) {
@@ -334,29 +374,34 @@ export async function scoreOne(
 				scores: JSON.stringify(result.scores),
 				note: blockReason ?? "blocked",
 			});
-			log.warn("would become listless → logged and skipped apply\n");
+			log.warn("Would become listless → logged and skipped apply");
 		} else {
 			log.info(`${blockReason} → not applying`);
-			log.info("not applied (use --apply) or no change\n");
+			log.info("Not applied (use --apply) or no change");
 		}
+		log.line();
 		return;
 	}
 
 	if (!(apply && runId != null && changed)) {
-		log.info("not applied (use --apply) or no change\n");
+		log.info("Not applied (use --apply) or no change");
+		log.line();
 		return;
 	}
 
 	try {
-		const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, row.id);
-		const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
-		await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-		await listsSvc.apply.reconcileLocal(row.id, finalPlanned);
-		log.success("applied to GitHub and reconciled locally\n");
+		await log.withSpinner("Applying to GitHub", async () => {
+			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, row.id);
+			const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
+			await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
+			await listsSvc.apply.reconcileLocal(row.id, finalPlanned);
+		});
+		log.success("Applied and reconciled");
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
-		log.warn(`apply failed: ${msg}`);
+		log.warn(`Apply failed: ${msg}`);
 	}
+	log.line();
 }
 
 // CLI entry (unified simple flags)
@@ -402,10 +447,12 @@ if (import.meta.main) {
 		const apply = s.apply || !dry;
 		await scoreOne(s.one, apply);
 	} else {
-		const limit = Math.max(1, s.limit ?? 999999999);
+		const limit = Math.max(1, s.limit ?? 999_999_999);
 		const apply = s.apply || !dry;
 		log.info(
-			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+			`Score --all limit=${limit} apply=${apply}${
+				resume ? ` resume=${resume}` : ""
+			}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
 		);
 		await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
 	}

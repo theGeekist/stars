@@ -1,4 +1,4 @@
-import type { ScoreItem } from "@lib/score";
+import type { ScoreItem } from "./llm";
 import type { RepoRow } from "@lib/types";
 
 export type ResumeFlag = number | "last" | undefined;

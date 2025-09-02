@@ -1,4 +1,4 @@
-// src/lib/summarise_batch.ts
+// src/lib/cli-summarise.ts
 
 import { createSummariseService } from "@features/summarise/service";
 import { log } from "@lib/bootstrap";
@@ -6,10 +6,6 @@ import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { db } from "@lib/db";
 import { type SummariseDeps, summariseRepoOneParagraph } from "@lib/summarise";
 import type { RepoRow } from "@lib/types";
-
-// ---- CLI args (simplified via src/lib/cli.ts) --------------------------------
-
-// No local prepared queries — handled by summarise service
 
 // ---- Helpers ----------------------------------------------------------------
 function parseStringArray(jsonText: string | null): string[] {
@@ -22,52 +18,8 @@ function parseStringArray(jsonText: string | null): string[] {
 	}
 }
 
-function formatNum(n: number | null | undefined): string {
-	if (n == null) return "-";
-	if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
-	return String(n);
-}
-
 function wc(s: string): number {
 	return s.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function chooseFreshnessSource(opts: {
-	pushed_at?: string | null;
-	last_commit_iso?: string | null;
-	last_release_iso?: string | null;
-	updated_at?: string | null;
-}): string | null {
-	return (
-		opts.pushed_at ??
-		opts.last_commit_iso ??
-		opts.last_release_iso ??
-		opts.updated_at ??
-		null
-	);
-}
-
-function _annotateHeader(r: RepoRow): string {
-	const tags = parseStringArray(r.topics).slice(0, 6).join(", ");
-	const stars = formatNum(r.stars);
-	const forks = formatNum(r.forks);
-	const pop = r.popularity?.toFixed(2) ?? "-";
-	const fresh = r.freshness?.toFixed(2) ?? "-";
-	const act = r.activeness?.toFixed(2) ?? "-";
-	const upd = chooseFreshnessSource(r);
-
-	return [
-		`▶ ${r.name_with_owner}`,
-		`   URL      : ${r.url}`,
-		`   Lang     : ${r.primary_language ?? "-"}`,
-		`   Stars    : ${stars}   Forks: ${forks}`,
-		`   Metrics  : popularity=${pop}  freshness=${fresh}  activeness=${act}`,
-		`   Updated  : ${upd}`,
-		`   Topics   : ${tags || "-"}`,
-		r.description ? `   Desc     : ${r.description}` : undefined,
-	]
-		.filter(Boolean)
-		.join("\n");
 }
 
 // ---- Main -------------------------------------------------------------------
@@ -84,38 +36,58 @@ export async function summariseBatchAll(
 		log.info("No repos matched the criteria.");
 		return;
 	}
+
 	const total = rows.length;
+	log.info(`Summarising ${total} repos...`);
 
 	for (let i = 0; i < rows.length; i++) {
 		const r = rows[i];
 		log.header(`[${i + 1}/${total}] ${r.name_with_owner}`);
 		log.info("URL:", r.url);
-		log.info("Lang:", r.primary_language ?? "-");
-		log.info("--- generating summary ...");
+		if (r.primary_language) log.info("Lang:", r.primary_language);
 
-		const paragraph = await summariseRepoOneParagraph(
-			{
-				repoId: r.id,
-				nameWithOwner: r.name_with_owner,
-				url: r.url,
-				description: r.description,
-				primaryLanguage: r.primary_language ?? undefined,
-				topics: parseStringArray(r.topics),
-				metrics: {
-					popularity: r.popularity ?? 0,
-					freshness: r.freshness ?? 0,
-					activeness: r.activeness ?? 0,
+		const spin = log.spinner("Generating summary...");
+		let paragraph: string;
+		try {
+			paragraph = await summariseRepoOneParagraph(
+				{
+					repoId: r.id,
+					nameWithOwner: r.name_with_owner,
+					url: r.url,
+					description: r.description,
+					primaryLanguage: r.primary_language ?? undefined,
+					topics: parseStringArray(r.topics),
+					metrics: {
+						popularity: r.popularity ?? 0,
+						freshness: r.freshness ?? 0,
+						activeness: r.activeness ?? 0,
+					},
 				},
-			},
-			deps,
-		);
+				deps,
+			);
+			spin.succeed(`Summary ready (${wc(paragraph)} words)`);
+		} catch (e) {
+			spin.fail("Failed to generate summary");
+			const msg = e instanceof Error ? e.message : String(e);
+			log.error(`${msg}\n`);
+			continue;
+		}
 
-		log.line(`\n${paragraph}`);
-		log.info(`(${wc(paragraph)} words)`);
+		log.line("");
+		log.line(paragraph);
+		log.line("");
 
 		if (apply) {
-			svc.saveSummary(r.id, paragraph);
-			log.success("saved to repo.summary\n");
+			const s2 = log.spinner("Saving to repo.summary");
+			try {
+				svc.saveSummary(r.id, paragraph);
+				s2.succeed("Saved");
+			} catch (e) {
+				s2.fail("Save failed");
+				const msg = e instanceof Error ? e.message : String(e);
+				log.error(msg);
+			}
+			log.line("");
 		} else {
 			log.info("dry run (not saved)\n");
 		}
@@ -142,33 +114,51 @@ export async function summariseOne(
 
 	log.header(row.name_with_owner);
 	log.info("URL:", row.url);
-	log.info("Lang:", row.primary_language ?? "-");
-	log.info("--- generating summary ...");
+	if (row.primary_language) log.info("Lang:", row.primary_language);
 
-	const paragraph = await summariseRepoOneParagraph(
-		{
-			repoId: row.id,
-			nameWithOwner: row.name_with_owner,
-			url: row.url,
-			description: row.description,
-			primaryLanguage: row.primary_language ?? undefined,
-			topics: parseStringArray(row.topics),
-			metrics: {
-				popularity: row.popularity ?? 0,
-				freshness: row.freshness ?? 0,
-				activeness: row.activeness ?? 0,
+	const spin = log.spinner("Generating summary...");
+	let paragraph: string;
+	try {
+		paragraph = await summariseRepoOneParagraph(
+			{
+				repoId: row.id,
+				nameWithOwner: row.name_with_owner,
+				url: row.url,
+				description: row.description,
+				primaryLanguage: row.primary_language ?? undefined,
+				topics: parseStringArray(row.topics),
+				metrics: {
+					popularity: row.popularity ?? 0,
+					freshness: row.freshness ?? 0,
+					activeness: row.activeness ?? 0,
+				},
 			},
-		},
-		deps,
-	);
+			deps,
+		);
+		spin.succeed(`Summary ready (${wc(paragraph)} words)`);
+	} catch (e) {
+		spin.fail("Failed to generate summary");
+		const msg = e instanceof Error ? e.message : String(e);
+		log.error(`${msg}\n`);
+		return;
+	}
 
-	log.line(`\n${paragraph}`);
-	log.info(`(${wc(paragraph)} words)`);
+	log.line("");
+	log.line(paragraph);
+	log.line("");
 
 	if (apply) {
 		const svc = createSummariseService();
-		svc.saveSummary(row.id, paragraph);
-		log.success("saved to repo.summary\n");
+		const s2 = log.spinner("Saving to repo.summary");
+		try {
+			svc.saveSummary(row.id, paragraph);
+			s2.succeed("Saved");
+		} catch (e) {
+			s2.fail("Save failed");
+			const msg = e instanceof Error ? e.message : String(e);
+			log.error(msg);
+		}
+		log.line("");
 	} else {
 		log.info("dry run (not saved)\n");
 	}

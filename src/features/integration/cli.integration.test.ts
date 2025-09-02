@@ -45,7 +45,7 @@ describe("CLI integration", () => {
 			},
 		} as const;
 
-		await scoreBatchAll(5, false, fakeLLM as any);
+		await scoreBatchAll(5, false, fakeLLM);
 
 		// Dry-run should not persist to repo_list_score
 		const count =

@@ -1,5 +1,6 @@
 import { OllamaService } from "@jasonnathan/llm-core";
 import { toNum } from "@lib/utils";
+import prompts from "../../../prompts.yaml";
 import type { MaybeOllama } from "./types";
 
 /* ---------- Public types ---------- */
@@ -80,6 +81,21 @@ function buildSchema(slugs: string[]): unknown {
 function listsBlock(lists: ListDef[]): string {
 	return lists
 		.map((l) => `- ${l.name} (${l.slug}) - ${l.description ?? ""}`.trim())
+		.join("\n");
+}
+
+function listsBlockFromCriteria(lists: ListDef[], criteria?: unknown): string {
+	const arr = Array.isArray(criteria)
+		? (criteria as Array<{ slug: string; description?: string | null }>)
+		: null;
+	if (!arr?.length) return listsBlock(lists);
+	const bySlug = new Map(arr.map((c) => [c.slug, c] as const));
+	return lists
+		.map((l) => {
+			const c = bySlug.get(l.slug);
+			const desc = (c?.description ?? l.description ?? "").trim();
+			return `- ${l.name} (${l.slug}) - ${desc}`.trim();
+		})
 		.join("\n");
 }
 
@@ -190,9 +206,7 @@ export async function scoreRepoAgainstLists(
 	const slugs = lists.map((l) => l.slug);
 	const schema = buildSchema(slugs);
 
-	const userPrompt = `
-Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
-Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):
+	const defaultGuide = `
   productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).
   monetise = only score if the repo explicitly helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
   networking = only score if the repo explicitly builds or supports communities, connections, or collaboration (social, professional, or technical).
@@ -201,17 +215,31 @@ Scoring Guide (if the repo does not or barely meets the criteria, score MUST be 
   learning = only score if the repo explicitly teaches through courses, tutorials, exercises, or curricula (any subject, not just programming).
   self-marketing = only score if the repo explicitly promotes an individual (portfolio, profile, blogging, personal branding, analytics).
   team-management = only score if the repo explicitly helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
+`.trim();
+
+	const guide =
+		prompts?.scoring?.criteria && Array.isArray(prompts.scoring.criteria)
+			? listsBlockFromCriteria(lists, prompts.scoring.criteria)
+			: defaultGuide;
+
+	const system = prompts?.scoring?.system ?? SYSTEM_PROMPT;
+	const fewshot = prompts?.scoring?.fewshot ?? FEWSHOT;
+
+	const userPrompt = `
+Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
+Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):
+${guide}
 
 Lists:
-${listsBlock(lists)}
+${listsBlockFromCriteria(lists, prompts?.scoring?.criteria)}
 
-${FEWSHOT}
+${fewshot}
 
 Repository to score:
 ${repoBlock(repo)}
   `.trim();
 
-	const raw = await llm.generatePromptAndSend(SYSTEM_PROMPT, userPrompt, {
+	const raw = await llm.generatePromptAndSend(system, userPrompt, {
 		schema,
 	});
 	const repaired = validateAndRepair(raw, new Set(slugs));
