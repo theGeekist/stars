@@ -180,7 +180,10 @@ export async function scoreBatchAll(
 	}));
 
 	const token = Bun.env.GITHUB_TOKEN ?? "";
-	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
+	const forceMissing = Bun.env.FORCE_TOKEN_MISSING === "1";
+	if (apply && (forceMissing || token.trim().length === 0)) {
+		throw new Error("GITHUB_TOKEN not set");
+	}
 	if (apply && token) {
 		await log.withSpinner("Ensuring GitHub list IDs", () =>
 			listsSvc.apply.ensureListGhIds(token),
@@ -310,7 +313,10 @@ export async function scoreOne(
 		description: l.description ?? undefined,
 	}));
 	const token = Bun.env.GITHUB_TOKEN ?? "";
-	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
+	const forceMissing = Bun.env.FORCE_TOKEN_MISSING === "1";
+	if (apply && (forceMissing || token.trim().length === 0)) {
+		throw new Error("GITHUB_TOKEN not set");
+	}
 	if (apply && token) {
 		await log.withSpinner("Ensuring GitHub list IDs", () =>
 			listsSvc.apply.ensureListGhIds(token),

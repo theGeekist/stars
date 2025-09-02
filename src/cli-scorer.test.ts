@@ -20,16 +20,27 @@ describe("cli-scorer", () => {
 		db.exec(
 			"INSERT INTO repo(id, name_with_owner, url, stars) VALUES (1, 'o/r1', 'u', 10);",
 		);
-		// Force-empty token to trigger error even in CI where GITHUB_TOKEN is set
-		const prev = (Bun.env as Record<string, string | undefined>).GITHUB_TOKEN;
-		(Bun.env as Record<string, string | undefined>).GITHUB_TOKEN = "";
+		// Ensure error path triggers even if CI provides a token
+		const prevToken = (Bun.env as Record<string, string | undefined>)
+			.GITHUB_TOKEN;
+		const prevForce = (Bun.env as Record<string, string | undefined>)
+			.FORCE_TOKEN_MISSING;
+		(Bun.env as Record<string, string | undefined>).FORCE_TOKEN_MISSING = "1";
 		try {
 			await expect(scoreOne("o/r1", true)).rejects.toThrow(/GITHUB_TOKEN/);
 		} finally {
-			if (prev === undefined) {
+			if (prevForce === undefined) {
+				delete (Bun.env as Record<string, string | undefined>)
+					.FORCE_TOKEN_MISSING;
+			} else {
+				(Bun.env as Record<string, string | undefined>).FORCE_TOKEN_MISSING =
+					prevForce;
+			}
+			if (prevToken === undefined) {
 				delete (Bun.env as Record<string, string | undefined>).GITHUB_TOKEN;
 			} else {
-				(Bun.env as Record<string, string | undefined>).GITHUB_TOKEN = prev;
+				(Bun.env as Record<string, string | undefined>).GITHUB_TOKEN =
+					prevToken;
 			}
 		}
 	});
