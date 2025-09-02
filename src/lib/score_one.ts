@@ -4,6 +4,7 @@ import { scoreRepoAgainstLists, type ListDef, type RepoFacts } from "./score";
 import { initSchema, db } from "./db";
 import type { RepoRow } from "./types";
 import { createListsService } from "../features/lists";
+import { createScoringService, DEFAULT_POLICY } from "../features/scoring";
 
 type ListRow = { slug: string; name: string; description: string | null };
 type CurrentListRow = { slug: string };
@@ -18,7 +19,6 @@ const qRepoById = db.query<RepoRow, [number]>(`
   SELECT id, repo_id, name_with_owner, url, description, primary_language, topics, summary
   FROM repo WHERE id = ? LIMIT 1
 `);
-
 
 function parseTopics(json: string | null): string[] {
 	if (!json) return [];
@@ -43,14 +43,14 @@ function printReport(
 	const mapName: Record<string, string> = Object.fromEntries(
 		lists.map((l) => [l.slug, l.name]),
 	);
-	// Minimal in-file view; planning in batch CLI via Scoring service
+	// Use feature scoring thresholds for consistent suggestions
+	const scoring = createScoringService();
+	const plan = scoring.planTargets(current, scores, DEFAULT_POLICY.thresholds);
 	const sorted = [...scores].sort((a, b) => b.score - a.score);
 	const top = sorted.slice(0, 3);
-	const add = sorted.filter((s) => s.score >= 0.7 && !current.includes(s.list));
-	const remove = sorted.filter((s) => s.score <= 0.3 && current.includes(s.list));
-	const keep = sorted.filter((s) => s.score > 0.3 && current.includes(s.list));
-	const review = sorted.filter(
-		(s) => !current.includes(s.list) && s.score > 0.3 && s.score < 0.7,
+	const { add, remove, review } = plan;
+	const scoreMap = new Map<string, number>(
+		scores.map((s) => [s.list, s.score]),
 	);
 
 	console.log(`\n▶ ${repo.name_with_owner}`);
@@ -74,18 +74,24 @@ function printReport(
 
 	if (add.length) {
 		console.log("\n   Suggest ADD:");
-		for (const a of add)
-			console.log(`     + ${mapName[a.list] ?? a.list} (${fmtScore(a.score)})`);
+		for (const slug of add) {
+			const name = mapName[slug] ?? slug;
+			console.log(`     + ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+		}
 	}
 	if (remove.length) {
 		console.log("\n   Suggest REMOVE:");
-		for (const r of remove)
-			console.log(`     - ${mapName[r.list] ?? r.list} (${fmtScore(r.score)})`);
+		for (const slug of remove) {
+			const name = mapName[slug] ?? slug;
+			console.log(`     - ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+		}
 	}
 	if (review.length) {
 		console.log("\n   Review (ambiguous):");
-		for (const r of review)
-			console.log(`     ? ${mapName[r.list] ?? r.list} (${fmtScore(r.score)})`);
+		for (const slug of review) {
+			const name = mapName[slug] ?? slug;
+			console.log(`     ? ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+		}
 	}
 
 	console.log("\n");
@@ -109,14 +115,14 @@ async function main() {
 	}
 	if (!repo) throw new Error("Repo not found in DB. Ingest first.");
 
-    const listsSvc = createListsService();
-    const listsRows = await listsSvc.read.getListDefs();
-    const lists: ListDef[] = listsRows.map((l) => ({
-        slug: l.slug,
-        name: l.name,
-        description: l.description ?? undefined,
-    }));
-    const current = await listsSvc.read.currentMembership(repo.id);
+	const listsSvc = createListsService();
+	const listsRows = await listsSvc.read.getListDefs();
+	const lists: ListDef[] = listsRows.map((l) => ({
+		slug: l.slug,
+		name: l.name,
+		description: l.description ?? undefined,
+	}));
+	const current = await listsSvc.read.currentMembership(repo.id);
 
 	const facts: RepoFacts = {
 		nameWithOwner: repo.name_with_owner,
