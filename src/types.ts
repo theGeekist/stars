@@ -5,6 +5,7 @@ export type IndexEntry = {
 	description?: string | null;
 	isPrivate: boolean;
 	file: string;
+	listId: string;
 };
 /** Row & binding types */
 
@@ -15,11 +16,13 @@ export type UpsertListBind = [
 	description: string | null,
 	is_private: number,
 	slug: string,
+	list_id: string,
 ];
 
 export type LinkListRepoBind = [list_id: number, repo_id: number];
 
 export type UpsertRepoBind = [
+	repoId: string,
 	name_with_owner: string,
 	url: string,
 	description: string | null,

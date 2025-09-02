@@ -1,5 +1,5 @@
-import type { SQLQueryBindings } from "bun:sqlite";
 export type RepoInfo = {
+	repoId: string;
 	nameWithOwner: string;
 	url: string;
 	description?: string | null;
@@ -28,6 +28,7 @@ export type RepoInfo = {
 };
 
 export type StarList = {
+	listId: string;
 	name: string;
 	description?: string | null;
 	isPrivate: boolean;
@@ -40,7 +41,12 @@ export type ListsEdgesPage = {
 			pageInfo: { endCursor: string | null; hasNextPage: boolean };
 			edges: Array<{
 				cursor: string;
-				node: { name: string; description?: string | null; isPrivate: boolean };
+				node: {
+					listId: string;
+					name: string;
+					description?: string | null;
+					isPrivate: boolean;
+				};
 			}>;
 		};
 	};
@@ -54,7 +60,8 @@ export type ListItemsAtEdge = {
 				items: {
 					pageInfo: { endCursor: string | null; hasNextPage: boolean };
 					nodes: Array<{
-						__typename: string;
+						__typename: "Repository";
+						repoId: string;
 						nameWithOwner?: string;
 						url?: string;
 						description?: string | null;
@@ -118,6 +125,7 @@ export type ReadmeRow = {
 };
 export type RepoRow = {
 	id: number;
+	repo_id: string;
 	name_with_owner: string;
 	url: string;
 	description: string | null;
@@ -125,6 +133,8 @@ export type RepoRow = {
 	license: string | null;
 	tags: string | null;
 	summary: string | null;
+	is_archived: number;
+	is_disabled: number;
 	popularity: number | null;
 	freshness: number | null;
 	activeness: number | null;
@@ -134,18 +144,20 @@ export type RepoRow = {
 	forks: number | null;
 };
 
+export type RepoRef = { owner: string; name: string };
+
 export type TopicRow = {
-  topic: string;
-  display_name?: string | null;
-  short_description?: string | null;
-  aliases_json?: string | null;        // JSON.stringify(string[])
-  is_featured: 0 | 1;
-  updated_at: string;                  // ISO
-  etag?: string | null;
+	topic: string;
+	display_name?: string | null;
+	short_description?: string | null;
+	aliases_json?: string | null; // JSON.stringify(string[])
+	is_featured: 0 | 1;
+	updated_at: string; // ISO
+	etag?: string | null;
 };
 
 export type RepoTopicLink = {
-  repo_id: number;
-  topic: string;
-  added_at: string;                    // ISO
+	repo_id: number;
+	topic: string;
+	added_at: string; // ISO
 };
