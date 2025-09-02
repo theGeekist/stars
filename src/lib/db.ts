@@ -4,7 +4,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export let db = new Database(Bun.env.DB_FILE || "repolists.db");
+// Default DB selection: use in-memory when running under `bun test` to avoid
+// accidentally touching a developer's on-disk database during tests.
+const isTestRunner = Array.isArray(Bun.argv) && Bun.argv.includes("test");
+const DEFAULT_DB_FILE = isTestRunner
+	? ":memory:"
+	: Bun.env.DB_FILE || "repolists.db";
+
+export let db = new Database(DEFAULT_DB_FILE);
 
 function resolveSchemaPath(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -60,7 +67,7 @@ export function initSchema(database: Database = db): void {
 	migrateIfNeeded(database);
 }
 
-export function createDb(filename = Bun.env.DB_FILE || ":memory:"): Database {
+export function createDb(filename = ":memory:"): Database {
 	const newDb = new Database(filename);
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
