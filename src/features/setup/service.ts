@@ -12,22 +12,28 @@ const EXCLUDE = new Set(["valuable-resources", "interesting-to-explore"]);
 
 /** Replace the entire `criteria:` section with a block scalar body. */
 function replaceCriteriaBlock(tmplStr: string, bodyLines: string): string {
-	// Find the start of the criteria node
-	const criteriaKey = "\n  criteria:";
-	const start = tmplStr.indexOf(criteriaKey);
-	if (start === -1) {
-		throw new Error("Template missing 'criteria:' key under 'scoring'.");
+	// Find the start of the criteria node robustly (start of line, 2-space indent)
+	const m = /(\n|^)\s{2}criteria:\s*(\n|$)/.exec(tmplStr);
+	// Heuristic: next top-level key is 'summarise:' (column 0). If not found, cut to EOF.
+	const findNextTop = (from: number) => {
+		const i = tmplStr.indexOf("\nsummarise:", from);
+		return i === -1 ? tmplStr.length : i;
+	};
+
+	let head: string;
+	let tail: string;
+	if (!m) {
+		// Fallback: inject criteria block just before next top-level 'summarise:'
+		const end = findNextTop(0);
+		head = `${tmplStr.slice(0, end)}\n`;
+		tail = tmplStr.slice(end);
+	} else {
+		const start = m.index + (m[1] ? m[1].length : 0); // beginning of '  criteria:' line
+		const criteriaLineEnd = tmplStr.indexOf("\n", start) + 1; // end of line
+		const end = findNextTop(criteriaLineEnd);
+		head = `${tmplStr.slice(0, start)}  criteria: |\n`;
+		tail = tmplStr.slice(end);
 	}
-
-	// End of the 'criteria:' line (newline after it)
-	const criteriaLineEnd = tmplStr.indexOf("\n", start + 1) + 1;
-
-	// Heuristic: next top-level key is 'summarise:' (column 0). If not found, we cut to EOF.
-	const nextTop = tmplStr.indexOf("\nsummarise:", criteriaLineEnd);
-	const end = nextTop === -1 ? tmplStr.length : nextTop;
-
-	const head = `${tmplStr.slice(0, start)}\n  criteria: |\n`;
-	const tail = tmplStr.slice(end);
 
 	// Body must be indented by 4 spaces to live under the block scalar
 	const indented = bodyLines
@@ -42,15 +48,28 @@ export async function generatePromptsYaml(
 	token: string,
 	outFile = resolve(process.cwd(), "prompts.yaml"),
 	opts: { forcePlaceholder?: boolean } = {},
+	// Optional dependency injection for tests
+	deps?: {
+		lists?: Array<{ name: string }>;
+		llm?: () => Promise<{
+			criteria?: Array<{ slug?: string; description?: string }>;
+		}>;
+	},
 ) {
 	// Ensure we have raw template text even if Bun imported YAML as an object
 	const here = dirname(fileURLToPath(import.meta.url));
 	const tmplPath = resolve(here, ".prompts.tmpl.yaml");
-	const tmplStr: string =
-		typeof tmpl === "string" ? tmpl : readFileSync(tmplPath, "utf-8");
+	// Bun may import YAML as an object or, depending on config, a stringified path.
+	// Prefer the imported string only if it looks like template content; else read file.
+	const imported = typeof tmpl === "string" ? (tmpl as string) : "";
+	const tmplStr: string = /\bscoring:\b/.test(imported)
+		? imported
+		: readFileSync(tmplPath, "utf-8");
 
 	// Fetch lists and prepare slugs (skip network if forcing placeholders)
-	const lists = opts.forcePlaceholder ? [] : await getAllLists(token);
+	const lists = opts.forcePlaceholder
+		? []
+		: (deps?.lists ?? (await getAllLists(token)));
 	const sorted = lists.slice().sort((a, b) => a.name.localeCompare(b.name));
 
 	// Build criteria map, optionally via LLM
@@ -58,7 +77,6 @@ export async function generatePromptsYaml(
 
 	try {
 		if (opts.forcePlaceholder) throw new Error("forced placeholder");
-		const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
 		const slugs = sorted.map((l) => slugify(l.name));
 		const names = sorted.map((l) => l.name);
 
@@ -105,13 +123,15 @@ Return JSON.
 			additionalProperties: false,
 		} as const;
 
-		const resp = (await svc.generatePromptAndSend(
-			system,
-			`${examples}\n\n${user}`,
-			{ schema },
-		)) as unknown as {
-			criteria?: Array<{ slug?: string; description?: string }>;
-		};
+		const resp = deps?.llm
+			? await deps.llm()
+			: ((await new OllamaService(
+					Bun.env.OLLAMA_MODEL ?? "",
+				).generatePromptAndSend(system, `${examples}\n\n${user}`, {
+					schema,
+				})) as unknown as {
+					criteria?: Array<{ slug?: string; description?: string }>;
+				});
 
 		if (resp?.criteria) {
 			for (const c of resp.criteria) {
