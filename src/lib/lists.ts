@@ -26,8 +26,22 @@ function dlog(...args: unknown[]): void {
 
 // ──────────────────────────────── queries ──────────────────────────────────
 
+export const Q_REPO_ID = gql`
+  query RepoId($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) { id }
+  }
+`;
+
+export const M_UPDATE_LISTS_FOR_ITEM = gql`
+  mutation UpdateUserListsForItem($itemId: ID!, $listIds: [ID!]!) {
+    updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
+      lists { id name }
+    }
+  }
+`;
+
 // 1) Page viewer.lists to collect edge cursors (metadata)
-const LISTS_EDGES_PAGE = gql`
+export const LISTS_EDGES_PAGE = gql`
   query ListsEdgesPage($after: String) {
     viewer {
       lists(first: 20, after: $after) {
@@ -38,6 +52,7 @@ const LISTS_EDGES_PAGE = gql`
         edges {
           cursor
           node {
+						listId: id
             name
             description
             isPrivate
@@ -49,7 +64,7 @@ const LISTS_EDGES_PAGE = gql`
 `;
 
 // 2) Select exactly one list (the one *after* edgeBefore) and page its items.
-const LIST_ITEMS_AT_EDGE = gql`
+export const LIST_ITEMS_AT_EDGE = gql`
   query ListItemsAtEdge(
     $listAfter: String
     $itemsAfter: String
@@ -67,6 +82,7 @@ const LIST_ITEMS_AT_EDGE = gql`
             nodes {
               __typename
               ... on Repository {
+                repoId: id
                 nameWithOwner
                 url
                 description
@@ -173,12 +189,15 @@ async function fetchAllItemsAtEdge(
 		for (const n of items.nodes as ItemNode[]) {
 			if (!n || n.__typename !== "Repository") continue;
 
+			// DEBUG && console.log("---------PROBE: ", n.repoId)
+
 			const topics: string[] =
 				n.repositoryTopics?.nodes
 					?.map((x) => x.topic?.name)
 					.filter((s): s is string => !!s) ?? [];
 
 			repos.push({
+				repoId: (n as any).repoId ?? null,
 				nameWithOwner: n.nameWithOwner ?? "",
 				url: n.url ?? "",
 				description: n.description ?? null,
@@ -269,6 +288,7 @@ async function pMap<T, R>(
 export async function getAllLists(token: string): Promise<StarList[]> {
 	type Meta = {
 		edgeBefore: string | null;
+		listId: string;
 		name: string;
 		description: string | null;
 		isPrivate: boolean;
@@ -308,6 +328,7 @@ export async function getAllLists(token: string): Promise<StarList[]> {
 		for (const edge of page.edges) {
 			metas.push({
 				edgeBefore: previousEdgeCursor,
+				listId: edge.node.listId,
 				name: edge.node.name,
 				description: edge.node.description ?? null,
 				isPrivate: edge.node.isPrivate,
@@ -337,6 +358,7 @@ export async function getAllLists(token: string): Promise<StarList[]> {
 			m.name,
 		);
 		const out: StarList = {
+			listId: m.listId,
 			name: m.name,
 			description: m.description,
 			isPrivate: m.isPrivate,

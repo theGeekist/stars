@@ -127,6 +127,7 @@ function saveListsToDir(lists: StarList[], dir: string) {
 
 	// Write index.json for quick summary
 	const index = lists.map((l) => ({
+		listId: l.listId,
 		name: l.name,
 		description: l.description ?? null,
 		isPrivate: l.isPrivate,
