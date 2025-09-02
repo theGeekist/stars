@@ -19,6 +19,7 @@ Usage:
   gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]
   gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)
   gk-stars topics:enrich [--active] [--ttl <days>]
+  gk-stars setup  # generate prompts.yaml from your GitHub lists
 
 Notes:
 ${SIMPLE_USAGE.trim()}
@@ -161,6 +162,17 @@ async function main(argv: string[]) {
 				`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
 			);
 			await enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
+			return;
+		}
+
+		case "setup": {
+			const token = Bun.env.GITHUB_TOKEN;
+			if (!token) {
+				log.error("GITHUB_TOKEN missing");
+				process.exit(1);
+			}
+			const { generatePromptsYaml } = await import("@features/setup/index");
+			await generatePromptsYaml(token);
 			return;
 		}
 

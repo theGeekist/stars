@@ -33,10 +33,21 @@ export type SummariseDeps = {
 	embed?: { embedTexts: (texts: string[]) => Promise<number[][]> };
 };
 
+async function loadPromptsYaml(): Promise<any | null> {
+	try {
+		// @ts-expect-error Bun supports importing YAML
+		const mod = await import("@features/setup/prompts.yaml");
+		return (mod as any).default ?? mod;
+	} catch {
+		return null;
+	}
+}
+
 export async function summariseRepoOneParagraph(
 	meta: Meta,
 	deps?: SummariseDeps,
 ): Promise<string> {
+	const prompts = await loadPromptsYaml();
 	const baseHints = [
 		meta.description ?? "",
 		meta.primaryLanguage ? `Primary language: ${meta.primaryLanguage}` : "",
@@ -87,11 +98,11 @@ export async function summariseRepoOneParagraph(
 
 	const gen = deps?.gen ?? realGen;
 	if (chunks.length === 0) {
+		const header =
+			(prompts?.summarise?.one_paragraph as string) ??
+			`Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.\nInclude purpose, core tech, standout capability, maturity signal (if any), ideal use case.\nNo bullet points or headings or em dashes. Neutral tone. Do not invent facts.\nYour summary must stand the test of time; do not mention scores.`;
 		const prompt = `
-Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.
-Include purpose, core tech, standout capability, maturity signal (if any), ideal use case.
-No bullet points or headings or em dashes. Neutral tone. Do not invent facts.
-Your summary must stand the test of time; do not mention scores.
+${header}
 
 Project: ${meta.nameWithOwner}
 URL: ${meta.url}
@@ -123,11 +134,10 @@ Hints: ${baseHints || "(none)"}
 		if (picked.length === 0) picked = chunks.slice(0, 8);
 	}
 
-	const mapHeader = `
-From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.
-Focus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).
-Return only bullets prefixed with "- ".
-`.trim();
+	const mapHeader = (
+		(prompts?.summarise?.map_header as string) ??
+		`From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.\nFocus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).\nReturn only bullets prefixed with "- ".`
+	).trim();
 
 	const bullets: string[] = [];
 	const MAX_MAP_CHARS = 7000;
@@ -148,11 +158,11 @@ Return only bullets prefixed with "- ".
 
 	if (baseHints) bullets.push(`- ${baseHints}`);
 
+	const reduceHeader =
+		(prompts?.summarise?.reduce as string) ??
+		`Write ONE paragraph (≤100 words) for the general public.\nInclude: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.\nNo marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.\nReturn only the paragraph. Do not mention numeric scores.`;
 	const reducePrompt = `
-Write ONE paragraph (≤100 words) for the general public.
-Include: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.
-No marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.
-Return only the paragraph. Do not mention numeric scores.
+${reduceHeader}
 
 Bullets:
 ${bullets.join("\n")}
