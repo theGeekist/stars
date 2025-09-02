@@ -34,10 +34,14 @@ jobs:
         run: bun run build
 
       - name: Generate coverage badge
-        uses: tj-actions/coverage-badges@v2
+        uses: GoogleCloudPlatform/lcov-coverage-badge@v1.0.0
         with:
-          filename: coverage/lcov.info
-          output: badges/coverage.svg
+          file: coverage/lcov.info
+
+      - name: Place badge where we want it
+        run: |
+          mkdir -p badges
+          mv -f coverage.svg badges/coverage.svg
 
       - name: Commit coverage badge
         if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
@@ -55,4 +59,3 @@ jobs:
         with:
           name: coverage-lcov
           path: coverage/lcov.info
-
