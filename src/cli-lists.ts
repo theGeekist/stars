@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
 import type { RepoInfo, StarList } from "@lib/types";
 import type { Command, Parsed } from "./types.js";
-import { createLogger } from "@lib/logger";
+import { log } from "@lib/bootstrap";
 
 const USAGE = `geek-stars
 
@@ -84,7 +84,6 @@ function parseArgs(argv: string[]): Parsed {
 export function ensureToken(): string {
 	const token = Bun.env.GITHUB_TOKEN;
 	if (!token) {
-		const log = createLogger();
 		log.error(
 			"GITHUB_TOKEN missing. Add it to .env (Bun loads it automatically).",
 		);
@@ -94,7 +93,6 @@ export function ensureToken(): string {
 }
 
 export function printListsHuman(lists: StarList[]) {
-	const log = createLogger();
 	for (const l of lists) {
 		const vis = l.isPrivate ? "private" : "public";
 		log.info(`${l.name} [${vis}]`);
@@ -104,7 +102,6 @@ export function printListsHuman(lists: StarList[]) {
 }
 
 export function printReposHuman(repos: RepoInfo[]) {
-	const log = createLogger();
 	for (const r of repos) {
 		log.line(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
 	}
@@ -120,7 +117,6 @@ function toSlug(name: string): string {
 }
 
 export async function runLists(json: boolean, out?: string, dir?: string) {
-	const log = createLogger();
 	const token = ensureToken();
 
 	// Stream to disk to avoid holding all lists in memory
@@ -175,7 +171,6 @@ export async function runLists(json: boolean, out?: string, dir?: string) {
 }
 
 export async function runRepos(listName: string, json: boolean) {
-	const log = createLogger();
 	const token = ensureToken();
 	if (!listName) {
 		log.error("--list <name> is required for 'repos'.");
@@ -193,7 +188,6 @@ async function main() {
 	const parsed = parseArgs(Bun.argv);
 
 	if (parsed.help || parsed.command === "help") {
-		const log = createLogger();
 		log.line(USAGE);
 		return;
 	}
@@ -212,15 +206,12 @@ async function main() {
 			await runRepos(parsed.list ?? "", parsed.json);
 			return;
 
-		default: {
-			const log = createLogger();
+		default:
 			log.line(USAGE);
-		}
 	}
 }
 
 main().catch((err) => {
-	const log = createLogger();
 	log.error("Error:", err instanceof Error ? err.message : err);
 	process.exit(1);
 });

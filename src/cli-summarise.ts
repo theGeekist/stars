@@ -1,13 +1,11 @@
 // src/lib/summarise_batch.ts
 
 import { createSummariseService } from "@features/summarise/service";
-import { db, initSchema } from "@lib/db";
+import { db } from "@lib/db";
 import { summariseRepoOneParagraph, type SummariseDeps } from "@lib/summarise";
-import { createLogger } from "@lib/logger";
+import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import type { RepoRow } from "@lib/types";
-
-initSchema();
 // ---- CLI args (simplified via src/lib/cli.ts) --------------------------------
 
 // No local prepared queries — handled by summarise service
@@ -77,7 +75,6 @@ export async function summariseBatchAll(
 	apply: boolean,
 	deps?: SummariseDeps,
 ): Promise<void> {
-	const log = createLogger();
 	const svc = createSummariseService();
 	const rows = svc.selectRepos({ limit, resummarise: false });
 
@@ -126,7 +123,6 @@ export async function summariseOne(
 	apply: boolean,
 	deps?: SummariseDeps,
 ): Promise<void> {
-	const log = createLogger();
 	const row = db
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
@@ -176,7 +172,6 @@ export async function summariseOne(
 
 // CLI entry (unified simple flags)
 if (import.meta.main) {
-	const log = createLogger();
 	const s = parseSimpleArgs(Bun.argv);
 
 	if (s.mode === "one") {

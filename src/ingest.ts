@@ -1,8 +1,6 @@
 import { ingestFromExports } from "@features/ingest/service";
-import { initSchema } from "@lib/db";
-import { createLogger } from "@lib/logger";
+import { log } from "@lib/bootstrap";
 
 const EXPORTS_DIR = Bun.env.EXPORTS_DIR ?? "./exports";
-initSchema();
 const res = await ingestFromExports(EXPORTS_DIR);
-createLogger().success(`Ingested ${res.lists} lists from ${EXPORTS_DIR}`);
+log.success(`Ingested ${res.lists} lists from ${EXPORTS_DIR}`);

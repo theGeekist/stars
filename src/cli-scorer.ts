@@ -6,7 +6,7 @@ import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import type { ScoringLLM } from "@features/scoring/llm";
 import { OllamaService } from "@jasonnathan/llm-core";
-import { db, initSchema } from "@lib/db";
+import { db } from "@lib/db";
 import {
 	type ListDef,
 	type RepoFacts,
@@ -14,10 +14,8 @@ import {
 } from "@lib/score";
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
-import { createLogger } from "@lib/logger";
+import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
-
-initSchema();
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -109,7 +107,6 @@ export async function scoreBatchAll(
 	apply: boolean,
 	llm?: ScoringLLM,
 ): Promise<void> {
-	const log = createLogger();
 	const scoring = createScoringService();
 
 	// Run context
@@ -242,7 +239,6 @@ export async function scoreOne(
 	apply: boolean,
 	llm?: ScoringLLM,
 ): Promise<void> {
-	const log = createLogger();
 	const row = db
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
@@ -359,7 +355,6 @@ export async function scoreOne(
 
 // CLI entry (unified simple flags)
 if (import.meta.main) {
-	const log = createLogger();
 	const s = parseSimpleArgs(Bun.argv);
 
 	if (s.mode === "one") {
