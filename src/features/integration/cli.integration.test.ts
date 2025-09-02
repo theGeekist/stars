@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { db, initSchema } from "@lib/db";
-import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
-import { scoreBatchAll } from "@src/cli-scorer";
+import { db, initSchema, createDb, setDefaultDb } from "@lib/db";
 
 function resetTables() {
 	db.exec(
@@ -10,7 +8,9 @@ function resetTables() {
 }
 
 beforeAll(() => {
-	initSchema();
+	const mem = createDb(":memory:");
+	setDefaultDb(mem);
+	initSchema(mem);
 	resetTables();
 });
 
@@ -20,6 +20,7 @@ afterAll(() => {
 
 describe("CLI integration", () => {
 	it("scores repos end-to-end with injected LLM (dry)", async () => {
+		const { scoreBatchAll } = await import("@src/cli-scorer");
 		// Seed minimal lists and one repo
 		db.query(
 			`INSERT INTO list (id, list_id, name, slug, is_private) VALUES (1, 'L1', 'Productivity', 'productivity', 0)`,
@@ -55,6 +56,7 @@ describe("CLI integration", () => {
 	});
 
 	it("summarises repos and saves to DB with apply=true (no network)", async () => {
+		const { summariseOne } = await import("@src/cli-summarise");
 		// Seed one repo that looks like an awesome list to avoid README fetch
 		db.query(
 			`INSERT INTO repo (id, name_with_owner, url, description, stars, popularity, freshness, activeness, topics)

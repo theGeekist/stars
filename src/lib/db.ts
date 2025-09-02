@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 // Default on-disk database (used by CLI/server).
 // Prefer using createDb() in libraries and pass DBs around for testability.
 // Allow override via DB_FILE for integration tests.
-export const db = new Database(Bun.env.DB_FILE || "repolists.db");
+export let db = new Database(Bun.env.DB_FILE || "repolists.db");
 
 function resolveSchemaPath(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -33,4 +33,9 @@ export function createDb(filename = Bun.env.DB_FILE || ":memory:"): Database {
 	const sql = readFileSync(schemaPath, "utf-8");
 	newDb.exec(sql);
 	return newDb;
+}
+
+// Allow tests to swap the default db used by modules that import { db }
+export function setDefaultDb(database: Database): void {
+	db = database;
 }
