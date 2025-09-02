@@ -1,5 +1,5 @@
-import { OllamaService } from "@jasonnathan/llm-core";
 import { toNum } from "@lib/utils";
+import { OllamaService } from "@jasonnathan/llm-core";
 
 export type ListDef = {
 	slug: string;
@@ -115,11 +115,48 @@ function validateAndRepair(
 	return { scores: out };
 }
 
-export async function scoreRepoAgainstLists(
-	llm: OllamaService,
+// Accept any client that implements generatePromptAndSend to ease testing
+export type ScoringLLM = {
+	// Keep result as unknown (matches many real client typings) and narrow post-validate
+	generatePromptAndSend(
+		system: string,
+		user: string,
+		opts: unknown,
+		validate?: (r: unknown) => unknown,
+	): Promise<unknown>;
+};
+
+// Overloads for better type-safety without forcing refactors
+export function scoreRepoAgainstLists(
+	llm: ScoringLLM,
 	lists: ListDef[],
 	repo: RepoFacts,
+): Promise<ScoreResponse>;
+export function scoreRepoAgainstLists(
+	lists: ListDef[],
+	repo: RepoFacts,
+	llm?: ScoringLLM,
+): Promise<ScoreResponse>;
+export async function scoreRepoAgainstLists(
+	a: ScoringLLM | ListDef[],
+	b: ListDef[] | RepoFacts,
+	c?: RepoFacts | ScoringLLM,
 ): Promise<ScoreResponse> {
+	let llm: ScoringLLM;
+	let lists: ListDef[];
+	let repo: RepoFacts;
+
+	if (typeof (a as ScoringLLM).generatePromptAndSend === "function") {
+		llm = a as ScoringLLM;
+		lists = b as ListDef[];
+		repo = c as RepoFacts;
+	} else {
+		lists = a as ListDef[];
+		repo = b as RepoFacts;
+		llm =
+			(c as ScoringLLM) ??
+			(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
+	}
 	const slugs = lists.map((l) => l.slug);
 	const schema = buildSchema(slugs);
 	const userPrompt =
@@ -143,15 +180,15 @@ Repository to score:
   ${repoBlock(repo)}
   `.trim();
 
-	const res = await llm.generatePromptAndSend<ScoreResponse>(
+	const res = (await llm.generatePromptAndSend(
 		SYSTEM_PROMPT,
 		userPrompt,
 		{ schema },
-		(r) => {
+		(r: unknown) => {
 			const slugs = new Set(lists.map((l) => l.slug));
 			const valid = validateAndRepair(r, slugs);
 			return valid ? r : false;
 		},
-	);
+	)) as ScoreResponse;
 	return res;
 }

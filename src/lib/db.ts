@@ -22,3 +22,12 @@ export function initSchema(): void {
 	const sql = readFileSync(schemaPath, "utf-8");
 	db.exec(sql);
 }
+
+// Test helpers: create new DBs with loaded schema
+export function createDb(filename = ":memory:"): Database {
+	const newDb = new Database(filename);
+	const schemaPath = resolveSchemaPath();
+	const sql = readFileSync(schemaPath, "utf-8");
+	newDb.exec(sql);
+	return newDb;
+}

@@ -1,4 +1,4 @@
-import { gen } from "@lib/ollama";
+import { gen as realGen } from "@lib/ollama";
 import {
 	fetchReadmeWithCache,
 	cleanMarkdown,
@@ -28,7 +28,15 @@ export type Meta = {
 	metrics?: Metrics;
 };
 
-export async function summariseRepoOneParagraph(meta: Meta): Promise<string> {
+export type SummariseDeps = {
+	gen?: (prompt: string, opts?: any) => Promise<string>;
+	embed?: { embedTexts: (texts: string[]) => Promise<number[][]> };
+};
+
+export async function summariseRepoOneParagraph(
+	meta: Meta,
+	deps?: SummariseDeps,
+): Promise<string> {
 	const baseHints = [
 		meta.description ?? "",
 		meta.primaryLanguage ? `Primary language: ${meta.primaryLanguage}` : "",
@@ -77,6 +85,7 @@ export async function summariseRepoOneParagraph(meta: Meta): Promise<string> {
 
 	if (awesome) return summariseAwesomeList(meta.description, meta.topics);
 
+	const gen = deps?.gen ?? realGen;
 	if (chunks.length === 0) {
 		const prompt = `
 Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.
@@ -96,7 +105,7 @@ Hints: ${baseHints || "(none)"}
 	let picked = chunks;
 
 	if (clean.length >= LARGE_README_CHARS && chunks.length > 6) {
-		const svc = new OllamaService("all-minilm:l6-v2");
+		const svc = deps?.embed ?? new OllamaService("all-minilm:l6-v2");
 		const query =
 			"what is this project, its core purpose, technical approach, and standout capability";
 		const [qv] = await svc.embedTexts([query]);

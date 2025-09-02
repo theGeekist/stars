@@ -1,4 +1,4 @@
-import { db } from "@lib/db";
+import { db as defaultDb } from "@lib/db";
 import type { RepoRow, StarList, ListsEdgesPage } from "@lib/types";
 import {
 	getAllLists,
@@ -13,47 +13,6 @@ import type { ListsService, BatchSelector } from "./types";
 type BindLimit = [limit: number];
 type BindSlugLimit = [slug: string, limit: number];
 
-let qReposDefault = db.query<RepoRow, BindLimit>(`
-  SELECT id, name_with_owner, url, description, primary_language, topics,
-         stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
-  FROM repo
-  ORDER BY popularity DESC NULLS LAST, freshness DESC NULLS LAST
-  LIMIT ?
-`);
-
-let qReposBySlug = db.query<RepoRow, BindSlugLimit>(`
-  SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
-         r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
-  FROM repo r
-  JOIN list_repo lr ON lr.repo_id = r.id
-  JOIN list l ON l.id = lr.list_id
-  WHERE l.slug = ?
-  ORDER BY r.popularity DESC NULLS LAST, r.freshness DESC NULLS LAST
-  LIMIT ?
-`);
-
-let qCurrentMembership = db.query<{ slug: string }, [number]>(`
-  SELECT l.slug
-  FROM list l
-  JOIN list_repo lr ON lr.list_id = l.id
-  WHERE lr.repo_id = ?
-  ORDER BY l.name
-`);
-
-let qListIdBySlug = db.query<{ id: number }, [string]>(
-	`SELECT id FROM list WHERE slug = ? LIMIT 1`,
-);
-
-let qListDefs = db.query<
-	{ slug: string; name: string; description: string | null },
-	[]
->(`
-  SELECT slug, name, description
-  FROM list
-  WHERE slug != 'valuable-resources' AND slug != 'interesting-to-explore'
-  ORDER BY name
-`);
-
 // Mutation to update item list membership on GitHub
 const M_UPDATE_LISTS_FOR_ITEM = gql`
   mutation UpdateUserListsForItem($itemId: ID!, $listIds: [ID!]!) {
@@ -63,7 +22,55 @@ const M_UPDATE_LISTS_FOR_ITEM = gql`
   }
 `;
 
-export function createListsService(): ListsService {
+// Allow injecting db and a GitHub GraphQL runner for testing
+export function createListsService(
+	db = defaultDb,
+	ghGraphQL: <T>(
+		token: string,
+		query: string,
+		vars?: Record<string, unknown>,
+	) => Promise<T> = githubGraphQL,
+): ListsService {
+	const qReposDefault = db.query<RepoRow, BindLimit>(`
+    SELECT id, name_with_owner, url, description, primary_language, topics,
+           stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
+    FROM repo
+    ORDER BY popularity DESC NULLS LAST, freshness DESC NULLS LAST
+    LIMIT ?
+  `);
+
+	const qReposBySlug = db.query<RepoRow, BindSlugLimit>(`
+    SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
+           r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
+    FROM repo r
+    JOIN list_repo lr ON lr.repo_id = r.id
+    JOIN list l ON l.id = lr.list_id
+    WHERE l.slug = ?
+    ORDER BY r.popularity DESC NULLS LAST, r.freshness DESC NULLS LAST
+    LIMIT ?
+  `);
+
+	const qCurrentMembership = db.query<{ slug: string }, [number]>(`
+    SELECT l.slug
+    FROM list l
+    JOIN list_repo lr ON lr.list_id = l.id
+    WHERE lr.repo_id = ?
+    ORDER BY l.name
+  `);
+
+	const qListIdBySlug = db.query<{ id: number }, [string]>(
+		`SELECT id FROM list WHERE slug = ? LIMIT 1`,
+	);
+
+	const qListDefs = db.query<
+		{ slug: string; name: string; description: string | null },
+		[]
+	>(`
+    SELECT slug, name, description
+    FROM list
+    WHERE slug != 'valuable-resources' AND slug != 'interesting-to-explore'
+    ORDER BY name
+  `);
 	async function getReposToScore(sel: BatchSelector): Promise<RepoRow[]> {
 		const limit = Math.max(1, Number(sel.limit ?? 10));
 		if (sel.listSlug) return qReposBySlug.all(sel.listSlug, limit);
@@ -121,7 +128,7 @@ export function createListsService(): ListsService {
 		repoGlobalId: string,
 		listIds: string[],
 	): Promise<void> {
-		await githubGraphQL(token, M_UPDATE_LISTS_FOR_ITEM, {
+		await ghGraphQL(token, M_UPDATE_LISTS_FOR_ITEM, {
 			itemId: repoGlobalId,
 			listIds,
 		});
@@ -132,7 +139,7 @@ export function createListsService(): ListsService {
 		let after: string | null = null;
 
 		for (;;) {
-			const data: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+			const data: ListsEdgesPage = await ghGraphQL<ListsEdgesPage>(
 				token,
 				LISTS_EDGES_PAGE,
 				{ after },
@@ -185,7 +192,7 @@ export function createListsService(): ListsService {
 		if ((r as any).repo_id && /^R_kg/.test((r as any).repo_id))
 			return (r as any).repo_id as string;
 		const [owner, name] = (r.name_with_owner || "").split("/");
-		const data = await githubGraphQL<{ repository: { id: string } }>(
+		const data = await ghGraphQL<{ repository: { id: string } }>(
 			token,
 			Q_REPO_ID,
 			{ owner, name },
