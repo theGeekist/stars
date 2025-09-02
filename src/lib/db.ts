@@ -51,6 +51,8 @@ function addColumnIfMissing(table: string, col: string, sqlType: string) {
 }
 function migrateIfNeeded(): void {
 	// Only add *new* columns if missing. Do NOT alter existing cols or tables.
+	addColumnIfMissing("list", "list_id", "TEXT");
+	addColumnIfMissing("repo", "repo_id", "TEXT");
 	addColumnIfMissing("repo", "readme_etag", "TEXT");
 	addColumnIfMissing("repo", "readme_fetched_at", "TEXT");
 

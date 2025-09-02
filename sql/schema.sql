@@ -3,6 +3,7 @@ PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS list (
   id INTEGER PRIMARY KEY,
+  list_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   is_private INTEGER NOT NULL DEFAULT 0,
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS list (
 
 CREATE TABLE IF NOT EXISTS repo (
   id INTEGER PRIMARY KEY,
+  repo_id TEXT,
   name_with_owner TEXT UNIQUE NOT NULL,
   url TEXT NOT NULL,
   description TEXT,
@@ -38,6 +40,8 @@ CREATE TABLE IF NOT EXISTS repo (
   disk_usage INTEGER,
   -- enrichment (optional later)
   readme_md TEXT,
+  readme_etag TEXT,
+  readme_fetched_at TEXT,
   summary TEXT,
   tags TEXT,               -- JSON array (derived facets)
   popularity REAL,
