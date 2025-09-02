@@ -7,21 +7,28 @@ import type {
 	StarList,
 } from "./types.js";
 
-const DEBUG = !!Bun.env.DEBUG;
-const PAGE_SIZE: number = Math.max(
-	10,
-	Math.min(100, Number(Bun.env.LISTS_PAGE_SIZE ?? 25)),
-);
-const CONCURRENCY: number = Number(Bun.env.LISTS_CONCURRENCY ?? 3);
-
-// ───────────────────────────────── logging ─────────────────────────────────
-const t0 = Date.now();
-function dlog(...args: unknown[]): void {
-	if (!DEBUG) return;
-	console.info(
-		`[debug +${String(Date.now() - t0).padStart(4, " ")}ms]`,
-		...args,
+// ────────────────────────────── config + logging ───────────────────────────
+type ListsConfig = { pageSize: number; concurrency: number; debug: boolean };
+function resolveConfig(
+	env: Record<string, string | undefined> = Bun.env,
+): ListsConfig {
+	const pageSize = Math.max(
+		10,
+		Math.min(100, Number(env.LISTS_PAGE_SIZE ?? 25)),
 	);
+	const concurrency = Number(env.LISTS_CONCURRENCY ?? 3);
+	const debug = !!env.DEBUG;
+	return { pageSize, concurrency, debug };
+}
+function makeDlog(debug: boolean) {
+	const t0 = Date.now();
+	return (...args: unknown[]) => {
+		if (!debug) return;
+		console.info(
+			`[debug +${String(Date.now() - t0).padStart(4, " ")}ms]`,
+			...args,
+		);
+	};
 }
 
 // ──────────────────────────────── queries ──────────────────────────────────
@@ -135,11 +142,68 @@ export const LIST_ITEMS_AT_EDGE = gql`
 
 // ─────────────────────────────── internals ─────────────────────────────────
 
+// Small pure helper to convert a GraphQL node into our RepoInfo shape
+export function mapRepoNodeToRepoInfo(
+	n: ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number],
+): RepoInfo | null {
+	if (!n || n.__typename !== "Repository") return null;
+
+	const topics: string[] =
+		n.repositoryTopics?.nodes
+			?.map((x) => x.topic?.name)
+			.filter((s): s is string => !!s) ?? [];
+
+	return {
+		repoId: n.repoId ?? null,
+		nameWithOwner: n.nameWithOwner ?? "",
+		url: n.url ?? "",
+		description: n.description ?? null,
+		homepageUrl: n.homepageUrl ?? null,
+
+		stars: n.stargazerCount ?? 0,
+		forks: n.forkCount ?? 0,
+		watchers: 0,
+
+		openIssues: n.issues?.totalCount ?? 0,
+		openPRs: n.pullRequests?.totalCount ?? 0,
+
+		defaultBranch: n.defaultBranchRef?.name ?? null,
+		lastCommitISO:
+			(n.defaultBranchRef?.target &&
+				"committedDate" in n.defaultBranchRef.target &&
+				(n.defaultBranchRef.target as { committedDate?: string })
+					.committedDate) ??
+			undefined,
+
+		lastRelease: null,
+		topics,
+		primaryLanguage: n.primaryLanguage?.name ?? null,
+		languages: [],
+
+		license: n.licenseInfo?.spdxId ?? null,
+
+		isArchived: !!n.isArchived,
+		isDisabled: !!n.isDisabled,
+		isFork: !!n.isFork,
+		isMirror: !!n.isMirror,
+		hasIssuesEnabled: !!n.hasIssuesEnabled,
+
+		pushedAt: n.pushedAt ?? "",
+		updatedAt: n.updatedAt ?? "",
+		createdAt: n.createdAt ?? "",
+
+		diskUsage: null,
+	} as RepoInfo;
+}
+
 /** Fetch all items for a list identified by the cursor *before* it (edgeBefore). */
 async function fetchAllItemsAtEdge(
 	token: string,
 	listEdgeCursorBefore: string | null,
 	listNameForLogs: string,
+	gh: typeof githubGraphQL = githubGraphQL,
+	pageSize = 25,
+	dlog: (...args: unknown[]) => void = () => {},
 ): Promise<RepoInfo[]> {
 	const repos: RepoInfo[] = [];
 	let itemsAfter: string | null = null;
@@ -148,7 +212,7 @@ async function fetchAllItemsAtEdge(
 	dlog(
 		`items: start list="${listNameForLogs}" edgeBefore=${JSON.stringify(
 			listEdgeCursorBefore,
-		)} pageSize=${PAGE_SIZE}`,
+		)} pageSize=${pageSize}`,
 	);
 
 	type ListNode = ListItemsAtEdge["viewer"]["lists"]["nodes"][number];
@@ -164,13 +228,13 @@ async function fetchAllItemsAtEdge(
 			)}`,
 		);
 
-		const data: ListItemsAtEdge = await githubGraphQL<ListItemsAtEdge>(
+		const data: ListItemsAtEdge = await gh<ListItemsAtEdge>(
 			token,
 			LIST_ITEMS_AT_EDGE,
 			{
 				listAfter: listEdgeCursorBefore,
 				itemsAfter,
-				pageSize: PAGE_SIZE,
+				pageSize,
 			},
 		);
 
@@ -187,56 +251,8 @@ async function fetchAllItemsAtEdge(
 		const before = repos.length;
 
 		for (const n of items.nodes as ItemNode[]) {
-			if (!n || n.__typename !== "Repository") continue;
-
-			// DEBUG && console.log("---------PROBE: ", n.repoId)
-
-			const topics: string[] =
-				n.repositoryTopics?.nodes
-					?.map((x) => x.topic?.name)
-					.filter((s): s is string => !!s) ?? [];
-
-			repos.push({
-				repoId: n.repoId ?? null,
-				nameWithOwner: n.nameWithOwner ?? "",
-				url: n.url ?? "",
-				description: n.description ?? null,
-				homepageUrl: n.homepageUrl ?? null,
-
-				stars: n.stargazerCount ?? 0,
-				forks: n.forkCount ?? 0,
-				watchers: 0, // not selected here
-
-				openIssues: n.issues?.totalCount ?? 0,
-				openPRs: n.pullRequests?.totalCount ?? 0,
-
-				defaultBranch: n.defaultBranchRef?.name ?? null,
-				lastCommitISO:
-					(n.defaultBranchRef?.target &&
-						"committedDate" in n.defaultBranchRef.target &&
-						(n.defaultBranchRef.target as { committedDate?: string })
-							.committedDate) ??
-					undefined,
-
-				lastRelease: null, // not selected here
-				topics,
-				primaryLanguage: n.primaryLanguage?.name ?? null,
-				languages: [], // not selected here
-
-				license: n.licenseInfo?.spdxId ?? null,
-
-				isArchived: !!n.isArchived,
-				isDisabled: !!n.isDisabled,
-				isFork: !!n.isFork,
-				isMirror: !!n.isMirror,
-				hasIssuesEnabled: !!n.hasIssuesEnabled,
-
-				pushedAt: n.pushedAt ?? "",
-				updatedAt: n.updatedAt ?? "",
-				createdAt: n.createdAt ?? "",
-
-				diskUsage: null, // not selected here
-			});
+			const mapped = mapRepoNodeToRepoInfo(n);
+			if (mapped) repos.push(mapped);
 		}
 
 		dlog(
@@ -260,20 +276,21 @@ async function pMap<T, R>(
 	input: T[],
 	concurrency: number,
 	fn: (value: T, index: number) => Promise<R>,
+	logger: (...args: unknown[]) => void = () => {},
 ): Promise<R[]> {
 	const results: R[] = new Array(input.length) as R[];
 	let i = 0;
 	const workers = Array.from(
 		{ length: Math.min(concurrency, input.length) },
 		async (_, w) => {
-			dlog(`pMap: worker#${w} start`);
+			logger(`pMap: worker#${w} start`);
 			for (;;) {
 				const idx = i++;
 				if (idx >= input.length) {
-					dlog(`pMap: worker#${w} done`);
+					logger(`pMap: worker#${w} done`);
 					return;
 				}
-				dlog(`pMap: worker#${w} running index=${idx}`);
+				logger(`pMap: worker#${w} running index=${idx}`);
 				results[idx] = await fn(input[idx], idx);
 			}
 		},
@@ -285,7 +302,67 @@ async function pMap<T, R>(
 // ─────────────────────────────── public API ────────────────────────────────
 
 /** Fetch all lists and all items (fully paginated). */
-export async function getAllLists(token: string): Promise<StarList[]> {
+export async function getAllLists(
+	token: string,
+	gh: typeof githubGraphQL = githubGraphQL,
+): Promise<StarList[]> {
+	const cfg = resolveConfig();
+	const log = makeDlog(cfg.debug);
+	log("env:", {
+		DEBUG: String(cfg.debug),
+		LISTS_CONCURRENCY: String(cfg.concurrency),
+		LISTS_PAGE_SIZE: String(cfg.pageSize),
+	});
+
+	const metas = await collectListMetas(token, gh, log);
+	log(`lists: collected metas=${metas.length}, concurrency=${cfg.concurrency}`);
+	const lists: StarList[] = await pMap(
+		metas,
+		cfg.concurrency,
+		async (m, idx) => {
+			log(
+				`list#${idx}: fetch items "${m.name}" edgeBefore=${JSON.stringify(
+					m.edgeBefore,
+				)}`,
+			);
+			const repos: RepoInfo[] = await fetchAllItemsAtEdge(
+				token,
+				m.edgeBefore,
+				m.name,
+				gh,
+				cfg.pageSize,
+				log,
+			);
+			const out: StarList = {
+				listId: m.listId,
+				name: m.name,
+				description: m.description,
+				isPrivate: m.isPrivate,
+				repos,
+			};
+			return out;
+		},
+		log,
+	);
+
+	log(`lists: done, total lists=${lists.length}`);
+	return lists;
+}
+
+/** Collect all list-edge metadata across pages. */
+export async function collectListMetas(
+	token: string,
+	gh: typeof githubGraphQL = githubGraphQL,
+	dlog: (...args: unknown[]) => void = () => {},
+): Promise<
+	Array<{
+		edgeBefore: string | null;
+		listId: string;
+		name: string;
+		description: string | null;
+		isPrivate: boolean;
+	}>
+> {
 	type Meta = {
 		edgeBefore: string | null;
 		listId: string;
@@ -293,38 +370,26 @@ export async function getAllLists(token: string): Promise<StarList[]> {
 		description: string | null;
 		isPrivate: boolean;
 	};
-
-	dlog("env:", {
-		DEBUG: Bun.env.DEBUG,
-		LISTS_CONCURRENCY: String(CONCURRENCY),
-		LISTS_PAGE_SIZE: String(PAGE_SIZE),
-	});
-
 	const metas: Meta[] = [];
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
 	let pageNo = 0;
 
 	dlog("lists: begin paging metadata");
-
-	// eslint-disable-next-line no-constant-condition
-	while (true) {
+	for (;;) {
 		pageNo++;
 		dlog(`lists: query page #${pageNo} after=${JSON.stringify(after)}`);
-
-		const data: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+		const data: ListsEdgesPage = await gh<ListsEdgesPage>(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
 		);
-
 		const page = data.viewer.lists;
 		dlog(
 			`lists: page #${pageNo} edges=${page.edges.length} hasNext=${
 				page.pageInfo.hasNextPage
 			} endCursor=${JSON.stringify(page.pageInfo.endCursor)}`,
 		);
-
 		for (const edge of page.edges) {
 			metas.push({
 				edgeBefore: previousEdgeCursor,
@@ -340,35 +405,10 @@ export async function getAllLists(token: string): Promise<StarList[]> {
 			);
 			previousEdgeCursor = edge.cursor;
 		}
-
 		if (!page.pageInfo.hasNextPage) break;
 		after = page.pageInfo.endCursor;
 	}
-
-	dlog(`lists: collected metas=${metas.length}, concurrency=${CONCURRENCY}`);
-	const lists: StarList[] = await pMap(metas, CONCURRENCY, async (m, idx) => {
-		dlog(
-			`list#${idx}: fetch items "${m.name}" edgeBefore=${JSON.stringify(
-				m.edgeBefore,
-			)}`,
-		);
-		const repos: RepoInfo[] = await fetchAllItemsAtEdge(
-			token,
-			m.edgeBefore,
-			m.name,
-		);
-		const out: StarList = {
-			listId: m.listId,
-			name: m.name,
-			description: m.description,
-			isPrivate: m.isPrivate,
-			repos,
-		};
-		return out;
-	});
-
-	dlog(`lists: done, total lists=${lists.length}`);
-	return lists;
+	return metas;
 }
 
 /**
@@ -378,14 +418,17 @@ export async function getAllLists(token: string): Promise<StarList[]> {
  */
 export async function* getAllListsStream(
 	token: string,
+	gh: typeof githubGraphQL = githubGraphQL,
 ): AsyncGenerator<StarList, void, void> {
+	const cfg = resolveConfig();
+	const dlog = makeDlog(cfg.debug);
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
 
 	// Page through viewer.lists edges and yield each list as soon as we fetch its items
 	// The API uses the cursor BEFORE the desired list to select it (first:1, after: edgeBefore)
 	for (;;) {
-		const pageData: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+		const pageData: ListsEdgesPage = await gh<ListsEdgesPage>(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
@@ -405,6 +448,9 @@ export async function* getAllListsStream(
 				token,
 				meta.edgeBefore,
 				meta.name,
+				gh,
+				cfg.pageSize,
+				dlog,
 			);
 			yield {
 				listId: meta.listId,
@@ -426,7 +472,10 @@ export async function* getAllListsStream(
 export async function getReposFromList(
 	token: string,
 	listName: string,
+	gh: typeof githubGraphQL = githubGraphQL,
 ): Promise<RepoInfo[]> {
+	const cfg = resolveConfig();
+	const dlog = makeDlog(cfg.debug);
 	const target: string = listName.toLowerCase();
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
@@ -441,7 +490,7 @@ export async function getReposFromList(
 			`reposByName: query lists page #${pageNo} after=${JSON.stringify(after)}`,
 		);
 
-		const data: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+		const data: ListsEdgesPage = await gh<ListsEdgesPage>(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
@@ -457,7 +506,14 @@ export async function getReposFromList(
 			);
 			if (edge.node.name.toLowerCase() === target) {
 				dlog(`reposByName: match "${edge.node.name}" → fetch items`);
-				return fetchAllItemsAtEdge(token, previousEdgeCursor, edge.node.name);
+				return fetchAllItemsAtEdge(
+					token,
+					previousEdgeCursor,
+					edge.node.name,
+					gh,
+					cfg.pageSize,
+					dlog,
+				);
 			}
 			previousEdgeCursor = edge.cursor;
 		}

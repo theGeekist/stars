@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { db } from "@lib/db";
 import {
 	normalizeTopics,
+	reconcileRepoTopics,
 	selectStaleTopics,
 	upsertTopic,
-	reconcileRepoTopics,
 } from "./api";
-import { db } from "@lib/db";
 
 describe("topics api", () => {
 	it("normalizeTopics lowercases, hyphenates and dedupes", () => {
@@ -48,8 +48,9 @@ describe("topics api", () => {
 				`SELECT id FROM repo WHERE name_with_owner='user/topictest'`,
 			)
 			.get();
-		expect(row?.id).toBeDefined();
-		const repoId = row!.id;
+		expect(row).toBeDefined();
+		if (!row) throw new Error("test setup failed: missing repo row");
+		const repoId = row.id;
 
 		// Ensure topics exist to satisfy FK
 		upsertTopic({ topic: "alpha" });
