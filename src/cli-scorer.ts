@@ -7,13 +7,7 @@ import {
 	type ListDef,
 	type RepoFacts,
 } from "./lib/score";
-import {
-	ensureGhListIds,
-	ensureRepoGhId,
-	updateGhListsForRepo,
-	slugsToGhIds,
-	reconcileLocalListRepoBySlugs,
-} from "./lib/score_one"; // ← houses GH apply helpers for now
+import { createListsService } from "./features/lists";
 import type { RepoRow } from "./lib/types";
 import { mkdirSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -345,7 +339,7 @@ function resolveRunContext(opts: {
 
 // ---- Main -------------------------------------------------------------------
 export async function scoreBatch(args: Args): Promise<void> {
-	prepareQueries();
+    prepareQueries();
 
 	// 0) Run context (tiny + predictable)
 	const { runId, filterRunId } = resolveRunContext({
@@ -366,18 +360,19 @@ export async function scoreBatch(args: Args): Promise<void> {
 		return;
 	}
 
-	// 2) Lists to score against (unchanged)
-	const listRows = qLists.all();
-	const lists: ListDef[] = listRows.map((l) => ({
-		slug: l.slug,
-		name: l.name,
-		description: l.description ?? undefined,
-	}));
+    // 2) Lists to score against (via Lists service)
+    const listsSvc = createListsService();
+    const listRows = await listsSvc.read.getListDefs();
+    const lists: ListDef[] = listRows.map((l) => ({
+        slug: l.slug,
+        name: l.name,
+        description: l.description ?? undefined,
+    }));
 
 	// 3) Ensure GH ids once per run
-	const token = Bun.env.GITHUB_TOKEN ?? "";
-	if (!token) throw new Error("GITHUB_TOKEN not set");
-	await ensureGhListIds(token);
+    const token = Bun.env.GITHUB_TOKEN ?? "";
+    if (!token) throw new Error("GITHUB_TOKEN not set");
+    await listsSvc.apply.ensureListGhIds(token);
 
 	// 4) LLM client
 	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
@@ -417,16 +412,7 @@ export async function scoreBatch(args: Args): Promise<void> {
 		}
 
 		// Decide membership (your existing helper)
-		const currentSlugs = db
-			.query<{ slug: string }, [number]>(`
-        SELECT l.slug
-        FROM list l
-        JOIN list_repo lr ON lr.list_id = l.id
-        WHERE lr.repo_id = ?
-        ORDER BY l.name
-      `)
-			.all(r.id)
-			.map((x) => x.slug);
+        const currentSlugs = await listsSvc.read.currentMembership(r.id);
 
 		const { planned, add, remove, review } = targetSlugsFromScores(
 			currentSlugs,
@@ -480,15 +466,15 @@ export async function scoreBatch(args: Args): Promise<void> {
 		}
 
 		// Apply to GH + reconcile DB
-		try {
-			const repoGlobalId = await ensureRepoGhId(token, r.id);
-			const targetListIds = slugsToGhIds(finalPlanned);
-			await updateGhListsForRepo(token, repoGlobalId, targetListIds);
-			reconcileLocalListRepoBySlugs(r.id, finalPlanned);
-			console.log("   ✅ applied to GitHub and reconciled locally\n");
-		} catch (e) {
-			console.error("   ⚠️ apply failed:", e, "\n");
-		}
+        try {
+            const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
+            const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
+            await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
+            await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
+            console.log("   ✅ applied to GitHub and reconciled locally\n");
+        } catch (e) {
+            console.error("   ⚠️ apply failed:", e, "\n");
+        }
 	}
 }
 

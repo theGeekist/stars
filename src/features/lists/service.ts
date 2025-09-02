@@ -44,6 +44,16 @@ let qListIdBySlug = db.query<{ id: number }, [string]>(
   `SELECT id FROM list WHERE slug = ? LIMIT 1`,
 );
 
+let qListDefs = db.query<
+  { slug: string; name: string; description: string | null },
+  []
+>(`
+  SELECT slug, name, description
+  FROM list
+  WHERE slug != 'valuable-resources' AND slug != 'interesting-to-explore'
+  ORDER BY name
+`);
+
 // Mutation to update item list membership on GitHub
 const M_UPDATE_LISTS_FOR_ITEM = gql`
   mutation UpdateUserListsForItem($itemId: ID!, $listIds: [ID!]!) {
@@ -184,6 +194,7 @@ export function createListsService(): ListsService {
     read: {
       getAll: () => getAllLists(Bun.env.GITHUB_TOKEN ?? ""),
       getAllStream: () => getAllListsStream(Bun.env.GITHUB_TOKEN ?? ""),
+      getListDefs: async () => qListDefs.all(),
       getReposToScore,
       currentMembership,
       mapSlugsToGhIds,
