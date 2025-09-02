@@ -1,6 +1,6 @@
 // src/lib/summarise_batch.ts
 import { db, initSchema } from "./lib/db";
-import { Statement } from "bun:sqlite";
+import type { Statement } from "bun:sqlite";
 import { summariseRepoOneParagraph } from "./lib/summarise";
 import type { RepoRow } from "./lib/types";
 
@@ -33,10 +33,9 @@ function parseArgs(argv: string[]): Args {
 			resummarise = true;
 			continue;
 		}
-		if (a === "--slug" && argv[i + 1]) {
-			slug = argv[++i];
-			continue;
-		}
+                if (a === "--slug" && argv[i + 1]) {
+                        slug = argv[++i];
+                }
 	}
 	return { limit, dry, resummarise, slug };
 }

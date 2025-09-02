@@ -25,6 +25,7 @@
 	"scripts": {
 		"ingest": "bun run src/ingest.ts",
 		"score:one": "bun run src/lib/score_one.ts",
+		"score:batch": "bun run src/cli-scorer.ts",
 		"sum:one": "bun run src/lib/summarise.ts",
 		"sum:batch": "bun run src/cli-summarise.ts",
 		"serve": "bun run src/server.ts",
@@ -56,7 +57,9 @@
 	"dependencies": {
 		"@jasonnathan/llm-core": "^1.3.8",
 		"@llamaindex/readers": "^3.1.19",
+		"cheerio": "^1.1.2",
 		"hono": "^4.9.5",
+		"json2csv": "^6.0.0-alpha.2",
 		"llamaindex": "^0.11.28",
 		"ollama": "^0.5.17",
 		"zod": "^4.1.5",
