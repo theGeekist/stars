@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Default on-disk database (used by CLI/server).
+// Prefer using createDb() in libraries and pass DBs around for testability.
 export const db = new Database("repolists.db");
 
 function resolveSchemaPath(): string {
@@ -17,14 +19,14 @@ function resolveSchemaPath(): string {
 	throw new Error("schema.sql not found");
 }
 
-export function initSchema(): void {
+export function initSchema(database: Database = db): void {
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
-	db.exec(sql);
+	database.exec(sql);
 }
 
 // Test helpers: create new DBs with loaded schema
-export function createDb(filename = ":memory:"): Database {
+export function createDb(filename = Bun.env.DB_FILE || ":memory:"): Database {
 	const newDb = new Database(filename);
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
