@@ -3,6 +3,7 @@
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import { db, initSchema } from "@lib/db";
+import { createLogger } from "@lib/logger";
 import {
 	type ListDef,
 	type RepoFacts,
@@ -54,55 +55,55 @@ function printReport(
 		scores.map((s) => [s.list, s.score]),
 	);
 
-	console.log(`\n▶ ${repo.name_with_owner}`);
-	console.log(`   URL    : ${repo.url}`);
-	console.log(`   Lang   : ${repo.primary_language ?? "-"}`);
-	console.log(
-		`   Topics : ${parseTopics(repo.topics).slice(0, 8).join(", ") || "-"}`,
+	const log = createLogger();
+	log.header(repo.name_with_owner);
+	log.info(`URL    : ${repo.url}`);
+	log.info(`Lang   : ${repo.primary_language ?? "-"}`);
+	log.info(
+		`Topics : ${parseTopics(repo.topics).slice(0, 8).join(", ") || "-"}`,
 	);
-	console.log(
-		`   Lists (current): ${current.length ? current.join(", ") : "-"}`,
-	);
-	console.log(`   Summary: ${repo.summary}`);
+	log.info(`Lists (current): ${current.length ? current.join(", ") : "-"}`);
+	log.info(`Summary: ${repo.summary}`);
 
-	console.log("\n   Top predictions:");
+	log.info("\nTop predictions:");
 	for (const t of top) {
 		const name = mapName[t.list] ?? t.list;
-		console.log(
-			`     - ${name} (${t.list}): ${fmtScore(t.score)}${t.why ? ` - ${t.why}` : ""}`,
+		log.info(
+			`- ${name} (${t.list}): ${fmtScore(t.score)}${t.why ? ` - ${t.why}` : ""}`,
 		);
 	}
 
 	if (add.length) {
-		console.log("\n   Suggest ADD:");
+		log.info("\nSuggest ADD:");
 		for (const slug of add) {
 			const name = mapName[slug] ?? slug;
-			console.log(`     + ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+			log.info(`+ ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
 		}
 	}
 	if (remove.length) {
-		console.log("\n   Suggest REMOVE:");
+		log.info("\nSuggest REMOVE:");
 		for (const slug of remove) {
 			const name = mapName[slug] ?? slug;
-			console.log(`     - ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+			log.info(`- ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
 		}
 	}
 	if (review.length) {
-		console.log("\n   Review (ambiguous):");
+		log.info("\nReview (ambiguous):");
 		for (const slug of review) {
 			const name = mapName[slug] ?? slug;
-			console.log(`     ? ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
+			log.info(`? ${name} (${fmtScore(scoreMap.get(slug) ?? 0)})`);
 		}
 	}
-
-	console.log("\n");
+	log.line("\n");
 }
 
 async function main() {
 	initSchema(); // ensure tables exist (no schema change needed for review-only)
 	const input = Bun.argv[2];
 	if (!input) {
-		console.error("Usage: bun run src/lib/score_one.ts <owner/repo | id:123>");
+		createLogger().error(
+			"Usage: bun run src/lib/score_one.ts <owner/repo | id:123>",
+		);
 		process.exit(1);
 	}
 
@@ -141,7 +142,8 @@ async function main() {
 
 if (import.meta.main) {
 	main().catch((e) => {
-		console.error(e);
+		const log = createLogger();
+		log.error(e instanceof Error ? e.message : String(e));
 		process.exit(1);
 	});
 }

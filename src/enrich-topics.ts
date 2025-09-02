@@ -1,5 +1,6 @@
 // src/jobs/enrich-topics.ts
 import { createTopicsService } from "@features/topics/service";
+import { createLogger } from "@lib/logger";
 
 // ---- Main job ---------------------------------------------------------------
 export async function enrichAllRepoTopics(opts?: {
@@ -11,7 +12,7 @@ export async function enrichAllRepoTopics(opts?: {
 		onlyActive: opts?.onlyActive,
 		ttlDays: opts?.ttlDays,
 	});
-	console.log(
+	createLogger().success(
 		`Topics enriched: repos=${res.repos} unique_topics=${res.unique_topics} refreshed=${res.refreshed}`,
 	);
 }
@@ -25,7 +26,8 @@ if (import.meta.main) {
 			? Number(Bun.argv[ttlIdx + 1])
 			: undefined;
 
-	console.log(
+	const log = createLogger();
+	log.info(
 		`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
 	);
 	await enrichAllRepoTopics({ onlyActive, ttlDays: ttl });

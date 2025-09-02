@@ -3,6 +3,7 @@ import { db } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
+import { createLogger } from "@lib/logger";
 
 let qLists!: Statement<ListRow, []>;
 let qListBySlug!: Statement<ListDetail, [slug: string]>;
@@ -112,4 +113,4 @@ Bun.serve({
 	},
 });
 
-console.log("API → http://localhost:8787");
+createLogger().success("API → http://localhost:8787");
