@@ -4,5 +4,6 @@ dist
 .env
 *.log
 exports
+exports-test
 repolists*
 app.md
