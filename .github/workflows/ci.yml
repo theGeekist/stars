@@ -41,7 +41,15 @@ jobs:
       - name: Place badge where we want it
         run: |
           mkdir -p badges
-          mv -f coverage.svg badges/coverage.svg
+          if [ -f coverage.svg ]; then
+            mv -f coverage.svg badges/coverage.svg
+          elif [ -f coverage/coverage.svg ]; then
+            mv -f coverage/coverage.svg badges/coverage.svg
+          elif ls *.svg 1> /dev/null 2>&1; then
+            mv -f $(ls -t *.svg | head -n1) badges/coverage.svg
+          else
+            echo "No coverage badge found; skipping move"
+          fi
 
       - name: Commit coverage badge
         if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
