@@ -3,44 +3,13 @@
 import type { Statement } from "bun:sqlite";
 import { db } from "@lib/db";
 import { githubREST, jitter, sleep } from "@lib/github";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-export type RepoRef = { owner: string; name: string };
-
-export type TopicMeta = {
-	name: string;
-	displayName?: string | null;
-	shortDescription?: string | null;
-	aliases?: string[];
-	isFeatured?: boolean;
-};
-
-export type TopicRow = {
-	topic: string;
-	display_name?: string | null;
-	short_description?: string | null;
-	aliases?: string[] | null;
-	is_featured?: boolean;
-	updated_at?: string;
-	etag?: string | null;
-};
-
-// Row type for statements that don't return rows
-type NoRow = Record<string, never>;
-
-// GitHub /search/topics payload shapes
-type TopicSearchItem = {
-	name?: string;
-	display_name?: string | null;
-	short_description?: string | null;
-	description?: string | null;
-	aliases?: string[];
-	featured?: boolean;
-};
-
-type TopicSearchResponse = {
-	items?: TopicSearchItem[];
-};
+import type {
+	NoRow,
+	RepoRef,
+	TopicMeta,
+	TopicRow,
+	TopicSearchResponse,
+} from "./types";
 
 // ── Prepared statements ───────────────────────────────────────────────────────
 let uTopic!: Statement<

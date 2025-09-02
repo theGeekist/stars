@@ -161,6 +161,19 @@ export type RepoTopicLink = {
 	topic: string;
 	added_at: string; // ISO
 };
+// ────────────────────────────── config + logging ───────────────────────────
+export type ListsConfig = {
+	pageSize: number;
+	concurrency: number;
+	debug: boolean;
+}; // --- fetch + cache -----------------------------------------------------------
+/**
+ * Fetch README with ETag caching and persist:
+ * - 200: save (readme_md, readme_etag, readme_fetched_at)
+ * - 304: keep readme_md/etag, update readme_fetched_at
+ * - 404: return null (no update)
+ * - other errors: log & return cached; bump fetched_at so we know we tried
+ */
 export type FetchLike = (
 	input: RequestInfo | URL,
 	init?: RequestInit,

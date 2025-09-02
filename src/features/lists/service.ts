@@ -7,11 +7,18 @@ import {
 	Q_REPO_ID,
 } from "@lib/lists";
 import type { ListsEdgesPage, RepoRow } from "@lib/types";
-import type { BatchSelector, ListsService } from "./types";
-
-/** Binds */
-type BindLimit = [limit: number];
-type BindSlugLimit = [slug: string, limit: number];
+import type {
+	BatchSelector,
+	BindLimit,
+	BindSlugLimit,
+	ListDefRow,
+	ListIdRow,
+	ListListIdRow,
+	ListSlugRow,
+	ListsService,
+	NoRow,
+	RepoIdLookupRow,
+} from "./types";
 
 /** Mutations */
 const M_UPDATE_LISTS_FOR_ITEM = gql`
@@ -24,27 +31,6 @@ const M_UPDATE_LISTS_FOR_ITEM = gql`
     }
   }
 `;
-
-/** Local row-shapes for queries that don’t match full RepoRow */
-type ListSlugRow = { slug: string };
-type ListIdRow = { id: number };
-type ListListIdRow = { list_id: string | null };
-type ListDefRow = { slug: string; name: string; description: string | null };
-
-/** Repo row for GH id fetch: allow repo_id to be NULL in DB before we backfill */
-type RepoIdLookupRow = {
-	id: number;
-	repo_id: string | null;
-	name_with_owner: string;
-	url: string;
-	description: string | null;
-	primary_language: string | null;
-	topics: string | null;
-	summary: string | null;
-};
-
-/** Row placeholder for statements where we don’t read rows (INSERT/UPDATE/DELETE) */
-type NoRow = Record<string, never>;
 
 /** Allow injecting db and a GitHub GraphQL runner for testing */
 export function createListsService(

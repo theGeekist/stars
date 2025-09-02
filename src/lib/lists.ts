@@ -2,13 +2,12 @@
 import { githubGraphQL, gql } from "./github.js";
 import type {
 	ListItemsAtEdge,
+	ListsConfig,
 	ListsEdgesPage,
 	RepoInfo,
 	StarList,
 } from "./types.js";
 
-// ────────────────────────────── config + logging ───────────────────────────
-type ListsConfig = { pageSize: number; concurrency: number; debug: boolean };
 function resolveConfig(
 	env: Record<string, string | undefined> = Bun.env,
 ): ListsConfig {

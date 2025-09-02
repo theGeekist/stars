@@ -68,3 +68,29 @@ export type ScoringService = {
 		policy?: ApplyPolicy,
 	): PlanMembershipResult;
 };
+export type MaybeOllama =
+	| {
+			generatePromptAndSend: (
+				system: string,
+				user: string,
+				opts?: { schema?: unknown },
+			) => Promise<unknown>;
+	  }
+	| {
+			send: (
+				system: string,
+				user: string,
+				opts?: { schema?: unknown },
+			) => Promise<unknown>;
+	  }; // Prepared queries mirror current cli-scorer selection with resume filtering
+export type BindRunLimit = [
+	runIdNullCheck: number | null,
+	runIdForExists: number | null,
+	limit: number,
+];
+export type BindSlugRunLimit = [
+	slug: string,
+	runIdNullCheck: number | null,
+	runIdForExists: number | null,
+	limit: number,
+];

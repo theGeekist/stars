@@ -1,14 +1,6 @@
 import { db } from "@lib/db";
 import type { RepoRow } from "@lib/types";
-
-export type BatchSelector = {
-	limit?: number;
-	slug?: string;
-	resummarise?: boolean;
-};
-
-type BindLimit = [limit: number];
-type BindLimitSlug = [limit: number, slug: string];
+import type { BatchSelector, BindLimit, BindLimitSlug } from "./types";
 
 const qBatchDefault = db.query<RepoRow, BindLimit>(`
   SELECT id, name_with_owner, url, description, primary_language, topics,

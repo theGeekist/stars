@@ -76,7 +76,7 @@ describe("lists coverage (DEBUG paths)", () => {
 										nameWithOwner: `${name.toLowerCase()}/r`,
 										url: "u",
 										repositoryTopics: { nodes: [] },
-									} as unknown,
+									},
 								],
 							},
 						},

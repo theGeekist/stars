@@ -4,7 +4,7 @@ import type { Database } from "bun:sqlite";
 import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
 import { db as defaultDb } from "./db";
 import { ghHeaders } from "./github";
-import type { ChunkingOptions, ReadmeRow } from "./types";
+import type { ChunkingOptions, FetchLike, ReadmeRow } from "./types";
 
 // NOTE: No module-level prepared statements; use provided DB or default DB per call.
 
@@ -24,19 +24,6 @@ function headersWithAuth(etag?: string): Record<string, string> {
 	if (etag) base["If-None-Match"] = etag;
 	return base;
 }
-
-// --- fetch + cache -----------------------------------------------------------
-/**
- * Fetch README with ETag caching and persist:
- * - 200: save (readme_md, readme_etag, readme_fetched_at)
- * - 304: keep readme_md/etag, update readme_fetched_at
- * - 404: return null (no update)
- * - other errors: log & return cached; bump fetched_at so we know we tried
- */
-type FetchLike = (
-	input: RequestInfo | URL,
-	init?: RequestInit,
-) => Promise<Response>;
 
 export async function fetchReadmeWithCache(
 	repoId: number,

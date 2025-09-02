@@ -4,25 +4,14 @@ import type { RepoRow } from "@lib/types";
 import type {
 	ApplyPolicy,
 	BatchSelector,
+	BindRunLimit,
+	BindSlugRunLimit,
 	PlanMembershipResult,
 	PlanResult,
 	ResumeFlag,
 	ScoringService,
 	Thresholds,
 } from "./types";
-
-// Prepared queries mirror current cli-scorer selection with resume filtering
-type BindRunLimit = [
-	runIdNullCheck: number | null,
-	runIdForExists: number | null,
-	limit: number,
-];
-type BindSlugRunLimit = [
-	slug: string,
-	runIdNullCheck: number | null,
-	runIdForExists: number | null,
-	limit: number,
-];
 
 export function createScoringService(db = defaultDb): ScoringService {
 	const qBatchDefault = db.query<RepoRow, BindRunLimit>(`

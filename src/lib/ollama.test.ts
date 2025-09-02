@@ -1,20 +1,22 @@
+// tests/ollama.test.ts
 import { describe, expect, it } from "bun:test";
 import { gen, type OllamaLike } from "./ollama";
 
+type LastArgs = {
+	model: string;
+	prompt: string;
+	stream: false;
+	options: { temperature?: number; num_predict?: number };
+};
+
+function assertDefined<T>(v: T, msg?: string): asserts v is NonNullable<T> {
+	if (v == null) throw new Error(msg ?? "Expected value to be defined");
+}
+
 class FakeOllama implements OllamaLike {
-	public lastArgs: {
-		model: string;
-		prompt: string;
-		stream: false;
-		options: { temperature?: number; num_predict?: number };
-	} | null = null;
+	public lastArgs: LastArgs | null = null;
 	constructor(private response: string) {}
-	async generate(args: {
-		model: string;
-		prompt: string;
-		stream: false;
-		options: { temperature?: number; num_predict?: number };
-	}): Promise<{ response: string }> {
+	async generate(args: LastArgs): Promise<{ response: string }> {
 		this.lastArgs = args;
 		return { response: this.response };
 	}
@@ -29,22 +31,33 @@ describe("ollama gen", () => {
 			client,
 		);
 		expect(out).toBe("hello world");
-		expect(client.lastArgs.model).toBe("m");
-		expect(client.lastArgs.prompt).toBe("Say hi");
-		expect(client.lastArgs.stream).toBeFalse();
-		expect(client.lastArgs.options.temperature).toBe(0.7);
-		expect(client.lastArgs.options.num_predict).toBe(42);
+
+		// Narrow once, then use safely
+		assertDefined(client.lastArgs, "lastArgs not set after gen");
+		const args = client.lastArgs;
+
+		expect(args.model).toBe("m");
+		expect(args.prompt).toBe("Say hi");
+		expect(args.stream).toBeFalse();
+		expect(args.options.temperature).toBe(0.7);
+		expect(args.options.num_predict).toBe(42);
 	});
 
 	it("uses env model and defaults when opts omitted", async () => {
 		const prev = Bun.env.OLLAMA_MODEL;
 		(Bun.env as unknown as Record<string, string>).OLLAMA_MODEL = "env-model";
+
 		const client = new FakeOllama("ok");
 		const out = await gen("q", {}, client);
 		expect(out).toBe("ok");
-		expect(client.lastArgs.model).toBe("env-model");
-		expect(client.lastArgs.options.temperature).toBe(0.2);
-		expect(client.lastArgs.options.num_predict).toBeUndefined();
+
+		assertDefined(client.lastArgs, "lastArgs not set after gen");
+		const args = client.lastArgs;
+
+		expect(args.model).toBe("env-model");
+		expect(args.options.temperature).toBe(0.2);
+		expect(args.options.num_predict).toBeUndefined();
+
 		if (prev == null) {
 			delete (Bun.env as unknown as Record<string, string>).OLLAMA_MODEL;
 		} else {

@@ -1,9 +1,7 @@
 import type { Statement } from "bun:sqlite";
 import { db } from "@lib/db";
-import type { RepoRef } from "./api";
 import * as api from "./api";
-
-type RepoMini = { id: number; name_with_owner: string; is_archived: number };
+import type { Deps, RepoMini, RepoRef } from "./types";
 
 let qReposAll!: Statement<RepoMini, []>;
 let qReposActive!: Statement<RepoMini, []>;
@@ -91,15 +89,6 @@ export async function refreshStaleTopicMeta(
 	}
 	return refreshed;
 }
-
-type Deps = {
-	normalizeTopics: typeof api.normalizeTopics;
-	reconcileRepoTopics: typeof api.reconcileRepoTopics;
-	repoTopicsMany: typeof api.repoTopicsMany;
-	selectStaleTopics: typeof api.selectStaleTopics;
-	topicMetaMany: typeof api.topicMetaMany;
-	upsertTopic: typeof api.upsertTopic;
-};
 
 export function createTopicsService(deps: Partial<Deps> = {}) {
 	const {

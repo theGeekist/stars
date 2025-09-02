@@ -1,13 +1,6 @@
 import { describe, expect, it, mock } from "bun:test";
 import { summariseRepoOneParagraph } from "@features/summarise/llm";
-
-type Meta = {
-	nameWithOwner: string;
-	url: string;
-	description?: string | null;
-	primaryLanguage?: string | null;
-	topics?: string[];
-};
+import type { Meta } from "./types";
 
 describe("summariseRepoOneParagraph", () => {
 	it("short-circuits awesome lists based on metadata", async () => {

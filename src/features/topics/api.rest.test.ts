@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
-	type RepoRef,
 	repoTopicsManyUsing,
 	repoTopicsUsing,
 	topicMetaManyUsing,
 } from "./api";
+import type { RepoRef } from "./types";
 
 function fakeREST(handler: (path: string) => unknown) {
 	return (async (_token: string, path: string) => {

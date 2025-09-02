@@ -1,5 +1,6 @@
 import { OllamaService } from "@jasonnathan/llm-core";
 import { toNum } from "@lib/utils";
+import type { MaybeOllama } from "./types";
 
 /* ---------- Public types ---------- */
 
@@ -30,22 +31,6 @@ export type ScoringLLM = {
 		opts?: { schema?: unknown },
 	): Promise<unknown>;
 };
-
-type MaybeOllama =
-	| {
-			generatePromptAndSend: (
-				system: string,
-				user: string,
-				opts?: { schema?: unknown },
-			) => Promise<unknown>;
-	  }
-	| {
-			send: (
-				system: string,
-				user: string,
-				opts?: { schema?: unknown },
-			) => Promise<unknown>;
-	  };
 
 function defaultLLM(): ScoringLLM {
 	const svc = new OllamaService(
