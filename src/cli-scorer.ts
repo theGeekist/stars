@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
+import type { ScoringLLM } from "@features/scoring/llm";
 import { OllamaService } from "@jasonnathan/llm-core";
 import { db, initSchema } from "@lib/db";
 import {
@@ -106,6 +107,7 @@ function annotateHeader(r: RepoRow): string {
 export async function scoreBatchAll(
 	limit: number,
 	apply: boolean,
+	llm?: ScoringLLM,
 ): Promise<void> {
 	const log = createLogger();
 	const scoring = createScoringService();
@@ -135,9 +137,11 @@ export async function scoreBatchAll(
 
 	const token = Bun.env.GITHUB_TOKEN ?? "";
 	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
-	if (token) await listsSvc.apply.ensureListGhIds(token);
+	if (apply && token) await listsSvc.apply.ensureListGhIds(token);
 
-	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
+	const svc =
+		llm ??
+		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
 	for (const r of repos) {
 		log.header(r.name_with_owner);
@@ -236,6 +240,7 @@ export async function scoreBatchAll(
 export async function scoreOne(
 	selector: string,
 	apply: boolean,
+	llm?: ScoringLLM,
 ): Promise<void> {
 	const log = createLogger();
 	const row = db
@@ -263,9 +268,11 @@ export async function scoreOne(
 	}));
 	const token = Bun.env.GITHUB_TOKEN ?? "";
 	if (!token && apply) throw new Error("GITHUB_TOKEN not set");
-	if (token) await listsSvc.apply.ensureListGhIds(token);
+	if (apply && token) await listsSvc.apply.ensureListGhIds(token);
 
-	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
+	const svc =
+		llm ??
+		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
 	log.header(row.name_with_owner);
 	log.info("URL:", row.url);

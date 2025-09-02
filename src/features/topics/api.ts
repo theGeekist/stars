@@ -94,6 +94,15 @@ export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 	const ts = new Date().toISOString();
 
 	const tx = db.transaction(() => {
+		// Ensure topic rows exist to satisfy FK on repo_topics.topic
+		if (topics.length) {
+			const ensure = db.query<NoRow, [string, string, string]>(
+				`INSERT INTO topics (topic, display_name, short_description, aliases_json, is_featured, updated_at, etag)
+                 VALUES (?, ?, NULL, '[]', 0, ?, NULL)
+                 ON CONFLICT(topic) DO NOTHING`,
+			);
+			for (const t of topics) ensure.run(t, t, ts);
+		}
 		for (const t of topics) uRepoTopic.run(repoId, t, ts);
 
 		const placeholders = topics.length

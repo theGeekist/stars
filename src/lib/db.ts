@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 // Default on-disk database (used by CLI/server).
 // Prefer using createDb() in libraries and pass DBs around for testability.
-export const db = new Database("repolists.db");
+// Allow override via DB_FILE for integration tests.
+export const db = new Database(Bun.env.DB_FILE || "repolists.db");
 
 function resolveSchemaPath(): string {
 	const here = dirname(fileURLToPath(import.meta.url));

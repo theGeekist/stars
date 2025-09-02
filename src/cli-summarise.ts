@@ -2,7 +2,7 @@
 
 import { createSummariseService } from "@features/summarise/service";
 import { db, initSchema } from "@lib/db";
-import { summariseRepoOneParagraph } from "@lib/summarise";
+import { summariseRepoOneParagraph, type SummariseDeps } from "@lib/summarise";
 import { createLogger } from "@lib/logger";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import type { RepoRow } from "@lib/types";
@@ -75,6 +75,7 @@ function annotateHeader(r: RepoRow): string {
 export async function summariseBatchAll(
 	limit: number,
 	apply: boolean,
+	deps?: SummariseDeps,
 ): Promise<void> {
 	const log = createLogger();
 	const svc = createSummariseService();
@@ -91,19 +92,22 @@ export async function summariseBatchAll(
 		log.info("Lang:", r.primary_language ?? "-");
 		log.info("--- generating summary ...");
 
-		const paragraph = await summariseRepoOneParagraph({
-			repoId: r.id,
-			nameWithOwner: r.name_with_owner,
-			url: r.url,
-			description: r.description,
-			primaryLanguage: r.primary_language ?? undefined,
-			topics: parseStringArray(r.topics),
-			metrics: {
-				popularity: r.popularity ?? 0,
-				freshness: r.freshness ?? 0,
-				activeness: r.activeness ?? 0,
+		const paragraph = await summariseRepoOneParagraph(
+			{
+				repoId: r.id,
+				nameWithOwner: r.name_with_owner,
+				url: r.url,
+				description: r.description,
+				primaryLanguage: r.primary_language ?? undefined,
+				topics: parseStringArray(r.topics),
+				metrics: {
+					popularity: r.popularity ?? 0,
+					freshness: r.freshness ?? 0,
+					activeness: r.activeness ?? 0,
+				},
 			},
-		});
+			deps,
+		);
 
 		log.line("\n" + paragraph);
 		log.info(`(${wc(paragraph)} words)`);
@@ -120,6 +124,7 @@ export async function summariseBatchAll(
 export async function summariseOne(
 	selector: string,
 	apply: boolean,
+	deps?: SummariseDeps,
 ): Promise<void> {
 	const log = createLogger();
 	const row = db
@@ -140,19 +145,22 @@ export async function summariseOne(
 	log.info("Lang:", row.primary_language ?? "-");
 	log.info("--- generating summary ...");
 
-	const paragraph = await summariseRepoOneParagraph({
-		repoId: row.id,
-		nameWithOwner: row.name_with_owner,
-		url: row.url,
-		description: row.description,
-		primaryLanguage: row.primary_language ?? undefined,
-		topics: parseStringArray(row.topics),
-		metrics: {
-			popularity: row.popularity ?? 0,
-			freshness: row.freshness ?? 0,
-			activeness: row.activeness ?? 0,
+	const paragraph = await summariseRepoOneParagraph(
+		{
+			repoId: row.id,
+			nameWithOwner: row.name_with_owner,
+			url: row.url,
+			description: row.description,
+			primaryLanguage: row.primary_language ?? undefined,
+			topics: parseStringArray(row.topics),
+			metrics: {
+				popularity: row.popularity ?? 0,
+				freshness: row.freshness ?? 0,
+				activeness: row.activeness ?? 0,
+			},
 		},
-	});
+		deps,
+	);
 
 	log.line("\n" + paragraph);
 	log.info(`(${wc(paragraph)} words)`);
