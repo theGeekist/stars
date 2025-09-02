@@ -12,6 +12,7 @@ import type { RepoRow } from "./lib/types";
 import { mkdirSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseStringArray, formatNum } from "./lib/utils";
+import { createScoringService } from "./features/scoring";
 
 initSchema();
 
@@ -341,19 +342,18 @@ function resolveRunContext(opts: {
 export async function scoreBatch(args: Args): Promise<void> {
     prepareQueries();
 
-	// 0) Run context (tiny + predictable)
-	const { runId, filterRunId } = resolveRunContext({
-		dry: args.dry,
-		notes: args.notes,
-		resume: args.resume,
-	});
+    const scoring = createScoringService();
+    // 0) Run context (tiny + predictable)
+    const { runId, filterRunId } = scoring.resolveRunContext({
+        dry: args.dry,
+        notes: args.notes,
+        resume: args.resume,
+    });
 	if (runId) console.log(`model_run id=${runId}`);
 	else console.log("dry run (no model_run row created)");
 
 	// 1) Select repos AFTER we know the filter
-	const repos = args.slug
-		? qBatchBySlug.all(args.slug, filterRunId, args.limit)
-		: qBatchDefault.all(filterRunId, args.limit);
+    const repos = scoring.selectRepos({ limit: args.limit, listSlug: args.slug }, filterRunId);
 
 	if (!repos.length) {
 		console.log("No repos matched the criteria.");
@@ -402,23 +402,22 @@ export async function scoreBatch(args: Args): Promise<void> {
 		}
 
 		// Persist scores (UPSERT makes this resume-safe)
-		if (runId != null) {
-			for (const s of result.scores) {
-				iScore.run(runId, r.id, s.list, s.score, s.why ?? null);
-			}
-			console.log("   ✓ saved scores");
-		} else {
-			console.log("   • dry run (not saved)");
-		}
+        if (runId != null) {
+            scoring.persistScores(runId, r.id, result.scores);
+            console.log("   ✓ saved scores");
+        } else {
+            console.log("   • dry run (not saved)");
+        }
 
 		// Decide membership (your existing helper)
         const currentSlugs = await listsSvc.read.currentMembership(r.id);
 
-		const { planned, add, remove, review } = targetSlugsFromScores(
-			currentSlugs,
-			result.scores,
-			PRESERVE_SLUGS,
-		);
+        const { planned, add, remove, review } = scoring.planTargets(currentSlugs, result.scores, {
+            addBySlug: ADD_THRESHOLDS,
+            defaultAdd: DEFAULT_ADD,
+            remove: REMOVE_THRESHOLD,
+            preserve: PRESERVE_SLUGS,
+        });
 
 		if (add.length) console.log("   Suggest ADD   :", add.join(", "));
 		if (remove.length) console.log("   Suggest REMOVE:", remove.join(", "));
