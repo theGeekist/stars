@@ -15,8 +15,8 @@ gk-stars
 Usage:
   gk-stars lists [--json] [--out <file>] [--dir <folder>]
   gk-stars repos --list <name> [--json]
-  gk-stars score (--one <owner/repo> | --all [--limit N]) [--apply]
-  gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--apply]
+  gk-stars score (--one <owner/repo> | --all [--limit N]) [--dry]
+  gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]
   gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)
   gk-stars topics:enrich [--active] [--ttl <days>]
 
@@ -72,6 +72,7 @@ async function main(argv: string[]) {
 			let resume: number | "last" | undefined;
 			let notes: string | undefined;
 			let fresh = false;
+			let dry = s.dry;
 			for (let i = 1; i < args.length; i++) {
 				const a = args[i];
 				if (a === "--resume" && args[i + 1]) {
@@ -90,24 +91,25 @@ async function main(argv: string[]) {
 				}
 				if (a === "--fresh" || a === "--from-scratch") {
 					fresh = true;
+					continue;
+				}
+				if (a === "--dry") {
+					dry = true;
 				}
 			}
+			const apply = s.apply || !dry;
 			if (s.mode === "one") {
 				if (!s.one) {
 					log.error("--one requires a value");
 					process.exit(1);
 				}
-				await scoreOne(s.one, s.apply);
+				await scoreOne(s.one, apply);
 			} else {
 				const limit = Math.max(1, s.limit ?? 999999999);
 				log.info(
-					`Score --all limit=${limit} apply=${s.apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+					`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
 				);
-				await scoreBatchAll(limit, s.apply, undefined, {
-					resume,
-					notes,
-					fresh,
-				});
+				await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
 			}
 			return;
 		}
@@ -116,22 +118,25 @@ async function main(argv: string[]) {
 		case "summarize": {
 			const s = parseSimpleArgs(argv);
 			let resummarise = false;
+			let dry = s.dry;
 			for (let i = 1; i < args.length; i++) {
 				const a = args[i];
 				if (a === "--resummarise" || a === "--resummarize") resummarise = true;
+				if (a === "--dry") dry = true;
 			}
+			const apply = s.apply || !dry;
 			if (s.mode === "one") {
 				if (!s.one) {
 					log.error("--one requires a value");
 					process.exit(1);
 				}
-				await summariseOne(s.one, s.apply);
+				await summariseOne(s.one, apply);
 			} else {
 				const limit = Math.max(1, s.limit ?? 999999999);
 				log.info(
-					`Summarise --all limit=${limit} apply=${s.apply}${resummarise ? " resummarise=true" : ""}`,
+					`Summarise --all limit=${limit} apply=${apply}${resummarise ? " resummarise=true" : ""}`,
 				);
-				await summariseBatchAll(limit, s.apply, undefined, { resummarise });
+				await summariseBatchAll(limit, apply, undefined, { resummarise });
 			}
 			return;
 		}

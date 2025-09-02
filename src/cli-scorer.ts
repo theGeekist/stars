@@ -367,6 +367,7 @@ if (import.meta.main) {
 	let resume: number | "last" | undefined;
 	let notes: string | undefined;
 	let fresh = false;
+	let dry = s.dry;
 	for (let i = 0; i < rest.length; i++) {
 		const a = rest[i];
 		if (a === "--resume" && rest[i + 1]) {
@@ -385,6 +386,10 @@ if (import.meta.main) {
 		}
 		if (a === "--fresh" || a === "--from-scratch") {
 			fresh = true;
+			continue;
+		}
+		if (a === "--dry") {
+			dry = true;
 		}
 	}
 
@@ -394,12 +399,14 @@ if (import.meta.main) {
 			log.line(SIMPLE_USAGE);
 			process.exit(1);
 		}
-		await scoreOne(s.one, s.apply);
+		const apply = s.apply || !dry;
+		await scoreOne(s.one, apply);
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
+		const apply = s.apply || !dry;
 		log.info(
-			`Score --all limit=${limit} apply=${s.apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
 		);
-		await scoreBatchAll(limit, s.apply, undefined, { resume, notes, fresh });
+		await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
 	}
 }

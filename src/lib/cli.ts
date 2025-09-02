@@ -5,7 +5,8 @@ export type SimpleArgs = {
 	mode: "one" | "all";
 	one?: string; // repo selector (e.g., name_with_owner)
 	limit?: number; // cap when cycling all
-	apply: boolean; // whether to write/apply side-effects
+	apply: boolean; // legacy: explicit apply flag
+	dry: boolean; // when true, no persistence/side-effects
 };
 
 export function parseSimpleArgs(argv: string[]): SimpleArgs {
@@ -13,6 +14,7 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 	let one: string | undefined;
 	let limit: number | undefined;
 	let apply = false;
+	let dry = false;
 
 	for (let i = 2; i < argv.length; i++) {
 		const a = argv[i];
@@ -29,9 +31,8 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 			limit = Number(argv[++i]);
 			continue;
 		}
-		if (a === "--apply") {
-			apply = true;
-		}
+		if (a === "--apply") apply = true;
+		if (a === "--dry") dry = true;
 	}
 
 	if (!mode) {
@@ -39,15 +40,15 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 		mode = "all";
 	}
 
-	return { mode, one, limit, apply };
+	return { mode, one, limit, apply, dry };
 }
 
 export const SIMPLE_USAGE = `
 Usage (simplified):
-  --one <name_with_owner> [--apply]
-  --all [--limit N] [--apply]
+  --one <name_with_owner> [--dry]
+  --all [--limit N] [--dry]
 
 Notes:
   - Default mode is --all
-  - Use --apply to persist or call external APIs
+  - Writes/side-effects happen by default; pass --dry to preview only
 `;

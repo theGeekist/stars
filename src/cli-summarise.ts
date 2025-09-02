@@ -178,9 +178,11 @@ if (import.meta.main) {
 	const s = parseSimpleArgs(Bun.argv);
 	const rest = Bun.argv.slice(3);
 	let resummarise = false;
+	let dry = s.dry;
 	for (let i = 0; i < rest.length; i++) {
 		const a = rest[i];
 		if (a === "--resummarise" || a === "--resummarize") resummarise = true;
+		if (a === "--dry") dry = true;
 	}
 
 	if (s.mode === "one") {
@@ -189,12 +191,14 @@ if (import.meta.main) {
 			log.line(SIMPLE_USAGE);
 			process.exit(1);
 		}
-		await summariseOne(s.one, s.apply);
+		const apply = s.apply || !dry;
+		await summariseOne(s.one, apply);
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
+		const apply = s.apply || !dry;
 		log.info(
-			`Summarise --all limit=${limit} apply=${s.apply}${resummarise ? " resummarise=true" : ""}`,
+			`Summarise --all limit=${limit} apply=${apply}${resummarise ? " resummarise=true" : ""}`,
 		);
-		await summariseBatchAll(limit, s.apply, undefined, { resummarise });
+		await summariseBatchAll(limit, apply, undefined, { resummarise });
 	}
 }
