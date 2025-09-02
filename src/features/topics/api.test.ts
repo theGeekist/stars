@@ -5,6 +5,8 @@ import {
 	reconcileRepoTopics,
 	selectStaleTopics,
 	upsertTopic,
+	upsertTopicAliases,
+	upsertTopicRelated,
 } from "./api";
 
 describe("topics api", () => {
@@ -26,7 +28,7 @@ describe("topics api", () => {
 			topic: "ttl-test",
 			display_name: "TTL Test",
 			short_description: "desc",
-			aliases: ["tt"],
+			long_description_md: "long body",
 			is_featured: false,
 		});
 
@@ -37,6 +39,29 @@ describe("topics api", () => {
 		// Force staleness by using negative TTL
 		stale = selectStaleTopics(JSON.stringify(["ttl-test"]), -1);
 		expect(stale.find((r) => r.topic === "ttl-test")).toBeDefined();
+	});
+
+	it("upsertTopicAliases and upsertTopicRelated persist rows", () => {
+		// Ensure topic exists
+		upsertTopic({ topic: "alpha" });
+		upsertTopic({ topic: "rss" });
+
+		upsertTopicAliases("alpha", ["a", "alpha"]); // self-alias ignored
+		upsertTopicRelated("alpha", ["alpha", "rss"]); // self-related ignored
+
+		const aliases = db
+			.query<{ alias: string; topic: string }, []>(
+				"SELECT alias, topic FROM topic_alias ORDER BY alias",
+			)
+			.all();
+		expect(aliases).toEqual([{ alias: "a", topic: "alpha" }]);
+
+		const related = db
+			.query<{ a: string; b: string }, []>(
+				"SELECT a, b FROM topic_related ORDER BY a, b",
+			)
+			.all();
+		expect(related).toEqual([{ a: "alpha", b: "rss" }]);
 	});
 
 	it("reconcileRepoTopics makes mapping exact for a repo", () => {
