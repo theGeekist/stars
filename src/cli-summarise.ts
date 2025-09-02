@@ -1,8 +1,8 @@
 // src/lib/summarise_batch.ts
-import { db, initSchema } from "./lib/db";
-import type { Statement } from "bun:sqlite";
+import { initSchema } from "./lib/db";
 import { summariseRepoOneParagraph } from "./lib/summarise";
 import type { RepoRow } from "./lib/types";
+import { createSummariseService } from "./features/summarise/service";
 
 initSchema();
 // ---- CLI args ---------------------------------------------------------------
@@ -40,63 +40,7 @@ function parseArgs(argv: string[]): Args {
 	return { limit, dry, resummarise, slug };
 }
 
-export type BindLimit = [limit: number];
-export type BindLimitSlug = [limit: number, slug: string];
-
-// ---- Prepared queries --------------------------------------------------------
-let qBatchDefault!: Statement<RepoRow, BindLimit>;
-let qBatchBySlug!: Statement<RepoRow, BindLimitSlug>;
-let qBatchDefaultRe!: Statement<RepoRow, BindLimit>;
-let qBatchBySlugRe!: Statement<RepoRow, BindLimitSlug>;
-let uSummary!: Statement<unknown, [summary: string, id: number]>;
-
-function prepareQueries(): void {
-	// Missing summary
-	qBatchDefault = db.query<RepoRow, BindLimit>(`
-    SELECT id, name_with_owner, url, description, primary_language, topics,
-           stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
-    FROM repo
-    WHERE summary IS NULL
-    ORDER BY popularity DESC NULLS LAST, freshness DESC NULLS LAST
-    LIMIT ?
-  `);
-
-	// Missing summary, restricted to list slug
-	qBatchBySlug = db.query<RepoRow, BindLimitSlug>(`
-    SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
-           r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
-    FROM repo r
-    JOIN list_repo lr ON lr.repo_id = r.id
-    JOIN list l ON l.id = lr.list_id
-    WHERE r.summary IS NULL AND l.slug = ?
-    ORDER BY r.popularity DESC NULLS LAST, r.freshness DESC NULLS LAST
-    LIMIT ?
-  `);
-
-	// Re-summarise (ignore summary IS NULL)
-	qBatchDefaultRe = db.query<RepoRow, BindLimit>(`
-    SELECT id, name_with_owner, url, description, primary_language, topics,
-           stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
-    FROM repo
-    ORDER BY popularity DESC NULLS LAST, freshness DESC NULLS LAST
-    LIMIT ?
-  `);
-
-	qBatchBySlugRe = db.query<RepoRow, BindLimitSlug>(`
-    SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
-           r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
-    FROM repo r
-    JOIN list_repo lr ON lr.repo_id = r.id
-    JOIN list l ON l.id = lr.list_id
-    WHERE l.slug = ?
-    ORDER BY r.popularity DESC NULLS LAST, r.freshness DESC NULLS LAST
-    LIMIT ?
-  `);
-
-	uSummary = db.query<unknown, [string, number]>(`
-    UPDATE repo SET summary = ? WHERE id = ?
-  `);
-}
+// No local prepared queries — handled by summarise service
 
 // ---- Helpers ----------------------------------------------------------------
 function parseStringArray(jsonText: string | null): string[] {
@@ -159,15 +103,12 @@ function annotateHeader(r: RepoRow): string {
 
 // ---- Main -------------------------------------------------------------------
 export async function summariseBatch(args: Args): Promise<void> {
-	prepareQueries();
-
-	const rows = args.slug
-		? args.resummarise
-			? qBatchBySlugRe.all(args.limit, args.slug)
-			: qBatchBySlug.all(args.limit, args.slug)
-		: args.resummarise
-			? qBatchDefaultRe.all(args.limit)
-			: qBatchDefault.all(args.limit);
+	const svc = createSummariseService();
+	const rows = svc.selectRepos({
+		limit: args.limit,
+		slug: args.slug,
+		resummarise: args.resummarise,
+	});
 
 	if (!rows.length) {
 		console.log("No repos matched the criteria.");
@@ -196,7 +137,7 @@ export async function summariseBatch(args: Args): Promise<void> {
 		console.log(`\n${paragraph}\n(${wc(paragraph)} words)\n`);
 
 		if (!args.dry) {
-			uSummary.run(paragraph, r.id);
+			svc.saveSummary(r.id, paragraph);
 			console.log("   ✓ saved to repo.summary\n");
 		} else {
 			console.log("   • dry run (not saved)\n");
