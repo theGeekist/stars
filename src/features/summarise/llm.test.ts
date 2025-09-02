@@ -36,4 +36,48 @@ describe("summariseRepoOneParagraph", () => {
 		const out = await summariseRepoOneParagraph(meta as any);
 		expect(out).toContain("project");
 	});
+
+	it("uses embedding path with chunk selection (mocked)", async () => {
+		// Mock readme with long content and chunker returning many chunks
+		mock.module("@lib/readme", () => ({
+			fetchReadmeWithCache: async () => "X".repeat(26000),
+			cleanMarkdown: (s: string) => s + "\nIntro\n",
+			chunkMarkdown: (_: string) => [
+				"chunk one about purpose",
+				"chunk two about arch",
+				"chunk three about features",
+				"chunk four",
+				"chunk five",
+				"chunk six",
+				"chunk seven",
+			],
+		}));
+		// Provide a deterministic embedding client
+		const embed = {
+			async embedTexts(texts: string[]) {
+				// If it's the query (length 1), return a simple vector
+				if (texts.length === 1) return [[1, 0, 0]];
+				// For chunks, craft vectors so later chunks get slightly lower similarity
+				return texts.map((_, i) => [1 - i * 0.01, 0, 0]);
+			},
+		};
+		// Mock gen to return bullets for map and a final paragraph for reduce
+		mock.module("@lib/ollama", () => ({
+			gen: async (prompt: string) =>
+				prompt.includes("Bullets:")
+					? "Final paragraph."
+					: "- insight\n- detail",
+		}));
+
+		const meta = {
+			nameWithOwner: "owner/repo",
+			url: "https://example.com",
+			description: "lib",
+			topics: ["x"],
+		} as any;
+
+		const out = await summariseRepoOneParagraph(meta, { embed });
+		expect(typeof out).toBe("string");
+		expect(out.length).toBeGreaterThan(0);
+	});
 });
