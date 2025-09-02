@@ -32,12 +32,17 @@ function headersWithAuth(etag?: string): Record<string, string> {
  * - 404: return null (no update)
  * - other errors: log & return cached; bump fetched_at so we know we tried
  */
+type FetchLike = (
+	input: RequestInfo | URL,
+	init?: RequestInit,
+) => Promise<Response>;
+
 export async function fetchReadmeWithCache(
 	repoId: number,
 	nameWithOwner: string,
 	maxBytes = 200_000,
 	forceRefresh = false,
-	fetchImpl?: typeof fetch,
+	fetchImpl?: FetchLike,
 	database?: Database,
 ): Promise<string | null> {
 	const [owner, repo] = nameWithOwner.split("/");
@@ -140,7 +145,7 @@ export async function fetchAndChunkReadmeCached(
 	repoId: number,
 	nameWithOwner: string,
 	options?: ChunkingOptions,
-	fetchImpl?: typeof fetch,
+	fetchImpl?: FetchLike,
 	database?: Database,
 ): Promise<string[]> {
 	const raw = await fetchReadmeWithCache(
@@ -261,14 +266,25 @@ export async function selectInformativeChunks(
 }
 
 /** One-shot classifier to decide summarisation mode + curated chunks */
-export async function prepareReadmeForSummary(opts: {
-	repoId: number;
-	nameWithOwner: string;
-	description?: string | null;
-	topics?: string[];
-	embed: (texts: string[]) => Promise<number[][]>;
-}) {
-	const raw = await fetchReadmeWithCache(opts.repoId, opts.nameWithOwner);
+export async function prepareReadmeForSummary(
+	opts: {
+		repoId: number;
+		nameWithOwner: string;
+		description?: string | null;
+		topics?: string[];
+		embed: (texts: string[]) => Promise<number[][]>;
+	},
+	fetchImpl?: FetchLike,
+	database?: Database,
+) {
+	const raw = await fetchReadmeWithCache(
+		opts.repoId,
+		opts.nameWithOwner,
+		undefined,
+		false,
+		fetchImpl,
+		database,
+	);
 	if (!raw) {
 		return { mode: "no-readme" as const, chunks: [] as SelectedChunk[] };
 	}
