@@ -25,6 +25,7 @@ function usage(): void {
 		"gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]",
 		"gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)",
 		"gk-stars topics:enrich [--active] [--ttl <days>]",
+		"gk-stars topics:report [--missing] [--recent] [--json] [--full]",
 		"gk-stars setup  # generate prompts.yaml from your GitHub lists",
 	]);
 	log.line("");

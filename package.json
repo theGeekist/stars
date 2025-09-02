@@ -35,13 +35,13 @@
 		"types": "tsc -p tsconfig.json --noEmit",
 		"check": "bun run types && echo '✓ typecheck ok'",
 		"start": "bun run src/cli.ts",
-		"build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outfile dist/cli.js && mkdir -p dist/features/setup && cp src/features/setup/.prompts.tmpl.yaml dist/features/setup/.prompts.tmpl.yaml",
+		"build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist && mkdir -p dist/features/setup && cp src/features/setup/.prompts.tmpl.yaml dist/features/setup/.prompts.tmpl.yaml",
 		"prepare": "husky",
 		"prepublishOnly": "bun run build",
 		"test": "bun test src/features src/lib",
 		"coverage": "bun --coverage test src/features src/lib",
-		"lint": "biome check .",
-		"format": "biome format --write ."
+		"lint": "biome check src tests",
+		"format": "biome format --write src tests README.md"
 	},
 	"engines": {
 		"bun": ">=1.1.0"
