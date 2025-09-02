@@ -1,1 +1,2 @@
-export * from "@lib/topics";
+export * from "./api";
+export * from "./service";

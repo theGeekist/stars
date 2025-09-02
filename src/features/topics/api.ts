@@ -1,7 +1,7 @@
-// src/lib/topics.ts
-import { db } from "./db";
+// src/features/topics/api.ts
+import { db } from "@lib/db";
 import type { Statement } from "bun:sqlite";
-import { githubREST, sleep, jitter } from "./github";
+import { githubREST, sleep, jitter } from "@lib/github";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type RepoRef = { owner: string; name: string };
@@ -24,7 +24,7 @@ export type TopicRow = {
 	etag?: string | null;
 };
 
-// ── Prepared statements (positional binds, same style as summarise_batch) ─────
+// ── Prepared statements ───────────────────────────────────────────────────────
 let uTopic!: Statement<
 	unknown,
 	[
@@ -101,7 +101,6 @@ export function upsertRepoTopics(repoId: number, topics: string[]): void {
 	tx();
 }
 
-/** Make mapping exact: keep only provided topics for repoId */
 export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 	prepare();
 	const ts = new Date().toISOString();
@@ -120,7 +119,6 @@ export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 	tx();
 }
 
-/** Return {topic} rows that are missing or older than ttlDays, from a JSON universe */
 export function selectStaleTopics(
 	universeJson: string,
 	ttlDays: number,
@@ -154,7 +152,9 @@ export async function repoTopics(
 	const json = await githubREST<{ names?: string[] }>(
 		token,
 		`/repos/${owner}/${name}/topics`,
-		{ acceptPreview: true },
+		{
+			acceptPreview: true,
+		},
 	);
 	return normalizeTopics(json.names ?? []);
 }

@@ -8,7 +8,7 @@ import {
 	topicMetaMany,
 	normalizeTopics,
 	type RepoRef,
-} from "@lib/topics";
+} from "./api";
 
 type RepoMini = { id: number; name_with_owner: string; is_archived: number };
 
