@@ -52,11 +52,12 @@ export async function enrichAllRepoTopics(opts?: {
 	}
 
 	const token = Bun.env.GITHUB_TOKEN!;
-    const refs: RepoRef[] = rows.map((r) => {
-        const [owner, name] = (r.name_with_owner || "").split("/");
-        if (!owner || !name) throw new Error(`Invalid name_with_owner: ${r.name_with_owner}`);
-        return { owner, name };
-    });
+	const refs: RepoRef[] = rows.map((r) => {
+		const [owner, name] = (r.name_with_owner || "").split("/");
+		if (!owner || !name)
+			throw new Error(`Invalid name_with_owner: ${r.name_with_owner}`);
+		return { owner, name };
+	});
 
 	// 1) Fetch per-repo topics
 	const topicsByRepo = await repoTopicsMany(token, refs, {
@@ -65,12 +66,12 @@ export async function enrichAllRepoTopics(opts?: {
 
 	// 2) Persist mapping + collect unique universe
 	const universe = new Set<string>();
-    for (const r of rows) {
-        const key = r.name_with_owner;
-        const ts = normalizeTopics(topicsByRepo.get(key) ?? []);
-        reconcileRepoTopics(r.id, ts);
-        ts.forEach((t) => universe.add(t));
-    }
+	for (const r of rows) {
+		const key = r.name_with_owner;
+		const ts = normalizeTopics(topicsByRepo.get(key) ?? []);
+		reconcileRepoTopics(r.id, ts);
+		ts.forEach((t) => universe.add(t));
+	}
 
 	// 3) Figure out which topics need metadata (missing or TTL-expired)
 	const stale = selectStaleTopics(JSON.stringify([...universe]), ttlDays).map(

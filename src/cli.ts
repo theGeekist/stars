@@ -15,7 +15,11 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { RepoInfo, StarList } from "./lib/types.js";
-import { getAllLists, getAllListsStream, getReposFromList } from "./lib/lists.js";
+import {
+	getAllLists,
+	getAllListsStream,
+	getReposFromList,
+} from "./lib/lists.js";
 import type { Parsed, Command } from "./types.js";
 
 const USAGE = `geek-stars

@@ -377,45 +377,49 @@ export async function getAllLists(token: string): Promise<StarList[]> {
  * does not accumulate them in memory. Order matches GitHub pagination.
  */
 export async function* getAllListsStream(
-  token: string,
+	token: string,
 ): AsyncGenerator<StarList, void, void> {
-  let after: string | null = null;
-  let previousEdgeCursor: string | null = null;
+	let after: string | null = null;
+	let previousEdgeCursor: string | null = null;
 
-  // Page through viewer.lists edges and yield each list as soon as we fetch its items
-  // The API uses the cursor BEFORE the desired list to select it (first:1, after: edgeBefore)
-  for (;;) {
-    const pageData: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
-      token,
-      LISTS_EDGES_PAGE,
-      { after },
-    );
-    const edges = pageData.viewer.lists.edges;
+	// Page through viewer.lists edges and yield each list as soon as we fetch its items
+	// The API uses the cursor BEFORE the desired list to select it (first:1, after: edgeBefore)
+	for (;;) {
+		const pageData: ListsEdgesPage = await githubGraphQL<ListsEdgesPage>(
+			token,
+			LISTS_EDGES_PAGE,
+			{ after },
+		);
+		const edges = pageData.viewer.lists.edges;
 
-    for (const edge of edges) {
-      const meta = {
-        edgeBefore: previousEdgeCursor,
-        listId: edge.node.listId,
-        name: edge.node.name,
-        description: edge.node.description ?? null,
-        isPrivate: edge.node.isPrivate,
-      };
+		for (const edge of edges) {
+			const meta = {
+				edgeBefore: previousEdgeCursor,
+				listId: edge.node.listId,
+				name: edge.node.name,
+				description: edge.node.description ?? null,
+				isPrivate: edge.node.isPrivate,
+			};
 
-      const repos = await fetchAllItemsAtEdge(token, meta.edgeBefore, meta.name);
-      yield {
-        listId: meta.listId,
-        name: meta.name,
-        description: meta.description ?? undefined,
-        isPrivate: meta.isPrivate,
-        repos,
-      };
+			const repos = await fetchAllItemsAtEdge(
+				token,
+				meta.edgeBefore,
+				meta.name,
+			);
+			yield {
+				listId: meta.listId,
+				name: meta.name,
+				description: meta.description ?? undefined,
+				isPrivate: meta.isPrivate,
+				repos,
+			};
 
-      previousEdgeCursor = edge.cursor;
-    }
+			previousEdgeCursor = edge.cursor;
+		}
 
-    if (!pageData.viewer.lists.pageInfo.hasNextPage) break;
-    after = pageData.viewer.lists.pageInfo.endCursor;
-  }
+		if (!pageData.viewer.lists.pageInfo.hasNextPage) break;
+		after = pageData.viewer.lists.pageInfo.endCursor;
+	}
 }
 
 /** Fetch repos for a specific list by name (case-insensitive), fully paginated. */
