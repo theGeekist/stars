@@ -1,28 +1,52 @@
 import { db as defaultDb } from "@lib/db";
-import type { RepoRow, StarList, ListsEdgesPage } from "@lib/types";
+import { githubGraphQL, gql } from "@lib/github";
 import {
 	getAllLists,
 	getAllListsStream,
 	LISTS_EDGES_PAGE,
 	Q_REPO_ID,
 } from "@lib/lists";
-import { githubGraphQL, gql } from "@lib/github";
-import type { ListsService, BatchSelector } from "./types";
+import type { ListsEdgesPage, RepoRow } from "@lib/types";
+import type { BatchSelector, ListsService } from "./types";
 
-// Prepared queries scoped to the Lists feature
+/** Binds */
 type BindLimit = [limit: number];
 type BindSlugLimit = [slug: string, limit: number];
 
-// Mutation to update item list membership on GitHub
+/** Mutations */
 const M_UPDATE_LISTS_FOR_ITEM = gql`
   mutation UpdateUserListsForItem($itemId: ID!, $listIds: [ID!]!) {
     updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
-      lists { id name }
+      lists {
+        id
+        name
+      }
     }
   }
 `;
 
-// Allow injecting db and a GitHub GraphQL runner for testing
+/** Local row-shapes for queries that don’t match full RepoRow */
+type ListSlugRow = { slug: string };
+type ListIdRow = { id: number };
+type ListListIdRow = { list_id: string | null };
+type ListDefRow = { slug: string; name: string; description: string | null };
+
+/** Repo row for GH id fetch: allow repo_id to be NULL in DB before we backfill */
+type RepoIdLookupRow = {
+	id: number;
+	repo_id: string | null;
+	name_with_owner: string;
+	url: string;
+	description: string | null;
+	primary_language: string | null;
+	topics: string | null;
+	summary: string | null;
+};
+
+/** Row placeholder for statements where we don’t read rows (INSERT/UPDATE/DELETE) */
+type NoRow = Record<string, never>;
+
+/** Allow injecting db and a GitHub GraphQL runner for testing */
 export function createListsService(
 	db = defaultDb,
 	ghGraphQL: <T>(
@@ -50,7 +74,7 @@ export function createListsService(
     LIMIT ?
   `);
 
-	const qCurrentMembership = db.query<{ slug: string }, [number]>(`
+	const qCurrentMembership = db.query<ListSlugRow, [number]>(`
     SELECT l.slug
     FROM list l
     JOIN list_repo lr ON lr.list_id = l.id
@@ -58,19 +82,17 @@ export function createListsService(
     ORDER BY l.name
   `);
 
-	const qListIdBySlug = db.query<{ id: number }, [string]>(
+	const qListIdBySlug = db.query<ListIdRow, [string]>(
 		`SELECT id FROM list WHERE slug = ? LIMIT 1`,
 	);
 
-	const qListDefs = db.query<
-		{ slug: string; name: string; description: string | null },
-		[]
-	>(`
+	const qListDefs = db.query<ListDefRow, []>(`
     SELECT slug, name, description
     FROM list
     WHERE slug != 'valuable-resources' AND slug != 'interesting-to-explore'
     ORDER BY name
   `);
+
 	async function getReposToScore(sel: BatchSelector): Promise<RepoRow[]> {
 		const limit = Math.max(1, Number(sel.limit ?? 10));
 		if (sel.listSlug) return qReposBySlug.all(sel.listSlug, limit);
@@ -84,14 +106,14 @@ export function createListsService(
 
 	async function mapSlugsToGhIds(slugs: string[]): Promise<string[]> {
 		const out: string[] = [];
+		const qListGhIdById = db.query<ListListIdRow, [number]>(
+			`SELECT list_id FROM list WHERE id = ?`,
+		);
+
 		for (const s of slugs) {
 			const row = qListIdBySlug.get(s);
 			if (!row) continue;
-			const gh = db
-				.query<{ list_id: string | null }, [number]>(
-					`SELECT list_id FROM list WHERE id = ?`,
-				)
-				.get(row.id)?.list_id;
+			const gh = qListGhIdById.get(row.id)?.list_id;
 			if (gh) out.push(gh);
 		}
 		return out;
@@ -101,24 +123,22 @@ export function createListsService(
 		repoId: number,
 		slugs: string[],
 	): Promise<void> {
+		const insertLr = db.query<NoRow, [string, number]>(`
+      INSERT INTO list_repo (list_id, repo_id)
+      VALUES ((SELECT id FROM list WHERE slug = ?), ?)
+      ON CONFLICT(list_id, repo_id) DO NOTHING
+    `);
+
+		const placeholders = slugs.length ? slugs.map(() => "?").join(",") : "''";
+		const deleteOther = db.query<NoRow, (number | string)[]>(`
+      DELETE FROM list_repo
+      WHERE repo_id = ?
+        AND list_id NOT IN (SELECT id FROM list WHERE slug IN (${placeholders}))
+    `);
+
 		const tx = db.transaction(() => {
-			// insert/confirm
-			for (const slug of slugs) {
-				const lr = db.query<unknown, [string, number]>(`
-          INSERT INTO list_repo (list_id, repo_id)
-          VALUES ((SELECT id FROM list WHERE slug = ?), ?)
-          ON CONFLICT(list_id, repo_id) DO NOTHING
-        `);
-				lr.run(slug, repoId);
-			}
-			// delete not in target
-			const placeholders = slugs.length ? slugs.map(() => "?").join(",") : "''";
-			const del = db.query<unknown, (number | string)[]>(
-				`DELETE FROM list_repo
-         WHERE repo_id = ?
-           AND list_id NOT IN (SELECT id FROM list WHERE slug IN (${placeholders}))`,
-			);
-			del.run(repoId, ...slugs);
+			for (const slug of slugs) insertLr.run(slug, repoId);
+			deleteOther.run(repoId, ...slugs);
 		});
 		tx();
 	}
@@ -128,7 +148,7 @@ export function createListsService(
 		repoGlobalId: string,
 		listIds: string[],
 	): Promise<void> {
-		await ghGraphQL(token, M_UPDATE_LISTS_FOR_ITEM, {
+		await ghGraphQL<unknown>(token, M_UPDATE_LISTS_FOR_ITEM, {
 			itemId: repoGlobalId,
 			listIds,
 		});
@@ -160,8 +180,9 @@ export function createListsService(
 				[]
 			>(`SELECT id, slug, name, list_id FROM list ORDER BY name`)
 			.all();
+
 		const slugToGh = new Map<string, string>();
-		const u = db.query<unknown, [string, number]>(
+		const u = db.query<NoRow, [string, number]>(
 			`UPDATE list SET list_id = ? WHERE id = ?`,
 		);
 
@@ -183,24 +204,33 @@ export function createListsService(
 		token: string,
 		repoId: number,
 	): Promise<string> {
-		const r = db
-			.query<RepoRow, [number]>(
-				`SELECT id, repo_id, name_with_owner, url, description, primary_language, topics, summary FROM repo WHERE id = ? LIMIT 1`,
+		const row = db
+			.query<RepoIdLookupRow, [number]>(
+				`
+        SELECT id, repo_id, name_with_owner, url, description, primary_language, topics, summary
+        FROM repo
+        WHERE id = ?
+        LIMIT 1
+      `,
 			)
 			.get(repoId);
-		if (!r) throw new Error(`Repo not found id=${repoId}`);
-		if ((r as any).repo_id && /^R_kg/.test((r as any).repo_id))
-			return (r as any).repo_id as string;
-		const [owner, name] = (r.name_with_owner || "").split("/");
+
+		if (!row) throw new Error(`Repo not found id=${repoId}`);
+
+		if (row.repo_id && /^R_kg/.test(row.repo_id)) return row.repo_id;
+
+		const [owner, name] = (row.name_with_owner || "").split("/");
 		const data = await ghGraphQL<{ repository: { id: string } }>(
 			token,
 			Q_REPO_ID,
 			{ owner, name },
 		);
 		const newId = data.repository.id;
-		db.query<unknown, [string, number]>(
+
+		db.query<NoRow, [string, number]>(
 			`UPDATE repo SET repo_id = ? WHERE id = ?`,
 		).run(newId, repoId);
+
 		return newId;
 	}
 

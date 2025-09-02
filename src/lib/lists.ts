@@ -197,7 +197,7 @@ async function fetchAllItemsAtEdge(
 					.filter((s): s is string => !!s) ?? [];
 
 			repos.push({
-				repoId: (n as any).repoId ?? null,
+				repoId: n.repoId ?? null,
 				nameWithOwner: n.nameWithOwner ?? "",
 				url: n.url ?? "",
 				description: n.description ?? null,

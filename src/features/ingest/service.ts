@@ -1,5 +1,13 @@
+import type { Statement } from "bun:sqlite";
 import { db } from "@lib/db";
+import {
+	chooseFreshnessSource,
+	scoreActiveness,
+	scoreFreshnessFromISO,
+	scorePopularity,
+} from "@lib/metrics";
 import type { RepoInfo, StarList } from "@lib/types";
+import { isObject, slugify } from "@lib/utils";
 import type {
 	IdRow,
 	IndexEntry,
@@ -7,14 +15,6 @@ import type {
 	UpsertListBind,
 	UpsertRepoBind,
 } from "@src/types";
-import { Statement } from "bun:sqlite";
-import {
-	chooseFreshnessSource,
-	scoreActiveness,
-	scoreFreshnessFromISO,
-	scorePopularity,
-} from "@lib/metrics";
-import { isObject, slugify } from "@lib/utils";
 
 function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 	if (!Array.isArray(x)) throw new Error("exports/index.json must be an array");
@@ -45,14 +45,14 @@ function assertRepoInfo(x: unknown): asserts x is RepoInfo {
 		"openIssues",
 		"openPRs",
 	] as const) {
-		if (typeof (r as any)[k] !== "number")
+		if (typeof r[k] !== "number")
 			throw new Error(`RepoInfo.${k} must be number`);
 	}
 }
 
 function assertStarList(x: unknown): asserts x is StarList {
 	if (!isObject(x)) throw new Error("StarList must be an object");
-	if (!Array.isArray((x as any).repos))
+	if (!Array.isArray(x.repos))
 		throw new Error("StarList.repos must be an array");
 }
 

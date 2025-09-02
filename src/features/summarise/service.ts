@@ -10,7 +10,7 @@ export type BatchSelector = {
 type BindLimit = [limit: number];
 type BindLimitSlug = [limit: number, slug: string];
 
-let qBatchDefault = db.query<RepoRow, BindLimit>(`
+const qBatchDefault = db.query<RepoRow, BindLimit>(`
   SELECT id, name_with_owner, url, description, primary_language, topics,
          stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
   FROM repo
@@ -19,7 +19,7 @@ let qBatchDefault = db.query<RepoRow, BindLimit>(`
   LIMIT ?
 `);
 
-let qBatchBySlug = db.query<RepoRow, BindLimitSlug>(`
+const qBatchBySlug = db.query<RepoRow, BindLimitSlug>(`
   SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
          r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
   FROM repo r
@@ -30,7 +30,7 @@ let qBatchBySlug = db.query<RepoRow, BindLimitSlug>(`
   LIMIT ?
 `);
 
-let qBatchDefaultRe = db.query<RepoRow, BindLimit>(`
+const qBatchDefaultRe = db.query<RepoRow, BindLimit>(`
   SELECT id, name_with_owner, url, description, primary_language, topics,
          stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
   FROM repo
@@ -38,7 +38,7 @@ let qBatchDefaultRe = db.query<RepoRow, BindLimit>(`
   LIMIT ?
 `);
 
-let qBatchBySlugRe = db.query<RepoRow, BindLimitSlug>(`
+const qBatchBySlugRe = db.query<RepoRow, BindLimitSlug>(`
   SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
          r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at, r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
   FROM repo r
@@ -49,7 +49,7 @@ let qBatchBySlugRe = db.query<RepoRow, BindLimitSlug>(`
   LIMIT ?
 `);
 
-let uSummary = db.query<unknown, [string, number]>(
+const uSummary = db.query<unknown, [string, number]>(
 	`UPDATE repo SET summary = ? WHERE id = ?`,
 );
 

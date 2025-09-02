@@ -12,11 +12,11 @@
  *   GITHUB_TOKEN  (Bun auto-loads .env)
  */
 
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RepoInfo, StarList } from "@lib/types";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
-import type { Parsed, Command } from "./types.js";
+import type { RepoInfo, StarList } from "@lib/types";
+import type { Command, Parsed } from "./types.js";
 
 const USAGE = `geek-stars
 
@@ -113,30 +113,6 @@ function toSlug(name: string): string {
 		.replace(/['"]/g, "") // drop quotes
 		.replace(/[^a-z0-9]+/g, "-") // non-alnum -> hyphen
 		.replace(/^-+|-+$/g, ""); // trim hyphens
-}
-
-function saveListsToDir(lists: StarList[], dir: string) {
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
-	// Per-list files
-	for (const l of lists) {
-		const file = join(dir, `${toSlug(l.name) || "list"}.json`);
-		writeFileSync(file, JSON.stringify(l, null, 2));
-		console.log(`✔ ${l.name} → ${file}`);
-	}
-
-	// Write index.json for quick summary
-	const index = lists.map((l) => ({
-		listId: l.listId,
-		name: l.name,
-		description: l.description ?? null,
-		isPrivate: l.isPrivate,
-		count: l.repos.length,
-		file: `${toSlug(l.name) || "list"}.json`,
-	}));
-	const indexFile = join(dir, "index.json");
-	writeFileSync(indexFile, JSON.stringify(index, null, 2));
-	console.log(`✔ index → ${indexFile}`);
 }
 
 async function runLists(json: boolean, out?: string, dir?: string) {

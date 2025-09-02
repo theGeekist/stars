@@ -1,11 +1,14 @@
-import { toNum } from "@lib/utils";
 import { OllamaService } from "@jasonnathan/llm-core";
+import { toNum } from "@lib/utils";
+
+/* ---------- Public types ---------- */
 
 export type ListDef = {
 	slug: string;
 	name: string;
 	description?: string | null;
 };
+
 export type RepoFacts = {
 	nameWithOwner: string;
 	url: string;
@@ -14,10 +17,59 @@ export type RepoFacts = {
 	primaryLanguage?: string | null;
 	topics?: string[];
 };
+
 export type ScoreItem = { list: string; score: number; why?: string };
 export type ScoreResponse = { scores: ScoreItem[] };
 
-function buildSchema(slugs: string[]): Record<string, unknown> {
+/* ---------- LLM interface (simple) ---------- */
+
+export type ScoringLLM = {
+	generatePromptAndSend(
+		system: string,
+		user: string,
+		opts?: { schema?: unknown },
+	): Promise<unknown>;
+};
+
+type MaybeOllama =
+	| {
+			generatePromptAndSend: (
+				system: string,
+				user: string,
+				opts?: { schema?: unknown },
+			) => Promise<unknown>;
+	  }
+	| {
+			send: (
+				system: string,
+				user: string,
+				opts?: { schema?: unknown },
+			) => Promise<unknown>;
+	  };
+
+function defaultLLM(): ScoringLLM {
+	const svc = new OllamaService(
+		Bun.env.OLLAMA_MODEL ?? "",
+	) as unknown as MaybeOllama;
+	return {
+		async generatePromptAndSend(system, user, opts) {
+			if (
+				"generatePromptAndSend" in svc &&
+				typeof svc.generatePromptAndSend === "function"
+			) {
+				return svc.generatePromptAndSend(system, user, opts);
+			}
+			if ("send" in svc && typeof svc.send === "function") {
+				return svc.send(system, user, opts);
+			}
+			throw new Error("OllamaService: no compatible send method");
+		},
+	};
+}
+
+/* ---------- Tiny helpers ---------- */
+
+function buildSchema(slugs: string[]): unknown {
 	return {
 		type: "object",
 		required: ["scores"],
@@ -32,10 +84,12 @@ function buildSchema(slugs: string[]): Record<string, unknown> {
 						score: { type: "number", minimum: 0, maximum: 1 },
 						why: { type: "string" },
 					},
+					additionalProperties: false,
 				},
 			},
 		},
-	};
+		additionalProperties: false,
+	} as const;
 }
 
 function listsBlock(lists: ListDef[]): string {
@@ -84,111 +138,98 @@ function repoBlock(r: RepoFacts): string {
 	return bits.join("\n");
 }
 
-const SYSTEM_PROMPT = `You are a neutral curator for a github repositories.`;
+/* ---------- Minimal validation/repair (no any) ---------- */
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+	return typeof x === "object" && x !== null;
+}
+
+function getProp(obj: Record<string, unknown>, key: string): unknown {
+	return Object.hasOwn(obj, key) ? obj[key] : undefined;
+}
+
+function getStr(obj: Record<string, unknown>, key: string): string | undefined {
+	const v = getProp(obj, key);
+	return typeof v === "string" ? v : undefined;
+}
 
 function validateAndRepair(
-	r: unknown,
+	input: unknown,
 	validSlugs: Set<string>,
 ): ScoreResponse | false {
+	if (!isRecord(input)) return false;
+
+	const scoresUnknown = getProp(input, "scores");
+	if (!Array.isArray(scoresUnknown)) return false;
+
 	const out: ScoreItem[] = [];
-	const items = (r as any)?.scores;
-	if (!Array.isArray(items)) return false;
-	for (const it of items) {
-		let list = typeof it?.list === "string" ? it.list.trim() : "";
-		let score = toNum(it?.score);
-		const why =
-			typeof it?.why === "string"
-				? it.why.trim().replace(/\s+/g, " ")
-				: undefined;
-		const lower = list.toLowerCase();
+
+	for (const item of scoresUnknown) {
+		if (!isRecord(item)) continue;
+
+		// list
+		const listRaw = getStr(item, "list")?.trim() ?? "";
+		let list = listRaw;
 		if (!validSlugs.has(list)) {
-			const guess = lower.replace(/\s+/g, "-");
+			const guess = list.toLowerCase().replace(/\s+/g, "-");
 			if (validSlugs.has(guess)) list = guess;
 		}
 		if (!validSlugs.has(list)) continue;
-		if (score == null) continue;
+
+		// score
+		const scoreUnknown = getProp(item, "score");
+		let score = toNum(scoreUnknown);
+		if (score == null || Number.isNaN(score)) continue;
 		if (score < 0) score = 0;
 		if (score > 1) score = 1;
+
+		// why
+		const whyStr = getStr(item, "why");
+		const why = whyStr ? whyStr.trim().replace(/\s+/g, " ") : undefined;
+
 		out.push({ list, score, why });
 	}
-	if (!out.length) return false;
-	return { scores: out };
+
+	return out.length ? { scores: out } : false;
 }
 
-// Accept any client that implements generatePromptAndSend to ease testing
-export type ScoringLLM = {
-	// Keep result as unknown (matches many real client typings) and narrow post-validate
-	generatePromptAndSend(
-		system: string,
-		user: string,
-		opts: unknown,
-		validate?: (r: unknown) => unknown,
-	): Promise<unknown>;
-};
+/* ---------- Prompt + main ---------- */
 
-// Overloads for better type-safety without forcing refactors
-export function scoreRepoAgainstLists(
-	llm: ScoringLLM,
-	lists: ListDef[],
-	repo: RepoFacts,
-): Promise<ScoreResponse>;
-export function scoreRepoAgainstLists(
-	lists: ListDef[],
-	repo: RepoFacts,
-	llm?: ScoringLLM,
-): Promise<ScoreResponse>;
+const SYSTEM_PROMPT = `You are a neutral curator for github repositories.`;
+
 export async function scoreRepoAgainstLists(
-	a: ScoringLLM | ListDef[],
-	b: ListDef[] | RepoFacts,
-	c?: RepoFacts | ScoringLLM,
+	lists: ListDef[],
+	repo: RepoFacts,
+	llm: ScoringLLM = defaultLLM(),
 ): Promise<ScoreResponse> {
-	let llm: ScoringLLM;
-	let lists: ListDef[];
-	let repo: RepoFacts;
-
-	if (typeof (a as ScoringLLM).generatePromptAndSend === "function") {
-		llm = a as ScoringLLM;
-		lists = b as ListDef[];
-		repo = c as RepoFacts;
-	} else {
-		lists = a as ListDef[];
-		repo = b as RepoFacts;
-		llm =
-			(c as ScoringLLM) ??
-			(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
-	}
 	const slugs = lists.map((l) => l.slug);
 	const schema = buildSchema(slugs);
-	const userPrompt =
-		`Your task is to score the repository against EACH list from 0 to 1. where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria. 
-Scoring Guide (if the repo does not or barely meets the criteria, score **MUST** be < 0.5):
+
+	const userPrompt = `
+Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
+Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):
   productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).
-  monetise = only score if the repo **explicitly** helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
-  networking = only score if the repo **explicitly** builds or supports communities, connections, or collaboration (social, professional, or technical).
-  ai = only score if the repo’s **primary** focus is AI/ML models, frameworks, applications, or tooling.
+  monetise = only score if the repo explicitly helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
+  networking = only score if the repo explicitly builds or supports communities, connections, or collaboration (social, professional, or technical).
+  ai = only score if the repo’s primary focus is AI/ML models, frameworks, applications, or tooling.
   blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, financial systems, or digital assets.
-  learning = only score if the repo **explicitly** teaches through **courses, tutorials, exercises, or curricula** (any subject, not just programming).
-  self-marketing = only score if the repo **explicitly** promotes an individual (portfolio, profile, blogging, personal branding, analytics).
-  team-management = only score if the repo **explicitly** helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
+  learning = only score if the repo explicitly teaches through courses, tutorials, exercises, or curricula (any subject, not just programming).
+  self-marketing = only score if the repo explicitly promotes an individual (portfolio, profile, blogging, personal branding, analytics).
+  team-management = only score if the repo explicitly helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
 
 Lists:
-  ${listsBlock(lists)}
+${listsBlock(lists)}
 
 ${FEWSHOT}
 
 Repository to score:
-  ${repoBlock(repo)}
+${repoBlock(repo)}
   `.trim();
 
-	const res = (await llm.generatePromptAndSend(
-		SYSTEM_PROMPT,
-		userPrompt,
-		{ schema },
-		(r: unknown) => {
-			const slugs = new Set(lists.map((l) => l.slug));
-			const valid = validateAndRepair(r, slugs);
-			return valid ? r : false;
-		},
-	)) as ScoreResponse;
-	return res;
+	const raw = await llm.generatePromptAndSend(SYSTEM_PROMPT, userPrompt, {
+		schema,
+	});
+	const repaired = validateAndRepair(raw, new Set(slugs));
+	if (!repaired) throw new Error("Invalid LLM response");
+	return repaired;
 }

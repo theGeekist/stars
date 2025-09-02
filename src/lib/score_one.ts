@@ -1,17 +1,14 @@
 // src/lib/score_one.ts
-import { OllamaService } from "@jasonnathan/llm-core";
-import {
-	scoreRepoAgainstLists,
-	type ListDef,
-	type RepoFacts,
-} from "@lib/score";
-import { initSchema, db } from "@lib/db";
-import type { RepoRow } from "@lib/types";
+
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
-
-type ListRow = { slug: string; name: string; description: string | null };
-type CurrentListRow = { slug: string };
+import { db, initSchema } from "@lib/db";
+import {
+	type ListDef,
+	type RepoFacts,
+	scoreRepoAgainstLists,
+} from "@lib/score";
+import type { RepoRow } from "@lib/types";
 
 const qRepoByName = db.query<RepoRow, [string]>(`
   SELECT id, name_with_owner, url, description, primary_language, topics, summary
@@ -137,8 +134,7 @@ async function main() {
 		topics: parseTopics(repo.topics),
 	};
 
-	const svc = new OllamaService(Bun.env.OLLAMA_MODEL ?? "");
-	const result = await scoreRepoAgainstLists(svc, lists, facts);
+	const result = await scoreRepoAgainstLists(lists, facts);
 
 	printReport(repo, lists, current, result.scores);
 }

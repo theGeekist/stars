@@ -1,9 +1,31 @@
-import { describe, it, expect } from "bun:test";
-import { createScoringService } from "@features/scoring";
 import { Database } from "bun:sqlite";
+import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createScoringService } from "@features/scoring";
 import type { ScoreItem } from "@lib/score";
+import type { RepoRow } from "@lib/types";
+
+const makeRepoRow = (id: number, stars: number): RepoRow => ({
+	id,
+	repo_id: "R_0000000001",
+	name_with_owner: "owner/name",
+	url: "https://github.com/owner/name",
+	description: null,
+	primary_language: null,
+	license: null,
+	tags: null,
+	summary: null,
+	is_archived: 0,
+	is_disabled: 0,
+	popularity: null,
+	freshness: null,
+	activeness: null,
+	updated_at: null,
+	topics: "[]",
+	stars,
+	forks: null,
+});
 
 describe("scoring planTargets", () => {
 	const scoring = createScoringService();
@@ -41,21 +63,16 @@ describe("scoring planTargets", () => {
 
 describe("scoring planMembership", () => {
 	const scoring = createScoringService();
-	const repo = { id: 1, stars: 100 } as any;
+	const repo: RepoRow = makeRepoRow(1, 100);
 
 	it("blocks apply for low stars when minStars set", () => {
 		const current: string[] = [];
 		const scores: ScoreItem[] = [{ list: "ai", score: 0.9 }];
-		const res = scoring.planMembership(
-			{ id: 2, stars: 10 } as any,
-			current,
-			scores,
-			{
-				thresholds: { defaultAdd: 0.7, remove: 0.3 },
-				minStars: 50,
-				avoidListless: true,
-			},
-		);
+		const res = scoring.planMembership(makeRepoRow(2, 10), current, scores, {
+			thresholds: { defaultAdd: 0.7, remove: 0.3 },
+			minStars: 50,
+			avoidListless: true,
+		});
 		expect(res.blocked).toBeTrue();
 	});
 
@@ -105,9 +122,10 @@ describe("scoring DB-backed selection & persistence", () => {
 
 		// create run and persist score for r1 to filter it out
 		db.run(`INSERT INTO model_run(notes) VALUES ('t')`);
-		const runId = db
+		const q = db
 			.query<{ id: number }, []>(`SELECT MAX(id) as id FROM model_run`)
-			.get()!.id;
+			.get();
+		const runId = q ? q.id : 1;
 		svc.persistScores(runId, 1, [{ list: "ai", score: 0.9 }]);
 
 		const rows2 = svc.selectRepos({ limit: 10, listSlug: "ai" }, runId);
@@ -131,7 +149,7 @@ describe("scoring DB-backed selection & persistence", () => {
 		// add another run and ensure last is used
 		db.run(`INSERT INTO model_run(notes) VALUES ('y')`);
 		const c = svc.resolveRunContext({ dry: false, resume: "last" });
-		expect(c.runId).toBeGreaterThan(b.runId!);
+		expect(c.runId).toBeGreaterThan(b.runId as number);
 		expect(c.filterRunId).toBe(c.runId);
 
 		// numeric resume missing should throw
@@ -158,15 +176,10 @@ describe("scoring DB-backed selection & persistence", () => {
 			{ list: "ai", score: 0.2 }, // below review threshold (<= remove)
 			{ list: "learning", score: 0.3 }, // equal to remove -> not review
 		];
-		const res = svc.planMembership(
-			{ id: 1, stars: 100 } as any,
-			current,
-			scores,
-			{
-				thresholds: { defaultAdd: 0.7, remove: 0.3 },
-				avoidListless: true,
-			},
-		);
+		const res = svc.planMembership(makeRepoRow(1, 100), current, scores, {
+			thresholds: { defaultAdd: 0.7, remove: 0.3 },
+			avoidListless: true,
+		});
 		expect(res.blocked).toBeTrue();
 		expect(res.blockReason).toContain("listless");
 	});

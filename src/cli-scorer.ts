@@ -1,22 +1,20 @@
 // src/cli-scorer.ts
-import { db, initSchema } from "@lib/db";
-import type { Statement } from "bun:sqlite";
-import { OllamaService } from "@jasonnathan/llm-core";
-import {
-	scoreRepoAgainstLists,
-	type ListDef,
-	type RepoFacts,
-} from "@lib/score";
+
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
+import { OllamaService } from "@jasonnathan/llm-core";
+import { initSchema } from "@lib/db";
+import {
+	type ListDef,
+	type RepoFacts,
+	scoreRepoAgainstLists,
+} from "@lib/score";
 import type { RepoRow } from "@lib/types";
-import { mkdirSync, existsSync, appendFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseStringArray, formatNum } from "@lib/utils";
+import { formatNum, parseStringArray } from "@lib/utils";
 
 initSchema();
-
-// Policy lives in features/scoring/config; CLI can override later via flags
 
 // ---- CLI args ---------------------------------------------------------------
 export type Args = {
@@ -66,88 +64,12 @@ function parseArgs(argv: string[]): Args {
 					: Number.isFinite(Number(v))
 						? Number(v)
 						: undefined;
-			continue;
 		}
 	}
 	return { limit, dry, slug, notes, apply, resume };
 }
 
-export type BindRunLimit = [runId: number | null, limit: number];
-export type BindSlugRunLimit = [
-	slug: string,
-	runId: number | null,
-	limit: number,
-];
-
-// ---- Prepared queries --------------------------------------------------------
-let qBatchDefault!: Statement<RepoRow, BindRunLimit>;
-let qBatchBySlug!: Statement<RepoRow, BindSlugRunLimit>;
-
-type ListRow = { slug: string; name: string; description: string | null };
-let qLists!: Statement<ListRow, []>;
-
-let iRun!: Statement<unknown, [notes: string | null]>;
-let iScore!: Statement<
-	unknown,
-	[run: number, repo: number, list: string, score: number, why: string | null]
->;
-
-function prepareQueries(): void {
-	qBatchDefault = db.query<RepoRow, BindRunLimit>(`
-    SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
-           r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,
-           r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
-    FROM repo r
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM repo_list_score s
-      WHERE s.repo_id = r.id
-        AND s.run_id = ?
-    )
-    ORDER BY r.popularity DESC, r.freshness DESC
-    LIMIT ?
-  `);
-
-	qBatchBySlug = db.query<RepoRow, BindSlugRunLimit>(`
-    SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
-           r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,
-           r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
-    FROM repo r
-    JOIN list_repo lr ON lr.repo_id = r.id
-    JOIN list l       ON l.id = lr.list_id
-    WHERE l.slug = ?
-      AND NOT EXISTS (
-        SELECT 1
-        FROM repo_list_score s
-        WHERE s.repo_id = r.id
-          AND s.run_id = ?
-      )
-    ORDER BY r.popularity DESC, r.freshness DESC
-    LIMIT ?
-  `);
-
-	qLists = db.query<ListRow, []>(`
-    SELECT slug, name, description
-    FROM list
-    WHERE slug != 'valuable-resources' AND slug != 'interesting-to-explore'
-    ORDER BY name
-  `);
-
-	iRun = db.query<unknown, [string | null]>(`
-    INSERT INTO model_run (notes) VALUES (?)
-  `);
-
-	iScore = db.query<unknown, [number, number, string, number, string | null]>(`
-  INSERT INTO repo_list_score (run_id, repo_id, list_slug, score, rationale)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(run_id, repo_id, list_slug) DO UPDATE SET
-    score = excluded.score,
-    rationale = excluded.rationale
-`);
-}
-
 // ---- Helpers ----------------------------------------------------------------
-// thresholds/guards centralized in scoring service (DEFAULT_POLICY)
 
 function ensureDir(p: string) {
 	if (!existsSync(p)) mkdirSync(p, { recursive: true });
@@ -170,17 +92,29 @@ function logListlessCSV(row: {
 	const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
 	appendFileSync(
 		outFile,
-		[
+		`${[
 			esc(row.nameWithOwner),
 			esc(row.url),
 			esc(row.current.join("|")),
 			esc(row.scores),
 			esc(row.note),
-		].join(",") + "\n",
+		].join(",")}\n`,
 		"utf8",
 	);
 }
 
+function chooseFreshnessSource(opts: {
+	pushed_at?: string | null;
+	last_commit_iso?: string | null;
+	last_release_iso?: string | null;
+	updated_at?: string | null;
+}): string | null;
+function chooseFreshnessSource(opts: {
+	pushed_at?: string | null;
+	last_commit_iso?: string | null;
+	last_release_iso?: string | null;
+	updated_at?: string | null;
+}): string | null;
 function chooseFreshnessSource(opts: {
 	pushed_at?: string | null;
 	last_commit_iso?: string | null;
@@ -219,70 +153,10 @@ function annotateHeader(r: RepoRow): string {
 		.join("\n");
 }
 
-function getLastRunId(): number | null {
-	return (
-		db.query<{ id: number }, []>(`SELECT MAX(id) AS id FROM model_run`).get()
-			?.id ?? null
-	);
-}
-
-function createRun(notes?: string): number {
-	db.query(`INSERT INTO model_run (notes) VALUES (?)`).run(notes ?? null);
-	const row = db
-		.query<{ id: number }, []>(`SELECT last_insert_rowid() AS id`)
-		.get();
-	if (!row?.id) throw new Error("failed to create model_run");
-	return row.id;
-}
-
-/**
- * Decide:
- * - runId: the run we WRITE into (null in dry mode)
- * - filterRunId: the run we FILTER against for resume/skip logic
- *
- * Rules:
- * - --resume=<id> → filter that id. If !dry, also write into that same runId.
- * - --resume=last → same as above, using MAX(id); if none and !dry, create a run and use it.
- * - no --resume:
- *     dry  → { runId:null, filterRunId:null }  (inspect everything; write nothing)
- *     !dry → create a new run; filter that id (so you can resume it later)
- */
-function resolveRunContext(opts: {
-	dry: boolean;
-	notes?: string;
-	resume?: number | "last";
-}): { runId: number | null; filterRunId: number | null } {
-	if (opts.resume === "last") {
-		const last = getLastRunId();
-		if (opts.dry) return { runId: null, filterRunId: last }; // dry inspect last
-		if (last) return { runId: last, filterRunId: last }; // write into last
-		const created = createRun(opts.notes); // nothing to resume -> start one
-		return { runId: created, filterRunId: created };
-	}
-
-	if (typeof opts.resume === "number") {
-		const ok = db
-			.query<{ ok: number }, [number]>(
-				`SELECT 1 ok FROM model_run WHERE id = ?`,
-			)
-			.get(opts.resume);
-		if (!ok) throw new Error(`--resume ${opts.resume} does not exist`);
-		return opts.dry
-			? { runId: null, filterRunId: opts.resume } // dry inspect specific run
-			: { runId: opts.resume, filterRunId: opts.resume }; // write into that run
-	}
-
-	// no resume flag
-	if (opts.dry) return { runId: null, filterRunId: null }; // dry inspect all
-	const id = createRun(opts.notes);
-	return { runId: id, filterRunId: id }; // new run; resumable
-}
-
 // ---- Main -------------------------------------------------------------------
 export async function scoreBatch(args: Args): Promise<void> {
-	prepareQueries();
-
 	const scoring = createScoringService();
+
 	// 0) Run context (tiny + predictable)
 	const { runId, filterRunId } = scoring.resolveRunContext({
 		dry: args.dry,
@@ -334,7 +208,7 @@ export async function scoreBatch(args: Args): Promise<void> {
 			topics: parseStringArray(r.topics),
 		};
 
-		const result = await scoreRepoAgainstLists(svc, lists, facts);
+		const result = await scoreRepoAgainstLists(lists, facts, svc);
 		const top3 = [...result.scores]
 			.sort((a, b) => b.score - a.score)
 			.slice(0, 3);
@@ -378,7 +252,9 @@ export async function scoreBatch(args: Args): Promise<void> {
 
 		if (fallbackUsed)
 			console.log(
-				`   ⚠️ fallback -> using review '${fallbackUsed.list}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
+				`   ⚠️ fallback -> using review '${
+					fallbackUsed.list
+				}' (${fallbackUsed.score.toFixed(2)}) to avoid listless`,
 			);
 
 		if (blocked) {

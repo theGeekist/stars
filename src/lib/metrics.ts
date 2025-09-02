@@ -7,7 +7,9 @@ export function deriveTags(input: {
 	is_mirror?: boolean;
 }): string[] {
 	const t = new Set<string>();
-	(input.topics ?? []).forEach((x) => x && t.add(x));
+	(input.topics ?? []).forEach((x) => {
+		x && t.add(x);
+	});
 	if (input.primary_language)
 		t.add(`lang:${input.primary_language.toLowerCase()}`);
 	if (input.license) t.add(`license:${input.license.toLowerCase()}`);
@@ -44,16 +46,7 @@ function clamp01(x: number): number {
 	if (!Number.isFinite(x)) return 0;
 	return Math.max(0, Math.min(1, x));
 }
-function safeParseDate(iso?: string | null): number | null {
-	if (!iso) return null;
-	const t = Date.parse(iso);
-	return Number.isNaN(t) ? null : t;
-}
-function daysSince(iso?: string | null): number | null {
-	const t = safeParseDate(iso);
-	if (t == null) return null;
-	return (Date.now() - t) / 86400000;
-}
+
 // ----- FRESHNESS ------------------------------------------------------------
 // Exponential decay w/ half-life → perceptually nicer than linear.
 // 90d half-life means: 0.5 @ 90d, 0.25 @ 180d, ~0.06 @ 1y.
@@ -80,8 +73,8 @@ export function scoreFreshnessFromISO(
 
 	// older than a year: tank with half-life
 	const extra = days - 365;
-	const HALF_LIFE_DAYS = 365; // tweakable
-	const s = 0.5 * Math.pow(2, -extra / halfLifeDays); // 2y≈0.25, 3y≈0.125
+	// const HALF_LIFE_DAYS = 365; // tweakable
+	const s = 0.5 * 2 ** (-extra / halfLifeDays); // 2y≈0.25, 3y≈0.125
 	const v = Number(Math.max(0, Math.min(1, s)).toFixed(4));
 	console.log(
 		`[metrics] freshness>1y iso=${iso} days=${days.toFixed(1)} -> ${v}`,

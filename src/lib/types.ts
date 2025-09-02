@@ -161,3 +161,7 @@ export type RepoTopicLink = {
 	topic: string;
 	added_at: string; // ISO
 };
+export type FetchLike = (
+	input: RequestInfo | URL,
+	init?: RequestInit,
+) => Promise<Response>;

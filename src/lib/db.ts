@@ -1,8 +1,8 @@
 // src/lib/db.ts
 import { Database } from "bun:sqlite";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const db = new Database("repolists.db");
 

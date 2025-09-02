@@ -1,7 +1,8 @@
 // src/features/topics/api.ts
-import { db } from "@lib/db";
+
 import type { Statement } from "bun:sqlite";
-import { githubREST, sleep, jitter } from "@lib/github";
+import { db } from "@lib/db";
+import { githubREST, jitter, sleep } from "@lib/github";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type RepoRef = { owner: string; name: string };
@@ -24,9 +25,26 @@ export type TopicRow = {
 	etag?: string | null;
 };
 
+// Row type for statements that don't return rows
+type NoRow = Record<string, never>;
+
+// GitHub /search/topics payload shapes
+type TopicSearchItem = {
+	name?: string;
+	display_name?: string | null;
+	short_description?: string | null;
+	description?: string | null;
+	aliases?: string[];
+	featured?: boolean;
+};
+
+type TopicSearchResponse = {
+	items?: TopicSearchItem[];
+};
+
 // ── Prepared statements ───────────────────────────────────────────────────────
 let uTopic!: Statement<
-	unknown,
+	NoRow,
 	[
 		topic: string,
 		display_name: string | null,
@@ -39,7 +57,7 @@ let uTopic!: Statement<
 >;
 
 let uRepoTopic!: Statement<
-	unknown,
+	NoRow,
 	[repo_id: number, topic: string, added_at: string]
 >;
 
@@ -47,7 +65,7 @@ function prepare(): void {
 	if (uTopic && uRepoTopic) return;
 
 	uTopic = db.query<
-		unknown,
+		NoRow,
 		[
 			string,
 			string | null,
@@ -69,7 +87,7 @@ function prepare(): void {
       etag              = COALESCE(excluded.etag, topics.etag)
   `);
 
-	uRepoTopic = db.query<unknown, [number, string, string]>(`
+	uRepoTopic = db.query<NoRow, [number, string, string]>(`
     INSERT INTO repo_topics (repo_id, topic, added_at)
     VALUES (?, ?, ?)
     ON CONFLICT(repo_id, topic) DO UPDATE SET added_at = excluded.added_at
@@ -111,7 +129,7 @@ export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 		const placeholders = topics.length
 			? new Array(topics.length).fill("?").join(",")
 			: "''";
-		const del = db.query<unknown, (number | string)[]>(
+		const del = db.query<NoRow, (number | string)[]>(
 			`DELETE FROM repo_topics WHERE repo_id = ? AND topic NOT IN (${placeholders})`,
 		);
 		del.run(repoId, ...topics);
@@ -152,9 +170,7 @@ export async function repoTopics(
 	const json = await githubREST<{ names?: string[] }>(
 		token,
 		`/repos/${owner}/${name}/topics`,
-		{
-			acceptPreview: true,
-		},
+		{ acceptPreview: true },
 	);
 	return normalizeTopics(json.names ?? []);
 }
@@ -204,21 +220,22 @@ export async function topicMetaMany(
 				const idx = i++;
 				const t = uniq[idx];
 				try {
-					const data = await githubREST<{ items?: any[] }>(
+					const data = await githubREST<TopicSearchResponse>(
 						token,
 						`/search/topics?q=${encodeURIComponent(t)}`,
 						{ acceptPreview: true },
 					);
 					const hit =
 						data.items?.find(
-							(it) => it.name?.toLowerCase() === t.toLowerCase(),
+							(it) => (it.name ?? "").toLowerCase() === t.toLowerCase(),
 						) ?? data.items?.[0];
+
 					out.set(
 						t,
 						hit
 							? {
-									name: hit.name,
-									displayName: hit.display_name ?? hit.name,
+									name: hit.name ?? t,
+									displayName: hit.display_name ?? hit.name ?? t,
 									shortDescription:
 										hit.short_description ?? hit.description ?? null,
 									aliases: hit.aliases ?? [],

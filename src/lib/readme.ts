@@ -1,8 +1,9 @@
 // src/lib/readme.ts
-import { db as defaultDb } from "./db";
+
 import type { Database } from "bun:sqlite";
-import { ghHeaders } from "./github";
 import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
+import { db as defaultDb } from "./db";
+import { ghHeaders } from "./github";
 import type { ChunkingOptions, ReadmeRow } from "./types";
 
 // NOTE: No module-level prepared statements; use provided DB or default DB per call.

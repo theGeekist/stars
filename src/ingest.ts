@@ -1,5 +1,5 @@
-import { initSchema } from "@lib/db";
 import { ingestFromExports } from "@features/ingest/service";
+import { initSchema } from "@lib/db";
 
 const EXPORTS_DIR = Bun.env.EXPORTS_DIR ?? "./exports";
 initSchema();

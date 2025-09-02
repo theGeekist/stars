@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { getAllLists } from "../src/lib/lists.js";
 
 // Smoke test (skipped by default unless token present)

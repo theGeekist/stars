@@ -1,3 +1,5 @@
+import type { FetchLike } from "./types";
+
 // src/lib/github.ts
 export type GraphQLResponse<T> = { data?: T; errors?: { message: string }[] };
 
@@ -39,7 +41,7 @@ export async function githubGraphQL<T>(
 	token: string,
 	query: string,
 	variables?: Record<string, unknown>,
-	fetchImpl?: typeof fetch,
+	fetchImpl?: FetchLike,
 ): Promise<T> {
 	const doFetch = fetchImpl ?? fetch;
 	const ua =

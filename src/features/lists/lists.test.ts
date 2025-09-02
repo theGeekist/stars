@@ -1,22 +1,56 @@
-import { describe, it, expect } from "bun:test";
-import { Database } from "bun:sqlite";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { describe, expect, it } from "bun:test";
 import { createListsService } from "@features/lists";
+import { createDb } from "@lib/db";
+import {
+	LISTS_EDGES_PAGE,
+	M_UPDATE_LISTS_FOR_ITEM,
+	Q_REPO_ID,
+} from "@lib/lists";
+import type { ListsEdgesPage } from "@lib/types"; // add this
 
-function makeDb() {
-	const db = new Database(":memory:");
-	const schema = readFileSync(
-		resolve(process.cwd(), "sql/schema.sql"),
-		"utf-8",
-	);
-	db.exec(schema);
-	return db;
+// test/utils/makeFakeGh.ts
+export function makeFakeGh(
+	handlers: Record<string, (vars?: Record<string, unknown>) => unknown>,
+) {
+	const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+
+	// normalised lookup table
+	const table = new Map<string, (vars?: Record<string, unknown>) => unknown>();
+	for (const [k, v] of Object.entries(handlers)) {
+		table.set(norm(k), v);
+	}
+
+	// Signature compatible with githubGraphQL<T>
+	return async function fakeGh<T>(
+		_token: string,
+		query: string,
+		vars?: Record<string, unknown>,
+	): Promise<T> {
+		const q = norm(query);
+		let h = table.get(q);
+
+		// Fallback: allow substring match after normalisation
+		if (!h) {
+			for (const [k, fn] of table) {
+				if (q.includes(k)) {
+					h = fn;
+					break;
+				}
+			}
+		}
+
+		if (!h) {
+			throw new Error(
+				`No fake handler for query:\n\n${query.slice(0, 200)}...`,
+			);
+		}
+		return h(vars) as T;
+	};
 }
 
 describe("lists service DB ops", () => {
 	it("getReposToScore selects default and by slug", async () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createListsService(db);
 		// seed two lists and repos
 		db.run(
@@ -34,7 +68,7 @@ describe("lists service DB ops", () => {
 	});
 
 	it("currentMembership returns slugs", async () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createListsService(db);
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
@@ -47,7 +81,7 @@ describe("lists service DB ops", () => {
 	});
 
 	it("reconcileLocal makes mapping exact", async () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createListsService(db);
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2'),('Learn','',0,'learning','L3')`,
@@ -65,7 +99,7 @@ describe("lists service DB ops", () => {
 	});
 
 	it("mapSlugsToGhIds returns only known GH ids", async () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createListsService(db);
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
@@ -75,50 +109,49 @@ describe("lists service DB ops", () => {
 	});
 
 	it("ensureListGhIds maps by list name and updates DB using injected GH client", async () => {
-		const db = makeDb();
+		const db = createDb();
 		// seed two lists
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai',''),('Prod','',0,'productivity','')`,
 		);
-		// fake github runner that returns those two names with IDs
-		const fakeGh = async <T>(
-			_tok: string,
-			_q: string,
-			_vars?: Record<string, unknown>,
-		): Promise<T> => {
-			const page = {
-				viewer: {
-					lists: {
-						pageInfo: { endCursor: null, hasNextPage: false },
-						edges: [
-							{
-								cursor: "c1",
-								node: {
-									listId: "L_AI",
-									name: "AI",
-									description: "",
-									isPrivate: false,
-								},
+		const listsPage: ListsEdgesPage = {
+			viewer: {
+				lists: {
+					pageInfo: { endCursor: null, hasNextPage: false },
+					edges: [
+						{
+							cursor: "c1",
+							node: {
+								listId: "L_AI",
+								name: "AI",
+								description: "",
+								isPrivate: false,
 							},
-							{
-								cursor: "c2",
-								node: {
-									listId: "L_PROD",
-									name: "Prod",
-									description: "",
-									isPrivate: false,
-								},
+						},
+						{
+							cursor: "c2",
+							node: {
+								listId: "L_PROD",
+								name: "Prod",
+								description: "",
+								isPrivate: false,
 							},
-						],
-					},
+						},
+					],
 				},
-			} as any;
-			return page as T;
+			},
 		};
+
+		// fake github runner returning a single page of ListsEdgesPage
+		const fakeGh = makeFakeGh({
+			[LISTS_EDGES_PAGE]: () => listsPage,
+		});
+
 		const svc = createListsService(db, fakeGh);
 		const map = await svc.apply.ensureListGhIds("token");
 		expect(map.get("ai")).toBe("L_AI");
 		expect(map.get("productivity")).toBe("L_PROD");
+
 		const rows = db
 			.query<{ list_id: string | null }, []>(
 				`SELECT list_id FROM list ORDER BY id`,
@@ -128,19 +161,19 @@ describe("lists service DB ops", () => {
 	});
 
 	it("ensureRepoGhId fetches and saves new global ID via injected GH client", async () => {
-		const db = makeDb();
+		const db = createDb();
 		db.run(`INSERT INTO repo(name_with_owner, url, stars, forks, watchers, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
             VALUES ('owner/repo','url',0,0,0,0,0,0,0,1)`);
-		const fakeGh = async <T>(
-			_tok: string,
-			_q: string,
-			_vars?: Record<string, unknown>,
-		): Promise<T> => {
-			return { repository: { id: "R_kgNEW" } } as any as T;
-		};
+
+		type RepoIdResp = { repository: { id: string } };
+		const fakeGh = makeFakeGh({
+			[Q_REPO_ID]: (_vars) => ({ repository: { id: "R_kgNEW" } }) as RepoIdResp,
+		});
+
 		const svc = createListsService(db, fakeGh);
 		const id = await svc.apply.ensureRepoGhId("token", 1);
 		expect(id).toBe("R_kgNEW");
+
 		const row = db
 			.query<{ repo_id: string | null }, []>(
 				`SELECT repo_id FROM repo WHERE id=1`,
@@ -150,18 +183,29 @@ describe("lists service DB ops", () => {
 	});
 
 	it("updateOnGitHub forwards itemId and listIds via injected GH client", async () => {
-		const db = makeDb();
-		let captured: any = null;
-		const fakeGh = async <T>(
-			_tok: string,
-			_q: string,
-			vars?: Record<string, unknown>,
-		): Promise<T> => {
-			captured = vars;
-			return { updateUserListsForItem: { lists: [] } } as any as T;
+		const db = createDb();
+
+		type UpdateListsResp = {
+			updateUserListsForItem: { lists: { id: string; name: string }[] };
 		};
+		type UpdateVars = { itemId: string; listIds: string[] };
+
+		let captured: UpdateVars | null = null;
+
+		const fakeGh = makeFakeGh({
+			[M_UPDATE_LISTS_FOR_ITEM]: (vars) => {
+				captured = vars as UpdateVars;
+				const resp: UpdateListsResp = { updateUserListsForItem: { lists: [] } };
+				return resp;
+			},
+		});
 		const svc = createListsService(db, fakeGh);
 		await svc.apply.updateOnGitHub("token", "R_kgX", ["L1", "L2"]);
-		expect(captured).toEqual({ itemId: "R_kgX", listIds: ["L1", "L2"] });
+
+		expect(captured).toBeDefined();
+		expect(captured as unknown as UpdateVars).toEqual({
+			itemId: "R_kgX",
+			listIds: ["L1", "L2"],
+		});
 	});
 });

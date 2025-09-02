@@ -1,13 +1,13 @@
-import { db } from "@lib/db";
 import type { Statement } from "bun:sqlite";
+import { db } from "@lib/db";
 import {
-	upsertTopic,
-	reconcileRepoTopics,
-	selectStaleTopics,
-	repoTopicsMany,
-	topicMetaMany,
 	normalizeTopics,
 	type RepoRef,
+	reconcileRepoTopics,
+	repoTopicsMany,
+	selectStaleTopics,
+	topicMetaMany,
+	upsertTopic,
 } from "./api";
 
 type RepoMini = { id: number; name_with_owner: string; is_archived: number };
@@ -62,7 +62,9 @@ export function createTopicsService() {
 			const key = r.name_with_owner;
 			const ts = normalizeTopics(topicsByRepo.get(key) ?? []);
 			reconcileRepoTopics(r.id, ts);
-			ts.forEach((t) => universe.add(t));
+			ts.forEach((t) => {
+				universe.add(t);
+			});
 		}
 
 		const stale = selectStaleTopics(JSON.stringify([...universe]), ttlDays).map(

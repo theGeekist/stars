@@ -1,8 +1,9 @@
 // src/lib/summarise_batch.ts
+
+import { createSummariseService } from "@features/summarise/service";
 import { initSchema } from "@lib/db";
 import { summariseRepoOneParagraph } from "@lib/summarise";
 import type { RepoRow } from "@lib/types";
-import { createSummariseService } from "@features/summarise/service";
 
 initSchema();
 // ---- CLI args ---------------------------------------------------------------

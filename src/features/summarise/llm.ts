@@ -1,15 +1,15 @@
+import { OllamaService } from "@jasonnathan/llm-core";
 import { gen as realGen } from "@lib/ollama";
 import {
-	fetchReadmeWithCache,
-	cleanMarkdown,
 	chunkMarkdown,
+	cleanMarkdown,
+	fetchReadmeWithCache,
 } from "@lib/readme";
-import { OllamaService } from "@jasonnathan/llm-core";
 import {
-	enforceWordCap,
-	linkDensity,
 	cosine,
+	enforceWordCap,
 	isAwesomeList,
+	linkDensity,
 	summariseAwesomeList,
 } from "@lib/utils";
 
@@ -29,7 +29,7 @@ export type Meta = {
 };
 
 export type SummariseDeps = {
-	gen?: (prompt: string, opts?: any) => Promise<string>;
+	gen?: (prompt: string, opts?: Record<string, unknown>) => Promise<string>;
 	embed?: { embedTexts: (texts: string[]) => Promise<number[][]> };
 };
 

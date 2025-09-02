@@ -1,13 +1,14 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { createDb } from "@lib/db";
 import {
-	fetchReadmeWithCache,
-	fetchAndChunkReadmeCached,
-	cleanMarkdown,
 	chunkMarkdown,
-	selectInformativeChunks,
+	// fetchAndChunkReadmeCached,
+	cleanMarkdown,
+	fetchReadmeWithCache,
 	prepareReadmeForSummary,
+	selectInformativeChunks,
 } from "@lib/readme";
+import type { FetchLike } from "./types";
 
 function makeDb() {
 	const db = createDb(":memory:");
@@ -22,8 +23,10 @@ function makeDb() {
 describe("readme fetch + cache", () => {
 	it("returns null on 404 and does not write DB", async () => {
 		const db = makeDb();
-		const fakeFetch = async () =>
+
+		const fakeFetch: FetchLike = async () =>
 			new Response("not found", { status: 404, statusText: "Not Found" });
+
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
@@ -33,6 +36,7 @@ describe("readme fetch + cache", () => {
 			db,
 		);
 		expect(md).toBeNull();
+
 		const row = db
 			.query<{ readme_md: string | null }, []>(
 				`SELECT readme_md FROM repo WHERE id=1`,
@@ -43,9 +47,14 @@ describe("readme fetch + cache", () => {
 
 	it("stores README and ETag on 200, respects maxBytes", async () => {
 		const db = makeDb();
-		const body = "# Title\n" + "A".repeat(1000);
-		const fakeFetch = async () =>
-			new Response(body, { status: 200, headers: { ETag: '"abc"' } as any });
+		const body = `#·Title\n${"A".repeat(1000)}`;
+
+		const fakeFetch: FetchLike = async () =>
+			new Response(body, {
+				status: 200,
+				headers: { ETag: '"abc"' }, // HeadersInit accepts Record<string,string>
+			});
+
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
@@ -55,6 +64,7 @@ describe("readme fetch + cache", () => {
 			db,
 		);
 		expect(md?.length).toBe(100);
+
 		const row = db
 			.query<{ readme_md: string | null; readme_etag: string | null }, []>(
 				`SELECT readme_md, readme_etag FROM repo WHERE id=1`,
@@ -67,7 +77,9 @@ describe("readme fetch + cache", () => {
 	it("returns cached on 304 and bumps fetched_at", async () => {
 		const db = makeDb();
 		db.run(`UPDATE repo SET readme_md='cached', readme_etag='"e"' WHERE id=1`);
-		const fakeFetch = async () => new Response("", { status: 304 });
+
+		const fakeFetch: FetchLike = async () => new Response("", { status: 304 });
+
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
@@ -77,6 +89,7 @@ describe("readme fetch + cache", () => {
 			db,
 		);
 		expect(md).toBe("cached");
+
 		const row = db
 			.query<{ readme_fetched_at: string | null }, []>(
 				`SELECT readme_fetched_at FROM repo WHERE id=1`,
@@ -112,8 +125,10 @@ describe("selectInformativeChunks & prepareReadmeForSummary", () => {
 			"- [link](http://a)\n- [link2](http://b)",
 			"Another paragraph with details and features explained.".repeat(20),
 		];
-		const embed = async (texts: string[]) =>
+
+		const embed: (texts: string[]) => Promise<number[][]> = async (texts) =>
 			texts.map((_t, i) => [1 - i * 0.01, 0, 0]);
+
 		const picked = await selectInformativeChunks(chunks, "purpose arch", embed);
 		expect(picked.length).toBeGreaterThan(0);
 		// ensure link-heavy list was filtered
@@ -122,12 +137,16 @@ describe("selectInformativeChunks & prepareReadmeForSummary", () => {
 
 	it("classifies awesome/directory repos and returns no chunks", async () => {
 		const db = makeDb();
-		const embed = async (_: string[]) => [[1, 0, 0]];
+		const embed: (texts: string[]) => Promise<number[][]> = async (_texts) => [
+			[1, 0, 0],
+		];
 		// Bypass GitHub by directly inserting readme and calling prepare
 		db.run(
 			`UPDATE repo SET readme_md='- [link](http://x)\n- [link2](http://y)', readme_etag='"e"' WHERE id=1`,
 		);
-		const fakeFetch = async () => new Response("", { status: 304 });
+
+		const fakeFetch: FetchLike = async () => new Response("", { status: 304 });
+
 		const out = await prepareReadmeForSummary(
 			{
 				repoId: 1,
