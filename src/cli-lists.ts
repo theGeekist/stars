@@ -14,10 +14,10 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { log } from "@lib/bootstrap";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
 import type { RepoInfo, StarList } from "@lib/types";
 import type { Command, Parsed } from "./types.js";
-import { log } from "@lib/bootstrap";
 
 const USAGE = `geek-stars
 

@@ -1,9 +1,9 @@
 import type { Statement } from "bun:sqlite";
 import { db } from "@lib/db";
+import { createLogger } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
-import { createLogger } from "@lib/logger";
 
 let qLists!: Statement<ListRow, []>;
 let qListBySlug!: Statement<ListDetail, [slug: string]>;

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { db, initSchema, createDb, setDefaultDb } from "@lib/db";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { createDb, db, initSchema, setDefaultDb } from "@lib/db";
 
 function resetTables() {
 	db.exec(

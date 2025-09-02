@@ -12,41 +12,18 @@ import {
 	linkDensity,
 	summariseAwesomeList,
 } from "@lib/utils";
-
-export type Metrics = {
-	popularity?: number;
-	freshness?: number;
-	activeness?: number;
-};
-export type Meta = {
-	repoId?: number;
-	nameWithOwner: string;
-	url: string;
-	description?: string | null;
-	primaryLanguage?: string | null;
-	topics?: string[];
-	metrics?: Metrics;
-};
+import prompts from "../../../prompts.yaml";
+import type { Meta } from "./types";
 
 export type SummariseDeps = {
 	gen?: (prompt: string, opts?: Record<string, unknown>) => Promise<string>;
 	embed?: { embedTexts: (texts: string[]) => Promise<number[][]> };
 };
 
-async function loadPromptsYaml(): Promise<any | null> {
-	try {
-		const mod = await import("../../../prompts.yaml");
-		return (mod as any).default ?? mod;
-	} catch {
-		return null;
-	}
-}
-
 export async function summariseRepoOneParagraph(
 	meta: Meta,
 	deps?: SummariseDeps,
 ): Promise<string> {
-	const prompts = await loadPromptsYaml();
 	const baseHints = [
 		meta.description ?? "",
 		meta.primaryLanguage ? `Primary language: ${meta.primaryLanguage}` : "",

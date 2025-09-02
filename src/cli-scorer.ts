@@ -6,6 +6,8 @@ import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import type { ScoringLLM } from "@features/scoring/llm";
 import { OllamaService } from "@jasonnathan/llm-core";
+import { log } from "@lib/bootstrap";
+import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { db } from "@lib/db";
 import {
 	type ListDef,
@@ -14,8 +16,6 @@ import {
 } from "@lib/score";
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
-import { log } from "@lib/bootstrap";
-import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -78,7 +78,7 @@ function chooseFreshnessSource(opts: {
 	);
 }
 
-function annotateHeader(r: RepoRow): string {
+function _annotateHeader(r: RepoRow): string {
 	const tags = parseStringArray(r.topics).slice(0, 6).join(", ");
 	const stars = formatNum(r.stars);
 	const forks = formatNum(r.forks);

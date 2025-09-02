@@ -1,11 +1,12 @@
 // src/lib/summarise_batch.ts
 
 import { createSummariseService } from "@features/summarise/service";
-import { db } from "@lib/db";
-import { summariseRepoOneParagraph, type SummariseDeps } from "@lib/summarise";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
+import { db } from "@lib/db";
+import { type SummariseDeps, summariseRepoOneParagraph } from "@lib/summarise";
 import type { RepoRow } from "@lib/types";
+
 // ---- CLI args (simplified via src/lib/cli.ts) --------------------------------
 
 // No local prepared queries — handled by summarise service
@@ -46,7 +47,7 @@ function chooseFreshnessSource(opts: {
 	);
 }
 
-function annotateHeader(r: RepoRow): string {
+function _annotateHeader(r: RepoRow): string {
 	const tags = parseStringArray(r.topics).slice(0, 6).join(", ");
 	const stars = formatNum(r.stars);
 	const forks = formatNum(r.forks);
@@ -109,7 +110,7 @@ export async function summariseBatchAll(
 			deps,
 		);
 
-		log.line("\n" + paragraph);
+		log.line(`\n${paragraph}`);
 		log.info(`(${wc(paragraph)} words)`);
 
 		if (apply) {
@@ -161,7 +162,7 @@ export async function summariseOne(
 		deps,
 	);
 
-	log.line("\n" + paragraph);
+	log.line(`\n${paragraph}`);
 	log.info(`(${wc(paragraph)} words)`);
 
 	if (apply) {
