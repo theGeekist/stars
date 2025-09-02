@@ -33,9 +33,9 @@ function parseArgs(argv: string[]): Args {
 			resummarise = true;
 			continue;
 		}
-                if (a === "--slug" && argv[i + 1]) {
-                        slug = argv[++i];
-                }
+		if (a === "--slug" && argv[i + 1]) {
+			slug = argv[++i];
+		}
 	}
 	return { limit, dry, resummarise, slug };
 }
