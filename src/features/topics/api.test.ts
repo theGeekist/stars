@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { db } from "@lib/db";
+import { compareAlpha } from "@lib/utils";
 import {
 	normalizeTopics,
 	reconcileRepoTopics,
@@ -12,7 +13,9 @@ import {
 describe("topics api", () => {
 	it("normalizeTopics lowercases, hyphenates and dedupes", () => {
 		const out = normalizeTopics(["Foo Bar", "foo-bar", "FOO   bar", "baz"]);
-		expect(out.sort()).toEqual(["baz", "foo-bar"]);
+		expect(out.sort(compareAlpha)).toEqual(
+			["baz", "foo-bar"].sort(compareAlpha),
+		);
 	});
 
 	it("upsertTopic stores row and selectStaleTopics respects TTL", () => {

@@ -196,8 +196,14 @@ export function createScoringService(db = defaultDb): ScoringService {
 		}
 
 		const changed =
-			finalPlanned.slice().sort().join(",") !==
-			current.slice().sort().join(",");
+			finalPlanned
+				.slice()
+				.sort((a, b) => a.localeCompare(b))
+				.join(",") !==
+			current
+				.slice()
+				.sort((a, b) => a.localeCompare(b))
+				.join(",");
 
 		return {
 			...base,

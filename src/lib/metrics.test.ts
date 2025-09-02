@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { compareAlpha } from "@lib/utils";
 import {
 	chooseFreshnessSource,
 	deriveTags,
@@ -17,8 +18,10 @@ describe("metrics: deriveTags", () => {
 			is_fork: true,
 			is_mirror: false,
 		});
-		expect(tags.sort()).toEqual(
-			["archived", "fork", "license:mit", "lang:ts", "Ml", "ml"].sort(),
+		expect(tags.sort(compareAlpha)).toEqual(
+			["archived", "fork", "license:mit", "lang:ts", "Ml", "ml"].sort(
+				compareAlpha,
+			),
 		);
 	});
 });

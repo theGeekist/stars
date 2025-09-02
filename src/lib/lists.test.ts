@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { compareAlpha } from "@lib/utils";
 import {
 	collectListMetas,
 	getAllListsStream,
@@ -74,7 +75,9 @@ describe("lists lib", () => {
 		expect(info.nameWithOwner).toBe("o/r");
 		expect(info.stars).toBe(10);
 		expect(info.openPRs).toBe(4);
-		expect(info.topics.sort()).toEqual(["x", "y"]);
+		expect(info.topics.sort(compareAlpha)).toEqual(
+			["x", "y"].sort(compareAlpha),
+		);
 	});
 
 	it("collectListMetas gathers edges across pages and tracks edgeBefore", async () => {

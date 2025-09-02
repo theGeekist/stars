@@ -132,3 +132,8 @@ export function summariseAwesomeList(
 		`a catalogue rather than a library.`;
 	return enforceWordCap(base, cap);
 }
+
+/** Locale-aware alphabetical compare for stable sorting. */
+export function compareAlpha(a: string, b: string): number {
+	return String(a).localeCompare(String(b));
+}

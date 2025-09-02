@@ -217,8 +217,13 @@ async function main(argv: string[]) {
 			for (let i = 1; i < args.length; i++) {
 				const a = args[i];
 				if (a === "--json") json = true;
-				else if (a === "--out" && args[i + 1]) out = args[++i];
-				else if (a === "--dir" && args[i + 1]) dir = args[++i];
+				else if (a === "--out" && args[i + 1]) {
+					i += 1;
+					out = args[i];
+				} else if (a === "--dir" && args[i + 1]) {
+					i += 1;
+					dir = args[i];
+				}
 			}
 			await runLists(json, out, dir);
 			return;
@@ -229,8 +234,10 @@ async function main(argv: string[]) {
 				json = false;
 			for (let i = 1; i < args.length; i++) {
 				const a = args[i];
-				if (a === "--list" && args[i + 1]) list = args[++i];
-				else if (a === "--json") json = true;
+				if (a === "--list" && args[i + 1]) {
+					i += 1;
+					list = args[i];
+				} else if (a === "--json") json = true;
 			}
 			if (!list) {
 				log.error("--list <name> is required");
@@ -252,7 +259,8 @@ async function main(argv: string[]) {
 			for (let i = 1; i < args.length; i++) {
 				const a = args[i];
 				if (a === "--resume" && args[i + 1]) {
-					const v = args[++i];
+					i += 1;
+					const v = args[i];
 					resume =
 						v === "last"
 							? "last"
@@ -262,7 +270,8 @@ async function main(argv: string[]) {
 					continue;
 				}
 				if (a === "--notes" && args[i + 1]) {
-					notes = args[++i];
+					i += 1;
+					notes = args[i];
 					continue;
 				}
 				if (a === "--fresh" || a === "--from-scratch") {

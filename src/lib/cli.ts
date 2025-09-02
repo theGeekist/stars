@@ -24,11 +24,13 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 		}
 		if (a === "--one" && argv[i + 1]) {
 			mode = "one";
-			one = argv[++i];
+			i += 1;
+			one = argv[i];
 			continue;
 		}
 		if (a === "--limit" && argv[i + 1] && /^\d+$/.test(argv[i + 1])) {
-			limit = Number(argv[++i]);
+			i += 1;
+			limit = Number(argv[i]);
 			continue;
 		}
 		if (a === "--apply") apply = true;

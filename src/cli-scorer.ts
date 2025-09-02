@@ -423,7 +423,8 @@ if (import.meta.main) {
 	for (let i = 0; i < rest.length; i++) {
 		const a = rest[i];
 		if (a === "--resume" && rest[i + 1]) {
-			const v = rest[++i];
+			i += 1;
+			const v = rest[i];
 			resume =
 				v === "last"
 					? "last"
@@ -433,7 +434,8 @@ if (import.meta.main) {
 			continue;
 		}
 		if (a === "--notes" && rest[i + 1]) {
-			notes = rest[++i];
+			i += 1;
+			notes = rest[i];
 			continue;
 		}
 		if (a === "--fresh" || a === "--from-scratch") {

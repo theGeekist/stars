@@ -77,7 +77,10 @@ describe("lists service DB ops", () => {
             VALUES ('o/r1','u1',50,1,1,0,0,0,0,1)`);
 		db.run(`INSERT INTO list_repo(list_id, repo_id) VALUES (1,1), (2,1)`);
 		const slugs = await svc.read.currentMembership(1);
-		expect(slugs.sort()).toEqual(["ai", "productivity"]);
+		const { compareAlpha } = await import("@lib/utils");
+		expect(slugs.sort(compareAlpha)).toEqual(
+			["ai", "productivity"].sort(compareAlpha),
+		);
 	});
 
 	it("reconcileLocal makes mapping exact", async () => {
@@ -91,7 +94,8 @@ describe("lists service DB ops", () => {
 		// start with ai + prod
 		await svc.apply.reconcileLocal(1, ["ai", "productivity"]);
 		let cur = await svc.read.currentMembership(1);
-		expect(cur.sort()).toEqual(["ai", "productivity"]);
+		const { compareAlpha: cmp } = await import("@lib/utils");
+		expect(cur.sort(cmp)).toEqual(["ai", "productivity"].sort(cmp));
 		// change to learning only
 		await svc.apply.reconcileLocal(1, ["learning"]);
 		cur = await svc.read.currentMembership(1);
