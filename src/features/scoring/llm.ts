@@ -83,35 +83,6 @@ function listsBlock(lists: ListDef[]): string {
 		.join("\n");
 }
 
-async function loadPromptsYaml(): Promise<any | null> {
-	try {
-		// @ts-expect-error Bun supports importing YAML
-		const mod = await import("@features/setup/prompts.yaml");
-		return (mod as any).default ?? mod;
-	} catch {
-		return null;
-	}
-}
-
-function listsBlockFromCriteria(
-	lists: ListDef[],
-	criteria?: Array<{
-		slug: string;
-		name?: string;
-		description?: string | null;
-	}>,
-): string {
-	if (!criteria?.length) return listsBlock(lists);
-	const bySlug = new Map(criteria.map((c) => [c.slug, c] as const));
-	return lists
-		.map((l) => {
-			const c = bySlug.get(l.slug);
-			const desc = (c?.description ?? l.description ?? "").trim();
-			return `- ${l.name} (${l.slug}) - ${desc}`.trim();
-		})
-		.join("\n");
-}
-
 const FEWSHOT = `
 Examples (format matches schema):
 
@@ -216,31 +187,33 @@ export async function scoreRepoAgainstLists(
 	repo: RepoFacts,
 	llm: ScoringLLM = defaultLLM(),
 ): Promise<ScoreResponse> {
-	const prompts = await loadPromptsYaml();
 	const slugs = lists.map((l) => l.slug);
 	const schema = buildSchema(slugs);
 
 	const userPrompt = `
 Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
 Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):
-${listsBlockFromCriteria(lists, prompts?.scoring?.criteria)}
+  productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).
+  monetise = only score if the repo explicitly helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
+  networking = only score if the repo explicitly builds or supports communities, connections, or collaboration (social, professional, or technical).
+  ai = only score if the repo’s primary focus is AI/ML models, frameworks, applications, or tooling.
+  blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, financial systems, or digital assets.
+  learning = only score if the repo explicitly teaches through courses, tutorials, exercises, or curricula (any subject, not just programming).
+  self-marketing = only score if the repo explicitly promotes an individual (portfolio, profile, blogging, personal branding, analytics).
+  team-management = only score if the repo explicitly helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
 
 Lists:
-${listsBlockFromCriteria(lists, prompts?.scoring?.criteria)}
+${listsBlock(lists)}
 
-${prompts?.scoring?.fewshot ?? FEWSHOT}
+${FEWSHOT}
 
 Repository to score:
 ${repoBlock(repo)}
   `.trim();
 
-	const raw = await llm.generatePromptAndSend(
-		(prompts?.scoring?.system as string) || SYSTEM_PROMPT,
-		userPrompt,
-		{
-			schema,
-		},
-	);
+	const raw = await llm.generatePromptAndSend(SYSTEM_PROMPT, userPrompt, {
+		schema,
+	});
 	const repaired = validateAndRepair(raw, new Set(slugs));
 	if (!repaired) throw new Error("Invalid LLM response");
 	return repaired;

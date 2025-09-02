@@ -35,8 +35,7 @@ export type SummariseDeps = {
 
 async function loadPromptsYaml(): Promise<any | null> {
 	try {
-		// @ts-expect-error Bun supports importing YAML
-		const mod = await import("@features/setup/prompts.yaml");
+		const mod = await import("../../../prompts.yaml");
 		return (mod as any).default ?? mod;
 	} catch {
 		return null;
