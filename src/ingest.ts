@@ -1,5 +1,5 @@
-import { db, initSchema } from "./lib/db";
-import type { RepoInfo, StarList } from "./lib/types";
+import { db, initSchema } from "@lib/db";
+import type { RepoInfo, StarList } from "@lib/types";
 import { Statement } from "bun:sqlite";
 import type {
 	IdRow,
@@ -13,8 +13,8 @@ import {
 	scoreActiveness,
 	scoreFreshnessFromISO,
 	scorePopularity,
-} from "./lib/metrics";
-import { isObject, slugify } from "./lib/utils";
+} from "@lib/metrics";
+import { isObject, slugify } from "@lib/utils";
 
 function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 	if (!Array.isArray(x)) throw new Error("exports/index.json must be an array");

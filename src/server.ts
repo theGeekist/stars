@@ -1,8 +1,8 @@
-import { db } from "./lib/db";
+import { db } from "@lib/db";
 import { Statement } from "bun:sqlite";
 import type { ListRow, ListDetail, ApiRepo } from "./types";
-import type { RepoRow } from "./lib/types";
-import { parseJsonArray } from "./lib/utils";
+import type { RepoRow } from "@lib/types";
+import { parseJsonArray } from "@lib/utils";
 
 let qLists!: Statement<ListRow, []>;
 let qListBySlug!: Statement<ListDetail, [slug: string]>;

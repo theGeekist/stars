@@ -1,10 +1,14 @@
 // src/lib/score_one.ts
 import { OllamaService } from "@jasonnathan/llm-core";
-import { scoreRepoAgainstLists, type ListDef, type RepoFacts } from "./score";
-import { initSchema, db } from "./db";
-import type { RepoRow } from "./types";
-import { createListsService } from "../features/lists";
-import { createScoringService, DEFAULT_POLICY } from "../features/scoring";
+import {
+	scoreRepoAgainstLists,
+	type ListDef,
+	type RepoFacts,
+} from "@lib/score";
+import { initSchema, db } from "@lib/db";
+import type { RepoRow } from "@lib/types";
+import { createListsService } from "@features/lists";
+import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 
 type ListRow = { slug: string; name: string; description: string | null };
 type CurrentListRow = { slug: string };

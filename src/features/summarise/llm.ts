@@ -1,9 +1,9 @@
-import { gen } from "../../lib/ollama";
+import { gen } from "@lib/ollama";
 import {
 	fetchReadmeWithCache,
 	cleanMarkdown,
 	chunkMarkdown,
-} from "../../lib/readme";
+} from "@lib/readme";
 import { OllamaService } from "@jasonnathan/llm-core";
 import {
 	enforceWordCap,
@@ -11,7 +11,7 @@ import {
 	cosine,
 	isAwesomeList,
 	summariseAwesomeList,
-} from "../../lib/utils";
+} from "@lib/utils";
 
 export type Metrics = {
 	popularity?: number;

@@ -1,4 +1,4 @@
-import type { RepoRow, StarList } from "../../lib/types";
+import type { RepoRow, StarList } from "@lib/types";
 
 export type BatchSelector = { limit?: number; listSlug?: string };
 

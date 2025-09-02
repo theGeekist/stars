@@ -1,5 +1,5 @@
 // src/jobs/enrich-topics.ts
-import { db } from "./lib/db";
+import { db } from "@lib/db";
 import type { Statement } from "bun:sqlite";
 import {
 	reconcileRepoTopics,
@@ -9,7 +9,7 @@ import {
 	topicMetaMany,
 	normalizeTopics,
 	type RepoRef,
-} from "./lib/topics";
+} from "@lib/topics";
 
 // ---- Config ------------------------------------------------------------------
 const TTL_DAYS = Number(Bun.env.TOPIC_TTL_DAYS ?? 30);

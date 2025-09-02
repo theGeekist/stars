@@ -1,5 +1,5 @@
-import type { RepoRow } from "../../lib/types";
-import type { ScoreItem } from "../../lib/score";
+import type { RepoRow } from "@lib/types";
+import type { ScoreItem } from "@lib/score";
 
 export type ResumeFlag = number | "last" | undefined;
 

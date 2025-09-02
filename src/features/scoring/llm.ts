@@ -1,5 +1,5 @@
 import { OllamaService } from "@jasonnathan/llm-core";
-import { toNum } from "../../lib/utils";
+import { toNum } from "@lib/utils";
 
 export type ListDef = {
 	slug: string;

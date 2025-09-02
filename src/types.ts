@@ -1,4 +1,4 @@
-import type { RepoRow } from "./lib/types";
+import type { RepoRow } from "@lib/types";
 
 export type IndexEntry = {
 	name: string;

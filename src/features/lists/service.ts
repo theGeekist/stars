@@ -1,12 +1,12 @@
-import { db } from "../../lib/db";
-import type { RepoRow, StarList, ListsEdgesPage } from "../../lib/types";
+import { db } from "@lib/db";
+import type { RepoRow, StarList, ListsEdgesPage } from "@lib/types";
 import {
 	getAllLists,
 	getAllListsStream,
 	LISTS_EDGES_PAGE,
 	Q_REPO_ID,
-} from "../../lib/lists";
-import { githubGraphQL, gql } from "../../lib/github";
+} from "@lib/lists";
+import { githubGraphQL, gql } from "@lib/github";
 import type { ListsService, BatchSelector } from "./types";
 
 // Prepared queries scoped to the Lists feature

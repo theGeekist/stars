@@ -1,6 +1,6 @@
-import { db } from "../../lib/db";
-import type { RepoRow } from "../../lib/types";
-import type { ScoreItem } from "../../lib/score";
+import { db } from "@lib/db";
+import type { RepoRow } from "@lib/types";
+import type { ScoreItem } from "@lib/score";
 import type {
 	ApplyPolicy,
 	BatchSelector,

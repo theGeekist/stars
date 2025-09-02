@@ -1,18 +1,18 @@
 // src/cli-scorer.ts
-import { db, initSchema } from "./lib/db";
+import { db, initSchema } from "@lib/db";
 import type { Statement } from "bun:sqlite";
 import { OllamaService } from "@jasonnathan/llm-core";
 import {
 	scoreRepoAgainstLists,
 	type ListDef,
 	type RepoFacts,
-} from "./lib/score";
-import { createListsService } from "./features/lists";
-import { createScoringService, DEFAULT_POLICY } from "./features/scoring";
-import type { RepoRow } from "./lib/types";
+} from "@lib/score";
+import { createListsService } from "@features/lists";
+import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
+import type { RepoRow } from "@lib/types";
 import { mkdirSync, existsSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseStringArray, formatNum } from "./lib/utils";
+import { parseStringArray, formatNum } from "@lib/utils";
 
 initSchema();
 

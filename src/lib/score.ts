@@ -4,5 +4,5 @@ export type {
 	RepoFacts,
 	ScoreItem,
 	ScoreResponse,
-} from "../features/scoring/llm";
-export { scoreRepoAgainstLists } from "../features/scoring/llm";
+} from "@features/scoring/llm";
+export { scoreRepoAgainstLists } from "@features/scoring/llm";

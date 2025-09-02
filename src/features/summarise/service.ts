@@ -1,5 +1,5 @@
-import { db } from "../../lib/db";
-import type { RepoRow } from "../../lib/types";
+import { db } from "@lib/db";
+import type { RepoRow } from "@lib/types";
 
 export type BatchSelector = {
 	limit?: number;
