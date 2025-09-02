@@ -49,8 +49,8 @@ export async function generatePromptsYaml(
 	const tmplStr: string =
 		typeof tmpl === "string" ? tmpl : readFileSync(tmplPath, "utf-8");
 
-	// Fetch lists and prepare slugs
-	const lists = await getAllLists(token);
+	// Fetch lists and prepare slugs (skip network if forcing placeholders)
+	const lists = opts.forcePlaceholder ? [] : await getAllLists(token);
 	const sorted = lists.slice().sort((a, b) => a.name.localeCompare(b.name));
 
 	// Build criteria map, optionally via LLM
