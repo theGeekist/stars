@@ -81,7 +81,7 @@ function parseArgs(argv: string[]): Parsed {
 	return { command, json, out, dir, list, help };
 }
 
-function ensureToken(): string {
+export function ensureToken(): string {
 	const token = Bun.env.GITHUB_TOKEN;
 	if (!token) {
 		const log = createLogger();
@@ -93,7 +93,7 @@ function ensureToken(): string {
 	return token;
 }
 
-function printListsHuman(lists: StarList[]) {
+export function printListsHuman(lists: StarList[]) {
 	const log = createLogger();
 	for (const l of lists) {
 		const vis = l.isPrivate ? "private" : "public";
@@ -103,7 +103,7 @@ function printListsHuman(lists: StarList[]) {
 	}
 }
 
-function printReposHuman(repos: RepoInfo[]) {
+export function printReposHuman(repos: RepoInfo[]) {
 	const log = createLogger();
 	for (const r of repos) {
 		log.line(`${r.nameWithOwner} (${r.stars}) ${r.url}`);
@@ -119,7 +119,7 @@ function toSlug(name: string): string {
 		.replace(/^-+|-+$/g, ""); // trim hyphens
 }
 
-async function runLists(json: boolean, out?: string, dir?: string) {
+export async function runLists(json: boolean, out?: string, dir?: string) {
 	const log = createLogger();
 	const token = ensureToken();
 
@@ -174,7 +174,7 @@ async function runLists(json: boolean, out?: string, dir?: string) {
 	}
 }
 
-async function runRepos(listName: string, json: boolean) {
+export async function runRepos(listName: string, json: boolean) {
 	const log = createLogger();
 	const token = ensureToken();
 	if (!listName) {
