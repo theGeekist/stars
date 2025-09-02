@@ -1,14 +1,25 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { db } from "@lib/db";
+import { db, initSchema } from "@lib/db";
 
 describe("cli-scorer", () => {
+	// Ensure schema exists before any cleanup
+	beforeAll(() => {
+		initSchema();
+	});
 	beforeEach(() => {
 		db.exec(
 			"DELETE FROM repo_list_score; DELETE FROM model_run; DELETE FROM list_repo; DELETE FROM list; DELETE FROM repo;",
 		);
-		// Clean any previous CSV
+		// Use a test-specific output directory to avoid CI conflicts
+		const testOut = join(
+			process.cwd(),
+			"exports-test",
+			String(Math.random()).slice(2),
+		);
+		(Bun.env as Record<string, string>).LISTLESS_OUT_DIR = testOut;
+		// Clean any previous CSV in default path just in case
 		const f = join(process.cwd(), "exports", "listless.csv");
 		try {
 			rmSync(f);
@@ -64,7 +75,10 @@ describe("cli-scorer", () => {
 
 		await scoreBatchAll(5, false, fakeLLM);
 
-		const csv = join(process.cwd(), "exports", "listless.csv");
+		const csv = join(
+			String((Bun.env as Record<string, string>).LISTLESS_OUT_DIR),
+			"listless.csv",
+		);
 		expect(existsSync(csv)).toBeTrue();
 		const txt = readFileSync(csv, "utf-8");
 		expect(txt).toContain("o/r1");

@@ -30,7 +30,8 @@ function logListlessCSV(row: {
 	scores: string; // JSON
 	note: string;
 }) {
-	const outDir = join(process.cwd(), "exports");
+	const baseDir = Bun.env.LISTLESS_OUT_DIR || join(process.cwd(), "exports");
+	const outDir = baseDir;
 	const outFile = join(outDir, "listless.csv");
 	ensureDir(outDir);
 
