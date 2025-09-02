@@ -8,7 +8,13 @@ export type TopicMeta = {
 	name: string;
 	displayName?: string | null;
 	shortDescription?: string | null;
-	aliases?: string[];
+	longDescriptionMd?: string | null;
+	aliases?: string[]; // from explore front-matter
+	related?: string[]; // from explore front-matter
+	createdBy?: string | null;
+	released?: string | null;
+	wikipediaUrl?: string | null;
+	logo?: string | null;
 	isFeatured?: boolean;
 };
 
@@ -16,11 +22,18 @@ export type TopicRow = {
 	topic: string;
 	display_name?: string | null;
 	short_description?: string | null;
-	aliases?: string[] | null;
+	long_description_md?: string | null;
 	is_featured?: boolean;
-	updated_at?: string;
+	created_by?: string | null;
+	released?: string | null;
+	wikipedia_url?: string | null;
+	logo?: string | null;
+	updated_at?: string | null;
 	etag?: string | null;
+	aliases?: string[]; // from explore front-matter
+	related?: string[]; // from explore front-matter
 };
+
 // Row type for statements that don't return rows
 export type NoRow = Record<string, never>;
 // GitHub /search/topics payload shapes

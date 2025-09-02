@@ -10,6 +10,7 @@ import { scoreBatchAll, scoreOne } from "@src/cli-scorer";
 import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
 import { enrichAllRepoTopics } from "@src/enrich-topics";
 import ingest from "@src/ingest";
+import { topicsReport } from "@src/topics-report";
 
 /* ----------------------------- Usage banner ----------------------------- */
 
@@ -336,10 +337,21 @@ async function main(argv: string[]) {
 			const ttlIdx = args.indexOf("--ttl");
 			const ttl =
 				ttlIdx > -1 && args[ttlIdx + 1] ? Number(args[ttlIdx + 1]) : undefined;
-			await enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
+			log.info(
+				`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
+			);
+			enrichAllRepoTopics({ onlyActive, ttlDays: ttl }); // ← no await
 			return;
 		}
 
+		case "topics:report": {
+			const showMissing = args.includes("--missing");
+			const showRecent = args.includes("--recent");
+			const json = args.includes("--json");
+			const full = args.includes("--full");
+			await topicsReport({ full, showMissing, showRecent, json });
+			return;
+		}
 		case "setup": {
 			const token = Bun.env.GITHUB_TOKEN;
 			if (!token) {
@@ -370,9 +382,7 @@ async function main(argv: string[]) {
 					"Continuing with placeholders. Fill criteria manually. Examples:",
 				);
 				for (const ex of criteriaExamples()) log.line(`  ${ex}`);
-				await generatePromptsYaml(token, undefined as unknown as string, {
-					forcePlaceholder: true,
-				});
+				await generatePromptsYaml(token);
 			} else {
 				await generatePromptsYaml(token);
 			}

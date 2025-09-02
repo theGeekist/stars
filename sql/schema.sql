@@ -85,14 +85,36 @@ CREATE INDEX IF NOT EXISTS idx_listrepo_repo ON list_repo(repo_id);
 
 -- topics: one row per canonical topic string (lowercase, kebab-case)
 CREATE TABLE IF NOT EXISTS topics (
-  topic              TEXT PRIMARY KEY,          -- e.g. "rss-reader"
-  display_name       TEXT,                      -- e.g. "RSS Reader"
-  short_description  TEXT,                      -- GitHub 'short_description' or 'description'
-  aliases_json       TEXT,                      -- JSON array of strings
-  is_featured        INTEGER NOT NULL DEFAULT 0,
-  updated_at         TEXT NOT NULL,             -- ISO8601 when we last refreshed this row
-  etag               TEXT                       -- reserved for future caching if GH adds ETags here
+  topic               TEXT PRIMARY KEY,          -- e.g. "rss-reader"
+  display_name        TEXT,                      -- e.g. "RSS Reader"
+  short_description   TEXT,                      -- front-matter 'short_description' (or fallback)
+  long_description_md TEXT,                      -- Markdown body from github/explore topic page
+  is_featured         INTEGER NOT NULL DEFAULT 0,
+  created_by          TEXT,                      -- front-matter 'created_by'
+  released            TEXT,                      -- front-matter 'released' (string; could be year or date)
+  wikipedia_url       TEXT,                      -- front-matter 'wikipedia_url'
+  logo                TEXT,                      -- front-matter 'logo' filename (if present)
+  updated_at          TEXT NOT NULL,             -- ISO8601 when we last refreshed this row
+  etag                TEXT                       -- reserved (not used for explore)
 );
+
+-- topic_alias: alias -> canonical topic
+CREATE TABLE IF NOT EXISTS topic_alias (
+  alias TEXT PRIMARY KEY,
+  topic TEXT NOT NULL REFERENCES topics(topic) ON DELETE CASCADE
+);
+
+-- topic_related: undirected edges between canonical topics; store once (a<b)
+CREATE TABLE IF NOT EXISTS topic_related (
+  a TEXT NOT NULL REFERENCES topics(topic) ON DELETE CASCADE,
+  b TEXT NOT NULL REFERENCES topics(topic) ON DELETE CASCADE,
+  PRIMARY KEY (a, b),
+  CHECK (a < b)
+);
+
+CREATE INDEX IF NOT EXISTS idx_topics_display_name ON topics(display_name);
+CREATE INDEX IF NOT EXISTS idx_topics_updated_at   ON topics(updated_at);
+CREATE INDEX IF NOT EXISTS idx_topic_alias_topic   ON topic_alias(topic);
 
 -- repo_topics: many-to-many between your repos (by internal id) and topics
 CREATE TABLE IF NOT EXISTS repo_topics (

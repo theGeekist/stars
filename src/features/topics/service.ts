@@ -1,11 +1,12 @@
+// src/features/topics/service.ts
 import type { Statement } from "bun:sqlite";
-import { db } from "@lib/db";
+import { db, initSchema } from "@lib/db";
 import * as api from "./api";
 import type { Deps, RepoMini, RepoRef } from "./types";
 
 let qReposAll!: Statement<RepoMini, []>;
 let qReposActive!: Statement<RepoMini, []>;
-
+initSchema();
 function prepare() {
 	if (qReposAll && qReposActive) return;
 	qReposAll = db.query<RepoMini, []>(
@@ -16,7 +17,7 @@ function prepare() {
 	);
 }
 
-// ── Small helpers to keep createTopicsService lean ──────────────────────────
+/* ── Small helpers to keep createTopicsService lean ──────────────────────── */
 export function listRepoRefsFromDb(onlyActive?: boolean): RepoMini[] {
 	prepare();
 	return (onlyActive ? qReposActive : qReposAll).all();
@@ -47,44 +48,60 @@ export function reconcileRowsAndCollectUniverse(
 	return universe;
 }
 
-export async function refreshStaleTopicMeta(
-	token: string,
+export function refreshStaleTopicMeta(
 	universe: Set<string>,
 	ttlDays: number,
 	selectStaleTopics: typeof api.selectStaleTopics,
 	topicMetaMany: typeof api.topicMetaMany,
 	upsertTopic: typeof api.upsertTopic,
-	topicConcurrency = Number(Bun.env.TOPIC_META_CONCURRENCY ?? 3),
-): Promise<number> {
+	_topicConcurrency = Number(Bun.env.TOPIC_META_CONCURRENCY ?? 3),
+): number {
 	const stale = selectStaleTopics(JSON.stringify([...universe]), ttlDays).map(
 		(x) => x.topic,
 	);
 	if (!stale.length) return 0;
 
-	const metaMap = await topicMetaMany(token, stale, {
-		concurrency: topicConcurrency,
-	});
+	const metaMap = topicMetaMany(stale, {});
 	let refreshed = 0;
+
 	for (const t of stale) {
 		const m = metaMap.get(t);
+
 		if (!m) {
 			upsertTopic({
 				topic: t,
 				display_name: t,
 				short_description: null,
-				aliases: [],
+				long_description_md: null,
 				is_featured: false,
+				created_by: null,
+				released: null,
+				wikipedia_url: null,
+				logo: null,
 			});
+			// no aliases/related for unknown meta
 			refreshed++;
 			continue;
 		}
+
+		const canonical = m.name || t;
+
 		upsertTopic({
-			topic: m.name || t,
-			display_name: m.displayName ?? m.name ?? t,
+			topic: canonical,
+			display_name: m.displayName ?? canonical,
 			short_description: m.shortDescription ?? null,
-			aliases: m.aliases ?? [],
+			long_description_md: m.longDescriptionMd ?? null,
 			is_featured: !!m.isFeatured,
+			created_by: m.createdBy ?? null,
+			released: m.released ?? null,
+			wikipedia_url: m.wikipediaUrl ?? null,
+			logo: m.logo ?? null,
 		});
+
+		// NEW: persist aliases + related
+		api.upsertTopicAliases(canonical, m.aliases ?? []);
+		api.upsertTopicRelated(canonical, m.related ?? []);
+
 		refreshed++;
 	}
 	return refreshed;
@@ -99,30 +116,23 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 		topicMetaMany,
 		upsertTopic,
 	} = { ...api, ...deps } as Deps;
+
 	function listRepoRefs(onlyActive?: boolean): RepoMini[] {
 		return listRepoRefsFromDb(onlyActive);
 	}
 
-	async function enrichAllRepoTopics(opts?: {
+	function enrichAllRepoTopics(opts?: {
 		onlyActive?: boolean;
 		ttlDays?: number;
 	}) {
 		const TTL_DAYS = Number(Bun.env.TOPIC_TTL_DAYS ?? 30);
-		const CONCURRENCY_REPOS = Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
-
 		const ttlDays = opts?.ttlDays ?? TTL_DAYS;
+
 		const rows = listRepoRefsFromDb(opts?.onlyActive);
 		if (!rows.length) return { repos: 0, unique_topics: 0, refreshed: 0 };
 
-		const token = Bun.env.GITHUB_TOKEN ?? "";
-		if (!token) throw new Error("GITHUB_TOKEN not set");
-
 		const refs: RepoRef[] = buildRepoRefs(rows);
-
-		const topicsByRepo = await repoTopicsMany(token, refs, {
-			concurrency: CONCURRENCY_REPOS,
-		});
-
+		const topicsByRepo = repoTopicsMany(refs, {});
 		const universe = reconcileRowsAndCollectUniverse(
 			rows,
 			topicsByRepo,
@@ -130,8 +140,7 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 			reconcileRepoTopics,
 		);
 
-		const refreshed = await refreshStaleTopicMeta(
-			token,
+		const refreshed = refreshStaleTopicMeta(
 			universe,
 			ttlDays,
 			selectStaleTopics,
