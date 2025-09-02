@@ -97,6 +97,61 @@ describe("readme fetch + cache", () => {
 			.get();
 		expect(typeof row?.readme_fetched_at).toBe("string");
 	});
+
+	it("non-OK returns cached and bumps fetched_at; honors auth + accept headers", async () => {
+		const prev = Bun.env.GITHUB_TOKEN;
+		(Bun.env as unknown as Record<string, string>).GITHUB_TOKEN = "tok";
+		const db = makeDb();
+		db.run(`UPDATE repo SET readme_md='cached' WHERE id=1`);
+
+		let calledHeaders: HeadersInit | undefined;
+		const fakeFetch: FetchLike = async (_input, init) => {
+			calledHeaders = init?.headers as HeadersInit | undefined;
+			return new Response("err", {
+				status: 403,
+				statusText: "Forbidden",
+				headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "soon" },
+			});
+		};
+
+		const md = await fetchReadmeWithCache(
+			1,
+			"owner/repo",
+			200000,
+			false,
+			fakeFetch,
+			db,
+		);
+		expect(md).toBe("cached");
+		const h = calledHeaders as Record<string, string>;
+		expect(h.Accept).toBe("application/vnd.github.v3.raw");
+		expect(h.Authorization).toBe("Bearer tok");
+
+		const row = db
+			.query<{ readme_fetched_at: string | null }, []>(
+				`SELECT readme_fetched_at FROM repo WHERE id=1`,
+			)
+			.get();
+		expect(typeof row?.readme_fetched_at).toBe("string");
+
+		if (prev == null)
+			delete (Bun.env as unknown as Record<string, string>).GITHUB_TOKEN;
+		else (Bun.env as unknown as Record<string, string>).GITHUB_TOKEN = prev;
+	});
+
+	it("forceRefresh ignores ETag in request headers", async () => {
+		const db = makeDb();
+		db.run(
+			`UPDATE repo SET readme_md='cached', readme_etag='"etag"' WHERE id=1`,
+		);
+		let ifNoneMatch: string | undefined;
+		const fakeFetch: FetchLike = async (_input, init) => {
+			ifNoneMatch = (init?.headers as Record<string, string>)["If-None-Match"];
+			return new Response("OK", { status: 200 });
+		};
+		await fetchReadmeWithCache(1, "owner/repo", 100, true, fakeFetch, db);
+		expect(ifNoneMatch).toBeUndefined();
+	});
 });
 
 describe("readme clean + chunk", () => {
@@ -112,6 +167,16 @@ describe("readme clean + chunk", () => {
 			mode: "sentence",
 			chunkSizeTokens: 20,
 			chunkOverlapTokens: 0,
+		});
+
+		it("token mode chunking produces slices and overlap", () => {
+			const md = Array.from({ length: 200 }, (_, i) => `w${i}`).join(" ");
+			const chunks = chunkMarkdown(md, {
+				mode: "token",
+				chunkSizeTokens: 50,
+				chunkOverlapTokens: 10,
+			});
+			expect(chunks.length).toBeGreaterThan(1);
 		});
 		expect(Array.isArray(chunks)).toBeTrue();
 		expect(chunks.length).toBeGreaterThan(0);

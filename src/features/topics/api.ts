@@ -167,7 +167,17 @@ export async function repoTopics(
 	owner: string,
 	name: string,
 ): Promise<string[]> {
-	const json = await githubREST<{ names?: string[] }>(
+	return repoTopicsUsing(githubREST, token, owner, name);
+}
+
+// DI-friendly variants for testing
+export async function repoTopicsUsing(
+	rest: typeof githubREST,
+	token: string,
+	owner: string,
+	name: string,
+): Promise<string[]> {
+	const json = await rest<{ names?: string[] }>(
 		token,
 		`/repos/${owner}/${name}/topics`,
 		{ acceptPreview: true },
@@ -180,9 +190,17 @@ export async function repoTopicsMany(
 	repos: RepoRef[],
 	opts: { concurrency?: number } = {},
 ): Promise<Map<string, string[]>> {
+	return repoTopicsManyUsing(githubREST, token, repos, opts);
+}
+
+export async function repoTopicsManyUsing(
+	rest: typeof githubREST,
+	token: string,
+	repos: RepoRef[],
+	opts: { concurrency?: number } = {},
+): Promise<Map<string, string[]>> {
 	const out = new Map<string, string[]>();
 	const concurrency = Math.max(1, Math.min(8, opts.concurrency ?? 4));
-
 	let i = 0;
 	await Promise.all(
 		Array.from({ length: concurrency }, async () => {
@@ -191,8 +209,12 @@ export async function repoTopicsMany(
 				const r = repos[idx];
 				const key = `${r.owner}/${r.name}`;
 				try {
-					const ts = await repoTopics(token, r.owner, r.name);
-					out.set(key, ts);
+					const json = await rest<{ names?: string[] }>(
+						token,
+						`/repos/${r.owner}/${r.name}/topics`,
+						{ acceptPreview: true },
+					);
+					out.set(key, normalizeTopics(json.names ?? []));
 				} catch (err) {
 					console.error(`[topics] failed ${key}:`, err);
 					out.set(key, []);
@@ -209,10 +231,18 @@ export async function topicMetaMany(
 	topics: string[],
 	opts: { concurrency?: number } = {},
 ): Promise<Map<string, TopicMeta | null>> {
+	return topicMetaManyUsing(githubREST, token, topics, opts);
+}
+
+export async function topicMetaManyUsing(
+	rest: typeof githubREST,
+	token: string,
+	topics: string[],
+	opts: { concurrency?: number } = {},
+): Promise<Map<string, TopicMeta | null>> {
 	const uniq = normalizeTopics(topics);
 	const out = new Map<string, TopicMeta | null>();
 	const concurrency = Math.max(1, Math.min(6, opts.concurrency ?? 3));
-
 	let i = 0;
 	await Promise.all(
 		Array.from({ length: concurrency }, async () => {
@@ -220,7 +250,7 @@ export async function topicMetaMany(
 				const idx = i++;
 				const t = uniq[idx];
 				try {
-					const data = await githubREST<TopicSearchResponse>(
+					const data = await rest<TopicSearchResponse>(
 						token,
 						`/search/topics?q=${encodeURIComponent(t)}`,
 						{ acceptPreview: true },
@@ -229,7 +259,6 @@ export async function topicMetaMany(
 						data.items?.find(
 							(it) => (it.name ?? "").toLowerCase() === t.toLowerCase(),
 						) ?? data.items?.[0];
-
 					out.set(
 						t,
 						hit

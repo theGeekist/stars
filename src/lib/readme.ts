@@ -126,19 +126,65 @@ export function chunkMarkdown(
 		mode = "sentence",
 	} = opts;
 	const doc = new Document({ text: md });
+	let chunks: string[];
 	if (mode === "sentence") {
 		const splitter = new SentenceSplitter({
 			chunkSize: chunkSizeTokens,
 			chunkOverlap: chunkOverlapTokens,
 		});
-		return splitter.splitText(doc.getText());
+		chunks = splitter.splitText(doc.getText());
 	} else {
 		const splitter = new TokenTextSplitter({
 			chunkSize: chunkSizeTokens,
 			chunkOverlap: chunkOverlapTokens,
 		});
-		return splitter.splitText(doc.getText());
+		chunks = splitter.splitText(doc.getText());
 	}
+	// Post-process: avoid splitting fenced code/HTML blocks across chunks
+	function mergeUnbalanced(input: string[]): string[] {
+		const out: string[] = [];
+		let buf = "";
+		let fenceParity = 0; // count of ``` toggles mod 2
+		let preOpen = 0;
+		let preClose = 0;
+		let codeOpen = 0;
+		let codeClose = 0;
+		const fenceRe = /(^|\n)```/g;
+		const openPre = /<pre\b[^>]*>/gi;
+		const closePre = /<\/pre>/gi;
+		const openCode = /<code\b[^>]*>/gi;
+		const closeCode = /<\/code>/gi;
+		const balanced = () =>
+			fenceParity % 2 === 0 && preOpen === preClose && codeOpen === codeClose;
+		function scanDelta(s: string) {
+			fenceParity ^= (s.match(fenceRe) || []).length % 2;
+			preOpen += (s.match(openPre) || []).length;
+			preClose += (s.match(closePre) || []).length;
+			codeOpen += (s.match(openCode) || []).length;
+			codeClose += (s.match(closeCode) || []).length;
+		}
+		for (const c of input) {
+			const seg = buf ? `${buf}\n${c}` : c;
+			// snapshot counts
+			const snap = { fenceParity, preOpen, preClose, codeOpen, codeClose };
+			scanDelta(c);
+			if (balanced()) {
+				out.push(seg);
+				buf = "";
+			} else {
+				// revert and accumulate to buffer until we get balance next iteration
+				fenceParity = snap.fenceParity;
+				preOpen = snap.preOpen;
+				preClose = snap.preClose;
+				codeOpen = snap.codeOpen;
+				codeClose = snap.codeClose;
+				buf = seg;
+			}
+		}
+		if (buf) out.push(buf);
+		return out;
+	}
+	return mergeUnbalanced(chunks).filter((s) => s.trim().length > 0);
 }
 
 /** fetch + clean + chunk (cached) */
