@@ -68,6 +68,30 @@ async function main(argv: string[]) {
 
 		case "score": {
 			const s = parseSimpleArgs(argv);
+			// Advanced flags
+			let resume: number | "last" | undefined;
+			let notes: string | undefined;
+			let fresh = false;
+			for (let i = 1; i < args.length; i++) {
+				const a = args[i];
+				if (a === "--resume" && args[i + 1]) {
+					const v = args[++i];
+					resume =
+						v === "last"
+							? "last"
+							: Number.isFinite(Number(v))
+								? Number(v)
+								: undefined;
+					continue;
+				}
+				if (a === "--notes" && args[i + 1]) {
+					notes = args[++i];
+					continue;
+				}
+				if (a === "--fresh" || a === "--from-scratch") {
+					fresh = true;
+				}
+			}
 			if (s.mode === "one") {
 				if (!s.one) {
 					log.error("--one requires a value");
@@ -75,9 +99,15 @@ async function main(argv: string[]) {
 				}
 				await scoreOne(s.one, s.apply);
 			} else {
-				const limit = Math.max(1, s.limit ?? 10);
-				log.info(`Score --all limit=${limit} apply=${s.apply}`);
-				await scoreBatchAll(limit, s.apply);
+				const limit = Math.max(1, s.limit ?? 999999999);
+				log.info(
+					`Score --all limit=${limit} apply=${s.apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+				);
+				await scoreBatchAll(limit, s.apply, undefined, {
+					resume,
+					notes,
+					fresh,
+				});
 			}
 			return;
 		}
@@ -85,6 +115,11 @@ async function main(argv: string[]) {
 		case "summarise":
 		case "summarize": {
 			const s = parseSimpleArgs(argv);
+			let resummarise = false;
+			for (let i = 1; i < args.length; i++) {
+				const a = args[i];
+				if (a === "--resummarise" || a === "--resummarize") resummarise = true;
+			}
 			if (s.mode === "one") {
 				if (!s.one) {
 					log.error("--one requires a value");
@@ -92,9 +127,11 @@ async function main(argv: string[]) {
 				}
 				await summariseOne(s.one, s.apply);
 			} else {
-				const limit = Math.max(1, s.limit ?? 10);
-				log.info(`Summarise --all limit=${limit} apply=${s.apply}`);
-				await summariseBatchAll(limit, s.apply);
+				const limit = Math.max(1, s.limit ?? 999999999);
+				log.info(
+					`Summarise --all limit=${limit} apply=${s.apply}${resummarise ? " resummarise=true" : ""}`,
+				);
+				await summariseBatchAll(limit, s.apply, undefined, { resummarise });
 			}
 			return;
 		}

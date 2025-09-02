@@ -106,22 +106,27 @@ export async function scoreBatchAll(
 	limit: number,
 	apply: boolean,
 	llm?: ScoringLLM,
+	opts?: { resume?: number | "last"; notes?: string; fresh?: boolean },
 ): Promise<void> {
 	const scoring = createScoringService();
 
 	// Run context
 	const { runId, filterRunId } = scoring.resolveRunContext({
 		dry: !apply,
+		notes: opts?.notes,
+		resume: opts?.resume,
 	});
 	if (runId) log.info(`model_run id=${runId}`);
 	else log.info("dry run (no model_run row created)");
 
 	// Select repos
-	const repos = scoring.selectRepos({ limit }, filterRunId);
+	const effectiveFilter = opts?.fresh ? null : filterRunId;
+	const repos = scoring.selectRepos({ limit }, effectiveFilter);
 	if (!repos.length) {
 		log.info("No repos matched the criteria.");
 		return;
 	}
+	const total = repos.length;
 
 	// Lists + GH prerequisites
 	const listsSvc = createListsService();
@@ -140,8 +145,9 @@ export async function scoreBatchAll(
 		llm ??
 		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
-	for (const r of repos) {
-		log.header(r.name_with_owner);
+	for (let i = 0; i < repos.length; i++) {
+		const r = repos[i];
+		log.header(`[${i + 1}/${total}] ${r.name_with_owner}`);
 		log.info("URL:", r.url);
 		log.info("--- scoring ...");
 
@@ -356,6 +362,31 @@ export async function scoreOne(
 // CLI entry (unified simple flags)
 if (import.meta.main) {
 	const s = parseSimpleArgs(Bun.argv);
+	// Advanced flags for direct invocation
+	const rest = Bun.argv.slice(3);
+	let resume: number | "last" | undefined;
+	let notes: string | undefined;
+	let fresh = false;
+	for (let i = 0; i < rest.length; i++) {
+		const a = rest[i];
+		if (a === "--resume" && rest[i + 1]) {
+			const v = rest[++i];
+			resume =
+				v === "last"
+					? "last"
+					: Number.isFinite(Number(v))
+						? Number(v)
+						: undefined;
+			continue;
+		}
+		if (a === "--notes" && rest[i + 1]) {
+			notes = rest[++i];
+			continue;
+		}
+		if (a === "--fresh" || a === "--from-scratch") {
+			fresh = true;
+		}
+	}
 
 	if (s.mode === "one") {
 		if (!s.one) {
@@ -365,8 +396,10 @@ if (import.meta.main) {
 		}
 		await scoreOne(s.one, s.apply);
 	} else {
-		const limit = Math.max(1, s.limit ?? 10);
-		log.info(`Score --all limit=${limit} apply=${s.apply}`);
-		await scoreBatchAll(limit, s.apply);
+		const limit = Math.max(1, s.limit ?? 999999999);
+		log.info(
+			`Score --all limit=${limit} apply=${s.apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+		);
+		await scoreBatchAll(limit, s.apply, undefined, { resume, notes, fresh });
 	}
 }

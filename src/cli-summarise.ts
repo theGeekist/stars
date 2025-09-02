@@ -74,17 +74,20 @@ export async function summariseBatchAll(
 	limit: number,
 	apply: boolean,
 	deps?: SummariseDeps,
+	opts?: { resummarise?: boolean },
 ): Promise<void> {
 	const svc = createSummariseService();
-	const rows = svc.selectRepos({ limit, resummarise: false });
+	const rows = svc.selectRepos({ limit, resummarise: !!opts?.resummarise });
 
 	if (!rows.length) {
 		log.info("No repos matched the criteria.");
 		return;
 	}
+	const total = rows.length;
 
-	for (const r of rows) {
-		log.header(r.name_with_owner);
+	for (let i = 0; i < rows.length; i++) {
+		const r = rows[i];
+		log.header(`[${i + 1}/${total}] ${r.name_with_owner}`);
 		log.info("URL:", r.url);
 		log.info("Lang:", r.primary_language ?? "-");
 		log.info("--- generating summary ...");
@@ -173,6 +176,12 @@ export async function summariseOne(
 // CLI entry (unified simple flags)
 if (import.meta.main) {
 	const s = parseSimpleArgs(Bun.argv);
+	const rest = Bun.argv.slice(3);
+	let resummarise = false;
+	for (let i = 0; i < rest.length; i++) {
+		const a = rest[i];
+		if (a === "--resummarise" || a === "--resummarize") resummarise = true;
+	}
 
 	if (s.mode === "one") {
 		if (!s.one) {
@@ -182,8 +191,10 @@ if (import.meta.main) {
 		}
 		await summariseOne(s.one, s.apply);
 	} else {
-		const limit = Math.max(1, s.limit ?? 10);
-		log.info(`Summarise --all limit=${limit} apply=${s.apply}`);
-		await summariseBatchAll(limit, s.apply);
+		const limit = Math.max(1, s.limit ?? 999999999);
+		log.info(
+			`Summarise --all limit=${limit} apply=${s.apply}${resummarise ? " resummarise=true" : ""}`,
+		);
+		await summariseBatchAll(limit, s.apply, undefined, { resummarise });
 	}
 }
