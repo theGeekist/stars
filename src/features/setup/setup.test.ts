@@ -47,7 +47,6 @@ describe("setup service", () => {
 					{ slug: "ai", description: "only score if AI primary focus" },
 				],
 			});
-			// @ts-expect-error pass deps via 4th param
 			await generatePromptsYaml("t", out, {}, { lists, llm });
 			const txt = readFileSync(out, "utf-8");
 			expect(txt).toContain("productivity = only score if it saves time");

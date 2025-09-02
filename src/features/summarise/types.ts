@@ -4,7 +4,7 @@ export type BatchSelector = {
 	resummarise?: boolean;
 };
 export type BindLimit = [limit: number];
-export type BindLimitSlug = [limit: number, slug: string];
+export type BindLimitSlug = [slug: string, limit: number];
 export type Metrics = {
 	popularity?: number;
 	freshness?: number;
