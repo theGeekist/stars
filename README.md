@@ -5,24 +5,31 @@
   <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repositories</p>
 
   <p>
-    <a href="https://github.com/theGeekist/stars/actions/workflows/ci.yml">
-      <img alt="CI" src="https://github.com/theGeekist/stars/actions/workflows/ci.yml/badge.svg" />
-    </a>
     <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
       <img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&metric=alert_status" />
     </a>       
     <a href="https://app.codecov.io/gh/theGeekist/stars">
       <img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" />
     </a>
-    <img alt="Bun" src="https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=fff" />
+    <a href="USAGE.md">
+      <img alt="Docs" src="https://img.shields.io/badge/docs-usage-blue" />
+    </a>
     <img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg" />
   </p>
 
 </div>
 
+## Quickstart
+
+```bash
+bun install && bun run build && gk-stars setup
+```
+
 ## Abstract
 
 Geekist Stars is a Bun and TypeScript toolkit that turns personal GitHub Lists into an auditable corpus of repositories with computed health signals, locally generated summaries, and topic metadata. The system is designed for reproducibility and privacy. All LLM work runs on Ollama with a user selected local model, and all state is stored in SQLite for inspection and analysis. The project demonstrates that lightweight signals, concise model prompts, and explicit policies are sufficient to keep a large star collection organized without cloud dependencies.
+
+> Looking for hands-on CLI usage? See [USAGE.md](USAGE.md) for command-by-command examples and flags.
 
 ## Motivation
 
@@ -119,4 +126,17 @@ All model inference happens locally with Ollama. The database lives on disk and 
 
 Geekist Stars shows that private, local tooling can turn a large and noisy star collection into a structured and navigable corpus. The combination of editable prompts, simple metrics, explainable scoring, and a topic layer derived from a local source yields a curated environment that remains under the user’s control.
 
-> Looking for hands‑on CLI usage? See usage.md for command‑by‑command examples and flags.
+## Citation
+
+If you use **Geekist Stars** in your research or projects, please cite:
+
+```bibtex
+@software{nathan_geekist_stars_2025,
+  author       = {Jason Joseph Nathan},
+  title        = {Geekist Stars},
+  year         = {2025},
+  publisher    = {GitHub},
+  journal      = {GitHub repository},
+  howpublished = {\url{https://github.com/theGeekist/stars}},
+}
+```
