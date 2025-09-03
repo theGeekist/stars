@@ -144,23 +144,7 @@ export type RepoRow = {
 	forks: number | null;
 };
 
-export type RepoRef = { owner: string; name: string };
-
-export type TopicRow = {
-	topic: string;
-	display_name?: string | null;
-	short_description?: string | null;
-	aliases_json?: string | null; // JSON.stringify(string[])
-	is_featured: 0 | 1;
-	updated_at: string; // ISO
-	etag?: string | null;
-};
-
-export type RepoTopicLink = {
-	repo_id: number;
-	topic: string;
-	added_at: string; // ISO
-};
+// Topic-related types now live under src/features/topics/types.ts
 // ────────────────────────────── config + logging ───────────────────────────
 export type ListsConfig = {
 	pageSize: number;
