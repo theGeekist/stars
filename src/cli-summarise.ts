@@ -3,7 +3,7 @@
 import { createSummariseService } from "@features/summarise/service";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
-import { db } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 import { type SummariseDeps, summariseRepoOneParagraph } from "@lib/summarise";
 import type { RepoRow } from "@lib/types";
 
@@ -28,8 +28,9 @@ export async function summariseBatchAll(
 	apply: boolean,
 	deps?: SummariseDeps,
 	opts?: { resummarise?: boolean },
+	database = getDefaultDb(),
 ): Promise<void> {
-	const svc = createSummariseService();
+	const svc = createSummariseService(database);
 	const rows = svc.selectRepos({ limit, resummarise: !!opts?.resummarise });
 
 	if (!rows.length) {
@@ -98,8 +99,9 @@ export async function summariseOne(
 	selector: string,
 	apply: boolean,
 	deps?: SummariseDeps,
+	database = getDefaultDb(),
 ): Promise<void> {
-	const row = db
+	const row = database
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
               stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
@@ -148,7 +150,7 @@ export async function summariseOne(
 	log.line("");
 
 	if (apply) {
-		const svc = createSummariseService();
+		const svc = createSummariseService(database);
 		const s2 = log.spinner("Saving to repo.summary");
 		try {
 			svc.saveSummary(row.id, paragraph);
