@@ -5,6 +5,7 @@ import { log } from "@lib/bootstrap";
 import type { ListsReporter } from "@lib/lists";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
 import type { RepoInfo, StarList } from "@lib/types";
+import { slugify } from "@lib/utils";
 
 const reporter: ListsReporter = { debug: (...a) => log.debug(...a) };
 /* ------------------------------- helpers ------------------------------- */
@@ -20,13 +21,9 @@ function ensureToken(): string {
 	return token;
 }
 
-function toSlug(name: string): string {
-	return name
-		.trim()
-		.toLowerCase()
-		.replace(/['"]/g, "")
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
+function listFilename(name: string): string {
+	const base = slugify(name) || "list";
+	return `${base}.json`;
 }
 
 function printListsHuman(lists: StarList[]) {
@@ -78,7 +75,7 @@ export async function runLists(json: boolean, out?: string, dir?: string) {
 			for await (const l of getAllListsStream(token, undefined, reporter)) {
 				total++;
 				s.text = `Writing list ${total}: ${l.name}`;
-				const file = join(dir, `${toSlug(l.name) || "list"}.json`);
+				const file = join(dir, listFilename(l.name));
 				writeFileSync(file, JSON.stringify(l, null, 2));
 				index.push({
 					listId: l.listId,
@@ -86,7 +83,7 @@ export async function runLists(json: boolean, out?: string, dir?: string) {
 					description: l.description ?? null,
 					isPrivate: l.isPrivate,
 					count: l.repos.length,
-					file: `${toSlug(l.name) || "list"}.json`,
+					file: listFilename(l.name),
 				});
 			}
 			s.succeed(`Fetched ${total} lists`);
