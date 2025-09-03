@@ -2,6 +2,7 @@
 import type { Database } from "bun:sqlite";
 import { log } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
+import { slugify } from "@lib/utils";
 import type { NoRow, RepoRef, TopicMeta, TopicRow } from "./types";
 
 /* ─────────────────────────── Helpers ─────────────────────────── */
@@ -69,7 +70,7 @@ export function upsertTopicAliases(
 	if (!aliases?.length) return;
 	const tx = db.transaction(() => {
 		for (const a of aliases) {
-			const alias = normalizeOne(a);
+			const alias = slugify(String(a ?? ""));
 			if (!alias || alias === topic) continue;
 			const uAlias = db.query<NoRow, [string, string]>(
 				`INSERT OR REPLACE INTO topic_alias (alias, topic) VALUES (?, ?)`,
@@ -89,7 +90,7 @@ export function upsertTopicRelated(
 	if (!related?.length) return;
 	const tx = db.transaction(() => {
 		for (const r of related) {
-			const other = normalizeOne(r);
+			const other = slugify(String(r ?? ""));
 			if (!other || other === topic) continue;
 			const [a, b] = topic < other ? [topic, other] : [other, topic];
 			const uRelated = db.query<NoRow, [string, string]>(
@@ -106,13 +107,10 @@ export function upsertTopicRelated(
 export function normalizeTopics(topics: string[]): string[] {
 	const seen = new Set<string>();
 	for (const t of topics) {
-		const k = normalizeOne(t);
+		const k = slugify(String(t ?? ""));
 		if (k) seen.add(k);
 	}
 	return [...seen];
-}
-function normalizeOne(t: string | null | undefined): string {
-	return (t ?? "").toLowerCase().trim().replace(/\s+/g, "-");
 }
 
 /* ───────────────── DB-only “fetchers” (no network) ──────────────────────── */
@@ -164,7 +162,7 @@ export function topicMetaMany(
 	const base = Bun.env.GH_EXPLORE_PATH;
 	if (!base) {
 		log.warn("GH_EXPLORE_PATH not set; topicMetaMany will return nulls.");
-		return new Map(topics.map((t) => [normalizeOne(t), null]));
+		return new Map(topics.map((t) => [slugify(String(t ?? "")), null]));
 	}
 
 	const fs = require("node:fs");
@@ -172,7 +170,7 @@ export function topicMetaMany(
 	const out = new Map<string, TopicMeta | null>();
 
 	for (const raw of topics) {
-		const slug = normalizeOne(raw);
+		const slug = slugify(String(raw ?? ""));
 		const mdPath = path.resolve(base, "topics", slug, "index.md");
 		if (!fs.existsSync(mdPath)) {
 			out.set(slug, null);

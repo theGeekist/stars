@@ -61,4 +61,5 @@ export type Deps = {
 	topicMetaMany: typeof api.topicMetaMany;
 	upsertTopic: typeof api.upsertTopic;
 	upsertTopicAliases: typeof api.upsertTopicAliases;
+	upsertTopicRelated: typeof api.upsertTopicRelated;
 };

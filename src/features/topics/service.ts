@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { withDB } from "@lib/db";
 import * as api from "./api";
-import type { RepoMini, RepoRef } from "./types";
+import type { Deps, RepoMini, RepoRef } from "./types";
 
 /* ── Small helpers ──────────────────────────────────────────────────────── */
 function getConfiguredTtlDays(override?: number): number {
@@ -89,17 +89,7 @@ function bindDbToDeps(db: Database | undefined, deps: Deps) {
 	};
 }
 
-/* ── Deps shape for DI ──────────────────────────────────────────────────── */
-export type Deps = {
-	normalizeTopics: typeof api.normalizeTopics;
-	reconcileRepoTopics: typeof api.reconcileRepoTopics;
-	repoTopicsMany: typeof api.repoTopicsMany; // sync (DB-only)
-	selectStaleTopics: typeof api.selectStaleTopics;
-	topicMetaMany: typeof api.topicMetaMany; // sync (reads GH_EXPLORE_PATH)
-	upsertTopic: typeof api.upsertTopic;
-	upsertTopicAliases: typeof api.upsertTopicAliases;
-	upsertTopicRelated: typeof api.upsertTopicRelated;
-};
+/* ── Deps type is defined in ./types ────────────────────────────────────── */
 
 /** DB-only metadata refresh (sync). */
 export function refreshStaleTopicMeta(
