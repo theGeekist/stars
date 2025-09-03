@@ -1,23 +1,24 @@
 <div align="center">
-
+  <img src="logo.jpg" alt="Geekist Stars Logo" width="600" />
   <h1>Geekist Stars</h1>
 
-  <p>A Local, Auditable Pipeline for Curating GitHub Repositories</p>
+  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repositories</p>
 
   <p>
     <a href="https://github.com/theGeekist/stars/actions/workflows/ci.yml">
       <img alt="CI" src="https://github.com/theGeekist/stars/actions/workflows/ci.yml/badge.svg" />
     </a>
-    <a href="badges/coverage.svg">
-      <img alt="Coverage" src="badges/coverage.svg" />
+    <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
+      <img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&metric=alert_status" />
+    </a>       
+    <a href="https://app.codecov.io/gh/theGeekist/stars">
+      <img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" />
     </a>
     <img alt="Bun" src="https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=fff" />
     <img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg" />
   </p>
 
 </div>
-
-# Geekist Stars: A Local, Auditable Pipeline for Curating GitHub Repositories
 
 ## Abstract
 
@@ -38,12 +39,12 @@ Given a user’s GitHub Lists and starred repositories, build a local system tha
 
 ## Contributions
 
-* **Local LLM workflow** using Ollama. No remote inference. The model is user selectable through configuration.
-* **Editable prompt schema** stored in `prompts.yaml`. A setup step generates criteria from the user’s existing Lists that the user can refine.
-* **Explainable scoring** that matches repositories to Lists using prompts and a simple, transparent policy. The plan can be applied back to GitHub, or reviewed first.
-* **Robust summarization** that combines README content when present with repository metadata. This yields useful summaries even for sparse projects.
-* **Offline topic enrichment** that reads topic definitions, aliases, and related links from a local `github/explore` clone referenced by `GH_EXPLORE_PATH`. No network lookups are used in the enrichment step.
-* **Auditable storage** in SQLite, including model run identifiers, scores per list, and text indexed with FTS for simple querying.
+- **Local LLM workflow** using Ollama. No remote inference. The model is user selectable through configuration.
+- **Editable prompt schema** stored in `prompts.yaml`. A setup step generates criteria from the user’s existing Lists that the user can refine.
+- **Explainable scoring** that matches repositories to Lists using prompts and a simple, transparent policy. The plan can be applied back to GitHub, or reviewed first.
+- **Robust summarization** that combines README content when present with repository metadata. This yields useful summaries even for sparse projects.
+- **Offline topic enrichment** that reads topic definitions, aliases, and related links from a local `github/explore` clone referenced by `GH_EXPLORE_PATH`. No network lookups are used in the enrichment step.
+- **Auditable storage** in SQLite, including model run identifiers, scores per list, and text indexed with FTS for simple querying.
 
 ## System Overview
 
@@ -63,13 +64,13 @@ The pipeline consists of four stages that can be run independently.
 
 ## Data Model (Summary)
 
-* **Lists and membership**: `list`, `list_repo`.
-* **Repositories and signals**: `repo` with popularity, freshness, activeness, tags, and `summary`.
-* **Text index**: `repo_fts` for basic search over names, descriptions, README text, and summaries.
-* **Model audit**: `model_run` and `repo_list_score` for reproducibility of scoring outputs.
-* **Topics**: `topics` with display name, short and long descriptions, created by, released, Wikipedia URL, logo, and timestamps.
-* **Topic graph**: `topic_alias` for normalization and `topic_related` for undirected edges.
-* **Repo to topic**: `repo_topics` derived from GitHub metadata and reconciled locally.
+- **Lists and membership**: `list`, `list_repo`.
+- **Repositories and signals**: `repo` with popularity, freshness, activeness, tags, and `summary`.
+- **Text index**: `repo_fts` for basic search over names, descriptions, README text, and summaries.
+- **Model audit**: `model_run` and `repo_list_score` for reproducibility of scoring outputs.
+- **Topics**: `topics` with display name, short and long descriptions, created by, released, Wikipedia URL, logo, and timestamps.
+- **Topic graph**: `topic_alias` for normalization and `topic_related` for undirected edges.
+- **Repo to topic**: `repo_topics` derived from GitHub metadata and reconciled locally.
 
 ## Methods
 
@@ -87,28 +88,28 @@ Topics are harvested from `repo.topics`. Canonical metadata comes from a local c
 
 ## Reproducibility
 
-* All prompts live in versioned YAML and are generated once during setup, then edited in place.
-* Each scoring run receives a `model_run` identifier, and all scores are stored with that identifier.
-* The database schema evolves through additive migrations to maintain compatibility.
-* The system can be re-run from raw inputs to verify outputs.
+- All prompts live in versioned YAML and are generated once during setup, then edited in place.
+- Each scoring run receives a `model_run` identifier, and all scores are stored with that identifier.
+- The database schema evolves through additive migrations to maintain compatibility.
+- The system can be re-run from raw inputs to verify outputs.
 
 ## Current Scope and Non Goals
 
-* Search is basic and uses FTS with a small set of fields. A richer query interface is possible but not included yet.
-* The system does not attempt to guess intent beyond what the prompts and metrics support. Human review is expected before applying changes.
+- Search is basic and uses FTS with a small set of fields. A richer query interface is possible but not included yet.
+- The system does not attempt to guess intent beyond what the prompts and metrics support. Human review is expected before applying changes.
 
 ## Limitations
 
-* Summaries are constrained by the quality of available metadata. Repositories without README text or useful descriptions will produce minimal summaries, although the model leverages topics and basic facts to compensate.
-* Scoring is only as good as the criteria. Ambiguous or overlapping criteria reduce separation between Lists.
-* Topic coverage depends on the local `github/explore` repository. Topics not represented there will have limited metadata.
+- Summaries are constrained by the quality of available metadata. Repositories without README text or useful descriptions will produce minimal summaries, although the model leverages topics and basic facts to compensate.
+- Scoring is only as good as the criteria. Ambiguous or overlapping criteria reduce separation between Lists.
+- Topic coverage depends on the local `github/explore` repository. Topics not represented there will have limited metadata.
 
 ## Future Work
 
-* A lightweight search and filtering layer over FTS, metrics, and topics.
-* Export of the topic and repository graph for visualization and analysis.
-* Historical diffing for summaries and scores across model runs.
-* Assisted criteria authoring and consistency checks across Lists.
+- A lightweight search and filtering layer over FTS, metrics, and topics.
+- Export of the topic and repository graph for visualization and analysis.
+- Historical diffing for summaries and scores across model runs.
+- Assisted criteria authoring and consistency checks across Lists.
 
 ## Ethics and Privacy
 
