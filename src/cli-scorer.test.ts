@@ -1,7 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { getDefaultDb, initSchema } from "@lib/db";
+import { createDb, initSchema } from "@lib/db";
+
+const db = createDb();
 
 describe("cli-scorer", () => {
 	// Ensure schema exists before any cleanup
@@ -9,7 +11,7 @@ describe("cli-scorer", () => {
 		initSchema();
 	});
 	beforeEach(() => {
-		getDefaultDb().exec(
+		db.exec(
 			"DELETE FROM repo_list_score; DELETE FROM model_run; DELETE FROM list_repo; DELETE FROM list; DELETE FROM repo;",
 		);
 		// Use a test-specific output directory to avoid CI conflicts
@@ -28,7 +30,7 @@ describe("cli-scorer", () => {
 
 	it("scoreOne throws when apply=true and GITHUB_TOKEN missing", async () => {
 		const { scoreOne } = await import("./cli-scorer");
-		getDefaultDb().exec(
+		db.exec(
 			"INSERT INTO repo(id, name_with_owner, url, stars) VALUES (1, 'o/r1', 'u', 10);",
 		);
 		// Ensure error path triggers even if CI provides a token
@@ -38,7 +40,9 @@ describe("cli-scorer", () => {
 			.FORCE_TOKEN_MISSING;
 		(Bun.env as Record<string, string | undefined>).FORCE_TOKEN_MISSING = "1";
 		try {
-			await expect(scoreOne("o/r1", true)).rejects.toThrow(/GITHUB_TOKEN/);
+			await expect(scoreOne("o/r1", true, undefined, db)).rejects.toThrow(
+				/GITHUB_TOKEN/,
+			);
 		} finally {
 			if (prevForce === undefined) {
 				delete (Bun.env as Record<string, string | undefined>)
@@ -59,7 +63,7 @@ describe("cli-scorer", () => {
 	it("scoreBatchAll logs listless CSV when avoidListless blocks (dry run)", async () => {
 		const { scoreBatchAll } = await import("./cli-scorer");
 		// Seed one list and one repo with high stars (avoid minStars block)
-		getDefaultDb().exec(`
+		db.exec(`
       INSERT INTO list(id, list_id, name, slug, is_private) VALUES (1, 'L1', 'Alpha', 'alpha', 0);
       INSERT INTO repo(id, name_with_owner, url, stars, popularity, freshness, activeness, topics)
       VALUES (1, 'o/r1', 'https://example.com/o/r1', 100, 0.9, 0.5, 0.4, '[]');
@@ -73,7 +77,7 @@ describe("cli-scorer", () => {
 			},
 		} as const;
 
-		await scoreBatchAll(5, false, fakeLLM);
+		await scoreBatchAll(5, false, fakeLLM, db);
 
 		const csv = join(
 			String((Bun.env as Record<string, string>).LISTLESS_OUT_DIR),
