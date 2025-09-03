@@ -8,8 +8,8 @@ import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { runLists, runRepos } from "@src/cli-lists";
 import { scoreBatchAll, scoreOne } from "@src/cli-scorer";
 import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
-import { enrichAllRepoTopics } from "@src/topics";
 import ingest from "@src/ingest";
+import { enrichAllRepoTopics } from "@src/topics";
 import { topicsReport } from "@src/topics-report";
 
 /* ----------------------------- Usage banner ----------------------------- */

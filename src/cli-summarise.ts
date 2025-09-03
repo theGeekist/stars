@@ -1,10 +1,11 @@
 // src/lib/cli-summarise.ts
 
+import { summariseRepoOneParagraph } from "@features/summarise/llm";
 import { createSummariseService } from "@features/summarise/service";
+import type { SummariseDeps } from "@features/summarise/types";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { getDefaultDb } from "@lib/db";
-import { type SummariseDeps, summariseRepoOneParagraph } from "@lib/summarise";
 import type { RepoRow } from "@lib/types";
 
 // ---- Helpers ----------------------------------------------------------------
