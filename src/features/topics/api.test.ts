@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { db } from "@lib/db";
+import { createDb } from "@lib/db";
 import { compareAlpha } from "@lib/utils";
 import {
 	normalizeTopics,
@@ -10,11 +10,13 @@ import {
 	upsertTopicRelated,
 } from "./api";
 
+const db = createDb();
+
 describe("topics api", () => {
 	it("normalizeTopics lowercases, hyphenates and dedupes", () => {
 		const out = normalizeTopics(["Foo Bar", "foo-bar", "FOO   bar", "baz"]);
-		expect(out.sort(compareAlpha)).toEqual(
-			["baz", "foo-bar"].sort(compareAlpha),
+		expect(out.toSorted(compareAlpha)).toEqual(
+			["baz", "foo-bar"].toSorted(compareAlpha),
 		);
 	});
 
@@ -23,34 +25,37 @@ describe("topics api", () => {
 		db.run(`DELETE FROM topics WHERE topic IN ('ttl-test')`);
 
 		// Initially stale as it's not present
-		let stale = selectStaleTopics(JSON.stringify(["ttl-test"]), 30);
+		let stale = selectStaleTopics(JSON.stringify(["ttl-test"]), 30, db);
 		expect(stale.map((r) => r.topic)).toContain("ttl-test");
 
 		// Upsert with current timestamp
-		upsertTopic({
-			topic: "ttl-test",
-			display_name: "TTL Test",
-			short_description: "desc",
-			long_description_md: "long body",
-			is_featured: false,
-		});
+		upsertTopic(
+			{
+				topic: "ttl-test",
+				display_name: "TTL Test",
+				short_description: "desc",
+				long_description_md: "long body",
+				is_featured: false,
+			},
+			db,
+		);
 
 		// Should not be stale with large TTL
-		stale = selectStaleTopics(JSON.stringify(["ttl-test"]), 30);
+		stale = selectStaleTopics(JSON.stringify(["ttl-test"]), 30, db);
 		expect(stale.find((r) => r.topic === "ttl-test")).toBeUndefined();
 
 		// Force staleness by using negative TTL
-		stale = selectStaleTopics(JSON.stringify(["ttl-test"]), -1);
+		stale = selectStaleTopics(JSON.stringify(["ttl-test"]), -1, db);
 		expect(stale.find((r) => r.topic === "ttl-test")).toBeDefined();
 	});
 
 	it("upsertTopicAliases and upsertTopicRelated persist rows", () => {
 		// Ensure topic exists
-		upsertTopic({ topic: "alpha" });
-		upsertTopic({ topic: "rss" });
+		upsertTopic({ topic: "alpha" }, db);
+		upsertTopic({ topic: "rss" }, db);
 
-		upsertTopicAliases("alpha", ["a", "alpha"]); // self-alias ignored
-		upsertTopicRelated("alpha", ["alpha", "rss"]); // self-related ignored
+		upsertTopicAliases("alpha", ["a", "alpha"], db); // self-alias ignored
+		upsertTopicRelated("alpha", ["alpha", "rss"], db); // self-related ignored
 
 		const aliases = db
 			.query<{ alias: string; topic: string }, []>(
@@ -81,12 +86,12 @@ describe("topics api", () => {
 		const repoId = row.id;
 
 		// Ensure topics exist to satisfy FK
-		upsertTopic({ topic: "alpha" });
-		upsertTopic({ topic: "beta" });
-		upsertTopic({ topic: "gamma" });
+		upsertTopic({ topic: "alpha" }, db);
+		upsertTopic({ topic: "beta" }, db);
+		upsertTopic({ topic: "gamma" }, db);
 
 		// Start with alpha+beta
-		reconcileRepoTopics(repoId, ["alpha", "beta"]);
+		reconcileRepoTopics(repoId, ["alpha", "beta"], db);
 		let topics = db
 			.query<{ topic: string }, [number]>(
 				`SELECT topic FROM repo_topics WHERE repo_id = ? ORDER BY topic`,
@@ -95,7 +100,7 @@ describe("topics api", () => {
 		expect(topics.map((r) => r.topic)).toEqual(["alpha", "beta"]);
 
 		// Change to beta+gamma
-		reconcileRepoTopics(repoId, ["beta", "gamma"]);
+		reconcileRepoTopics(repoId, ["beta", "gamma"], db);
 		topics = db
 			.query<{ topic: string }, [number]>(
 				`SELECT topic FROM repo_topics WHERE repo_id = ? ORDER BY topic`,

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { db } from "@lib/db";
+import { createDb } from "@lib/db";
 import { createTopicsService } from "./service";
 import type { TopicMeta } from "./types";
+
+const db = createDb();
 
 beforeEach(() => {
 	// Clean DB tables touched by the service
@@ -54,10 +56,13 @@ describe("topics service", () => {
 			"INSERT OR IGNORE INTO topics(topic, display_name, updated_at) VALUES ('rss', 'rss', datetime('now'))",
 		);
 
-		const svc = createTopicsService({
-			selectStaleTopics: fakeSelectStale,
-			topicMetaMany: fakeTopicMetaMany,
-		});
+		const svc = createTopicsService(
+			{
+				selectStaleTopics: fakeSelectStale,
+				topicMetaMany: fakeTopicMetaMany,
+			},
+			db,
+		);
 
 		const res = svc.enrichAllRepoTopics({ onlyActive: true, ttlDays: 999 });
 		expect(res.repos).toBe(1); // only active repo considered

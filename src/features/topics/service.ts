@@ -1,25 +1,20 @@
-import type { Statement } from "bun:sqlite";
-import { db } from "@lib/db";
+import type { Database } from "bun:sqlite";
+import { withDB } from "@lib/db";
 import * as api from "./api";
 import type { RepoMini, RepoRef } from "./types";
 
-let qReposAll!: Statement<RepoMini, []>;
-let qReposActive!: Statement<RepoMini, []>;
-
-function prepare() {
-	if (qReposAll && qReposActive) return;
-	qReposAll = db.query<RepoMini, []>(
-		`SELECT id, name_with_owner, is_archived FROM repo`,
-	);
-	qReposActive = db.query<RepoMini, []>(
-		`SELECT id, name_with_owner, is_archived FROM repo WHERE is_archived = 0`,
-	);
-}
-
 /* ── Small helpers ──────────────────────────────────────────────────────── */
-export function listRepoRefsFromDb(onlyActive?: boolean): RepoMini[] {
-	prepare();
-	return (onlyActive ? qReposActive : qReposAll).all();
+export function listRepoRefsFromDb(
+	onlyActive?: boolean,
+	database?: Database,
+): RepoMini[] {
+	const db = withDB(database);
+	const q = db.query<RepoMini, []>(
+		onlyActive
+			? `SELECT id, name_with_owner, is_archived FROM repo WHERE is_archived = 0`
+			: `SELECT id, name_with_owner, is_archived FROM repo`,
+	);
+	return q.all();
 }
 
 export function buildRepoRefs(rows: RepoMini[]): RepoRef[] {
@@ -125,7 +120,11 @@ export function refreshStaleTopicMeta(
 }
 
 /* ── Public service (sync) ──────────────────────────────────────────────── */
-export function createTopicsService(deps: Partial<Deps> = {}) {
+export function createTopicsService(
+	deps: Partial<Deps> = {},
+	database?: Database,
+) {
+	const db = withDB(database);
 	const {
 		normalizeTopics,
 		reconcileRepoTopics,
@@ -138,7 +137,7 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 	} = { ...api, ...deps } as Deps;
 
 	function listRepoRefs(onlyActive?: boolean): RepoMini[] {
-		return listRepoRefsFromDb(onlyActive);
+		return listRepoRefsFromDb(onlyActive, db);
 	}
 
 	function enrichAllRepoTopics(opts?: {
@@ -149,31 +148,38 @@ export function createTopicsService(deps: Partial<Deps> = {}) {
 		const CONCURRENCY_REPOS = Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
 
 		const ttlDays = opts?.ttlDays ?? TTL_DAYS;
-		const rows = listRepoRefsFromDb(opts?.onlyActive);
+		const rows = listRepoRefsFromDb(opts?.onlyActive, db);
 		if (!rows.length) return { repos: 0, unique_topics: 0, refreshed: 0 };
 
 		const refs: RepoRef[] = buildRepoRefs(rows);
 
 		// DB-only: collect topics from repo.topics JSON (no network)
-		const topicsByRepo = repoTopicsMany(refs, {
-			concurrency: CONCURRENCY_REPOS,
-		});
+		const topicsByRepo = repoTopicsMany(
+			refs,
+			{
+				concurrency: CONCURRENCY_REPOS,
+			},
+			db,
+		);
 
 		const universe = reconcileRowsAndCollectUniverse(
 			rows,
 			topicsByRepo,
 			normalizeTopics,
-			reconcileRepoTopics,
+			((id, ts) =>
+				reconcileRepoTopics(id, ts, db)) as typeof reconcileRepoTopics,
 		);
 
 		const refreshed = refreshStaleTopicMeta(
 			universe,
 			ttlDays,
-			selectStaleTopics,
+			((u, t) => selectStaleTopics(u, t, db)) as typeof selectStaleTopics,
 			topicMetaMany,
-			upsertTopic,
-			upsertTopicAliases,
-			upsertTopicRelated,
+			((row) => upsertTopic(row, db)) as typeof upsertTopic,
+			((topic, aliases) =>
+				upsertTopicAliases(topic, aliases, db)) as typeof upsertTopicAliases,
+			((topic, related) =>
+				upsertTopicRelated(topic, related, db)) as typeof upsertTopicRelated,
 		);
 
 		return { repos: rows.length, unique_topics: universe.size, refreshed };

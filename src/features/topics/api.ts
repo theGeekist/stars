@@ -1,39 +1,17 @@
 // src/features/topics/api.ts
-import type { Statement } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
 import { log } from "@lib/bootstrap";
-import { db } from "@lib/db";
+import { withDB } from "@lib/db";
 import type { NoRow, RepoRef, TopicMeta, TopicRow } from "./types";
 
-/* ─────────────────────────── Prepared statements ─────────────────────────── */
+/* ─────────────────────────── Helpers ─────────────────────────── */
 
-let uTopic!: Statement<
-	NoRow,
-	[
-		topic: string,
-		display_name: string | null,
-		short_description: string | null,
-		long_description_md: string | null,
-		is_featured: number,
-		created_by: string | null,
-		released: string | null,
-		wikipedia_url: string | null,
-		logo: string | null,
-		updated_at: string,
-		etag: string | null,
-	]
->;
+/* ────────────────────────────── API writers ─────────────────────────────── */
 
-let uRepoTopic!: Statement<
-	NoRow,
-	[repo_id: number, topic: string, added_at: string]
->;
-let uAlias!: Statement<NoRow, [alias: string, topic: string]>;
-let uRelated!: Statement<NoRow, [a: string, b: string]>;
-
-function prepare(): void {
-	if (uTopic && uRepoTopic && uAlias && uRelated) return;
-
-	uTopic = db.query<
+export function upsertTopic(row: TopicRow, database?: Database): void {
+	const db = withDB(database);
+	const now = row.updated_at ?? new Date().toISOString();
+	const uTopic = db.query<
 		NoRow,
 		[
 			string,
@@ -67,29 +45,6 @@ function prepare(): void {
       updated_at          = excluded.updated_at,
       etag                = COALESCE(excluded.etag, topics.etag)
   `);
-
-	uRepoTopic = db.query<NoRow, [number, string, string]>(`
-    INSERT INTO repo_topics (repo_id, topic, added_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(repo_id, topic) DO UPDATE SET added_at = excluded.added_at
-  `);
-
-	// alias -> canonical topic; alias is PK so REPLACE updates canonical
-	uAlias = db.query<NoRow, [string, string]>(`
-    INSERT OR REPLACE INTO topic_alias (alias, topic) VALUES (?, ?)
-  `);
-
-	// undirected related edge; store a<b once
-	uRelated = db.query<NoRow, [string, string]>(`
-    INSERT OR IGNORE INTO topic_related (a, b) VALUES (?, ?)
-  `);
-}
-
-/* ────────────────────────────── API writers ─────────────────────────────── */
-
-export function upsertTopic(row: TopicRow): void {
-	prepare();
-	const now = row.updated_at ?? new Date().toISOString();
 	uTopic.run(
 		row.topic,
 		row.display_name ?? null,
@@ -108,13 +63,17 @@ export function upsertTopic(row: TopicRow): void {
 export function upsertTopicAliases(
 	topic: string,
 	aliases: string[] | undefined,
+	database?: Database,
 ): void {
-	prepare();
+	const db = withDB(database);
 	if (!aliases?.length) return;
 	const tx = db.transaction(() => {
 		for (const a of aliases) {
 			const alias = normalizeOne(a);
 			if (!alias || alias === topic) continue;
+			const uAlias = db.query<NoRow, [string, string]>(
+				`INSERT OR REPLACE INTO topic_alias (alias, topic) VALUES (?, ?)`,
+			);
 			uAlias.run(alias, topic);
 		}
 	});
@@ -124,14 +83,18 @@ export function upsertTopicAliases(
 export function upsertTopicRelated(
 	topic: string,
 	related: string[] | undefined,
+	database?: Database,
 ): void {
-	prepare();
+	const db = withDB(database);
 	if (!related?.length) return;
 	const tx = db.transaction(() => {
 		for (const r of related) {
 			const other = normalizeOne(r);
 			if (!other || other === topic) continue;
 			const [a, b] = topic < other ? [topic, other] : [other, topic];
+			const uRelated = db.query<NoRow, [string, string]>(
+				`INSERT OR IGNORE INTO topic_related (a, b) VALUES (?, ?)`,
+			);
 			uRelated.run(a, b);
 		}
 	});
@@ -158,8 +121,9 @@ function normalizeOne(t: string | null | undefined): string {
 export function repoTopicsMany(
 	refs: RepoRef[],
 	_opts?: { concurrency?: number },
+	database?: Database,
 ): Map<string, string[]> {
-	prepare();
+	const db = withDB(database);
 	// Build a set of names we need and map back in the end.
 	const want = new Set(refs.map((r) => `${r.owner}/${r.name}`));
 	const placeholders = Array.from({ length: want.size }, () => "?").join(",");
@@ -197,7 +161,6 @@ export function topicMetaMany(
 	topics: string[],
 	_opts?: { concurrency?: number },
 ): Map<string, TopicMeta | null> {
-	prepare();
 	const base = Bun.env.GH_EXPLORE_PATH;
 	if (!base) {
 		log.warn("GH_EXPLORE_PATH not set; topicMetaMany will return nulls.");
@@ -318,17 +281,30 @@ function frontMatterToMeta(
 
 /* ───────────────────── Repo topic reconciliation (unchanged) ───────────── */
 
-export function upsertRepoTopics(repoId: number, topics: string[]): void {
-	prepare();
+export function upsertRepoTopics(
+	repoId: number,
+	topics: string[],
+	database?: Database,
+): void {
+	const db = withDB(database);
 	const ts = new Date().toISOString();
 	const tx = db.transaction(() => {
+		const uRepoTopic = db.query<NoRow, [number, string, string]>(`
+		  INSERT INTO repo_topics (repo_id, topic, added_at)
+		  VALUES (?, ?, ?)
+		  ON CONFLICT(repo_id, topic) DO UPDATE SET added_at = excluded.added_at
+		`);
 		for (const t of topics) uRepoTopic.run(repoId, t, ts);
 	});
 	tx();
 }
 
-export function reconcileRepoTopics(repoId: number, topics: string[]): void {
-	prepare();
+export function reconcileRepoTopics(
+	repoId: number,
+	topics: string[],
+	database?: Database,
+): void {
+	const db = withDB(database);
 	const ts = new Date().toISOString();
 
 	const ensure = db.query<NoRow, [string, string, string]>(`
@@ -347,6 +323,11 @@ export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 
 	const tx = db.transaction(() => {
 		for (const t of topics) ensure.run(t, t, ts);
+		const uRepoTopic = db.query<NoRow, [number, string, string]>(`
+		  INSERT INTO repo_topics (repo_id, topic, added_at)
+		  VALUES (?, ?, ?)
+		  ON CONFLICT(repo_id, topic) DO UPDATE SET added_at = excluded.added_at
+		`);
 		for (const t of topics) uRepoTopic.run(repoId, t, ts);
 		const del = db.query<NoRow, (number | string)[]>(`
       DELETE FROM repo_topics WHERE repo_id = ? AND topic NOT IN (${placeholders})
@@ -359,7 +340,9 @@ export function reconcileRepoTopics(repoId: number, topics: string[]): void {
 export function selectStaleTopics(
 	universeJson: string,
 	ttlDays: number,
+	database?: Database,
 ): { topic: string }[] {
+	const db = withDB(database);
 	// Treat rows with missing meta as stale regardless of TTL.
 	const q = db.query<{ topic: string }, [string, number]>(`
     SELECT u.topic
