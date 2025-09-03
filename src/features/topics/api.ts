@@ -5,8 +5,6 @@ import { withDB } from "@lib/db";
 import { slugify } from "@lib/utils";
 import type { NoRow, RepoRef, TopicMeta, TopicRow } from "./types";
 
-/* ─────────────────────────── Helpers ─────────────────────────── */
-
 /* ────────────────────────────── API writers ─────────────────────────────── */
 
 export function upsertTopic(row: TopicRow, database?: Database): void {
