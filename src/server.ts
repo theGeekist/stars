@@ -70,6 +70,36 @@ function notFound(msg = "Not found"): Response {
 
 prepareQueries();
 
+function handleHealth(): Response {
+	return json({ ok: true });
+}
+
+function handleGetLists(): Response {
+	const rows = qLists.all();
+	return json(rows);
+}
+
+function handleGetListBySlug(slug: string): Response {
+	if (!slug) return notFound();
+	const list = qListBySlug.get(slug);
+	if (!list) return notFound();
+	const repos = qReposForList.all(list.id).map(mapRepoRow);
+	return json({ list, repos });
+}
+
+function handleSearch(q: string): Response {
+	const query = (q ?? "").trim();
+	if (!query) return json([]);
+	let rows: RepoRow[] = [];
+	try {
+		rows = qSearchFts.all(query);
+	} catch {
+		rows = qSearchLike.all(query, query);
+	}
+	const repos = rows.map(mapRepoRow);
+	return json(repos);
+}
+
 Bun.serve({
 	port: 8787,
 	fetch(req) {
@@ -77,35 +107,12 @@ Bun.serve({
 			const url = new URL(req.url);
 			const { pathname } = url;
 
-			if (pathname === "/health") return json({ ok: true });
-
-			if (pathname === "/lists") {
-				const rows = qLists.all();
-				return json(rows);
-			}
-
-			if (pathname.startsWith("/list/")) {
-				const slug = pathname.replace("/list/", "").trim();
-				if (!slug) return notFound();
-				const list = qListBySlug.get(slug);
-				if (!list) return notFound();
-
-				const repos = qReposForList.all(list.id).map(mapRepoRow);
-				return json({ list, repos });
-			}
-
-			if (pathname === "/search") {
-				const q = (url.searchParams.get("q") ?? "").trim();
-				if (!q) return json([]);
-				let rows: RepoRow[] = [];
-				try {
-					rows = qSearchFts.all(q);
-				} catch {
-					rows = qSearchLike.all(q, q);
-				}
-				const repos = rows.map(mapRepoRow);
-				return json(repos);
-			}
+			if (pathname === "/health") return handleHealth();
+			if (pathname === "/lists") return handleGetLists();
+			if (pathname.startsWith("/list/"))
+				return handleGetListBySlug(pathname.replace("/list/", "").trim());
+			if (pathname === "/search")
+				return handleSearch(url.searchParams.get("q") ?? "");
 
 			return notFound();
 		} catch (err) {

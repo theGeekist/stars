@@ -122,7 +122,7 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 		log.info(
 			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
 		);
-		await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
+		await scoreBatchAll(limit, apply);
 	}
 }
 

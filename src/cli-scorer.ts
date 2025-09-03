@@ -201,23 +201,21 @@ export async function scoreBatchAll(
 	limit: number,
 	apply: boolean,
 	llm?: ScoringLLM,
-	opts?: { resume?: number | "last"; notes?: string; fresh?: boolean },
 	database = getDefaultDb(),
 ): Promise<void> {
 	const scoring = createScoringService(database);
 
 	// Run context
+	// Batch runs always resume from the last run; dry-run filters by last
 	const { runId, filterRunId } = scoring.resolveRunContext({
 		dry: !apply,
-		notes: opts?.notes,
-		resume: opts?.resume,
+		resume: "last",
 	});
 	if (runId) log.info(`model_run id=${runId}`);
 	else log.info("dry run (no model_run row created)");
 
 	// Select repos
-	const effectiveFilter = opts?.fresh ? null : filterRunId;
-	const repos = scoring.selectRepos({ limit }, effectiveFilter);
+	const repos = scoring.selectRepos({ limit }, filterRunId);
 	if (!repos.length) {
 		log.info("No repos matched the criteria.");
 		return;
@@ -238,76 +236,18 @@ export async function scoreBatchAll(
 		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
 	for (let i = 0; i < repos.length; i++) {
-		const r = repos[i];
-		showRepoHeader(r, i + 1, total);
-
-		const facts: RepoFacts = buildFacts(r);
-
-		const result = await log.withSpinner("Scoring", () =>
-			scoreRepoAgainstLists(lists, facts, svc),
-		);
-		showTopScores(result.scores);
-
-		await persistScoresMaybe(scoring, runId, r.id, result.scores);
-
-		const currentSlugs = await listsSvc.read.currentMembership(r.id);
-		const plan = scoring.planMembership(
-			r,
-			currentSlugs,
-			result.scores,
-			DEFAULT_POLICY,
-		);
-		const {
-			add,
-			remove,
-			review,
-			finalPlanned,
-			changed,
-			blocked,
-			blockReason,
-			fallbackUsed,
-		} = plan;
-
-		showPlan({ add, remove, review, fallbackUsed });
-
-		if (blocked) {
-			if (blockReason?.includes("listless")) {
-				logListlessCSV({
-					nameWithOwner: r.name_with_owner,
-					url: r.url,
-					current: currentSlugs,
-					scores: JSON.stringify(result.scores),
-					note: blockReason ?? "blocked",
-				});
-				log.warn("Would become listless → logged and skipped apply");
-			} else {
-				log.info(`${blockReason} → not applying`);
-				log.info("Not applied (use --apply) or no change");
-			}
-			log.line();
-			continue;
-		}
-
-		if (!(apply && runId != null && changed)) {
-			log.info("Not applied (use --apply) or no change");
-			log.line();
-			continue;
-		}
-
-		// Apply to GH + reconcile DB
-		try {
-			await log.withSpinner("Applying to GitHub", async () => {
-				const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, r.id);
-				const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
-				await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-				await listsSvc.apply.reconcileLocal(r.id, finalPlanned);
-			});
-			log.success("Applied and reconciled");
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			log.warn(`Apply failed: ${msg}`);
-		}
-		log.line();
+		await processRepo({
+			repo: repos[i],
+			idx: i + 1,
+			total,
+			apply,
+			runId,
+			scoring,
+			listsSvc,
+			token,
+			lists,
+			svc,
+		});
 	}
 }
 
@@ -345,19 +285,53 @@ export async function scoreOne(
 		llm ??
 		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
 
-	showRepoHeader(row);
+	await processRepo({
+		repo: row,
+		apply,
+		runId,
+		scoring,
+		listsSvc,
+		token,
+		lists,
+		svc,
+	});
+}
 
-	const facts: RepoFacts = buildFacts(row);
+// Shared per-repo flow (score → plan → apply)
+async function processRepo(opts: {
+	repo: RepoRow;
+	idx?: number;
+	total?: number;
+	apply: boolean;
+	runId: number | null;
+	scoring: ReturnType<typeof createScoringService>;
+	listsSvc: ReturnType<typeof createListsService>;
+	token: string;
+	lists: ListDef[];
+	svc: ScoringLLM;
+}) {
+	const {
+		repo,
+		idx,
+		total,
+		apply,
+		runId,
+		scoring,
+		listsSvc,
+		token,
+		lists,
+		svc,
+	} = opts;
+	showRepoHeader(repo, idx, total);
+	const facts: RepoFacts = buildFacts(repo);
 	const result = await log.withSpinner("Scoring", () =>
 		scoreRepoAgainstLists(lists, facts, svc),
 	);
 	showTopScores(result.scores);
-
-	await persistScoresMaybe(scoring, runId, row.id, result.scores);
-
-	const currentSlugs = await listsSvc.read.currentMembership(row.id);
+	await persistScoresMaybe(scoring, runId, repo.id, result.scores);
+	const currentSlugs = await listsSvc.read.currentMembership(repo.id);
 	const plan = scoring.planMembership(
-		row,
+		repo,
 		currentSlugs,
 		result.scores,
 		DEFAULT_POLICY,
@@ -372,14 +346,12 @@ export async function scoreOne(
 		blockReason,
 		fallbackUsed,
 	} = plan;
-
 	showPlan({ add, remove, review, fallbackUsed });
-
 	if (blocked) {
 		if (blockReason?.includes("listless")) {
 			logListlessCSV({
-				nameWithOwner: row.name_with_owner,
-				url: row.url,
+				nameWithOwner: repo.name_with_owner,
+				url: repo.url,
 				current: currentSlugs,
 				scores: JSON.stringify(result.scores),
 				note: blockReason ?? "blocked",
@@ -392,19 +364,17 @@ export async function scoreOne(
 		log.line();
 		return;
 	}
-
 	if (!(apply && runId != null && changed)) {
 		log.info("Not applied (use --apply) or no change");
 		log.line();
 		return;
 	}
-
 	try {
 		await log.withSpinner("Applying to GitHub", async () => {
-			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, row.id);
+			const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, repo.id);
 			const targetListIds = await listsSvc.read.mapSlugsToGhIds(finalPlanned);
 			await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-			await listsSvc.apply.reconcileLocal(row.id, finalPlanned);
+			await listsSvc.apply.reconcileLocal(repo.id, finalPlanned);
 		});
 		log.success("Applied and reconciled");
 	} catch (e) {
@@ -417,38 +387,7 @@ export async function scoreOne(
 // CLI entry (unified simple flags)
 if (import.meta.main) {
 	const s = parseSimpleArgs(Bun.argv);
-	// Advanced flags for direct invocation
-	const rest = Bun.argv.slice(3);
-	let resume: number | "last" | undefined;
-	let notes: string | undefined;
-	let fresh = false;
-	let dry = s.dry;
-	for (let i = 0; i < rest.length; i++) {
-		const a = rest[i];
-		if (a === "--resume" && rest[i + 1]) {
-			i += 1;
-			const v = rest[i];
-			resume =
-				v === "last"
-					? "last"
-					: Number.isFinite(Number(v))
-						? Number(v)
-						: undefined;
-			continue;
-		}
-		if (a === "--notes" && rest[i + 1]) {
-			i += 1;
-			notes = rest[i];
-			continue;
-		}
-		if (a === "--fresh" || a === "--from-scratch") {
-			fresh = true;
-			continue;
-		}
-		if (a === "--dry") {
-			dry = true;
-		}
-	}
+	const dry = s.dry;
 
 	if (s.mode === "one") {
 		if (!s.one) {
@@ -461,11 +400,7 @@ if (import.meta.main) {
 	} else {
 		const limit = Math.max(1, s.limit ?? 999_999_999);
 		const apply = s.apply || !dry;
-		log.info(
-			`Score --all limit=${limit} apply=${apply}${
-				resume ? ` resume=${resume}` : ""
-			}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
-		);
-		await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
+		log.info(`Score --all limit=${limit} apply=${apply} resume=last`);
+		await scoreBatchAll(limit, apply);
 	}
 }

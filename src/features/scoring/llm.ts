@@ -1,6 +1,6 @@
 import { OllamaService } from "@jasonnathan/llm-core";
 import { toNum } from "@lib/utils";
-import prompts from "../../../prompts.yaml";
+import { promptsConfig as prompts } from "@lib/prompts";
 import type { MaybeOllama } from "./types";
 
 /* ---------- Public types ---------- */

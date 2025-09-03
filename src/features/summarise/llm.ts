@@ -12,7 +12,7 @@ import {
 	linkDensity,
 	summariseAwesomeList,
 } from "@lib/utils";
-import prompts from "../../../prompts.yaml";
+import { promptsConfig as prompts } from "@lib/prompts";
 import type { Meta, SummariseDeps } from "./types";
 
 function buildBaseHints(meta: Meta): string {

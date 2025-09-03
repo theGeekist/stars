@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "@lib/bootstrap";
+import rawPrompts from "../../prompts.yaml";
 
 export type PromptsState =
 	| { kind: "missing" }
@@ -145,3 +146,20 @@ export function ensurePromptsReadyOrExit(): void {
 	log.line("Edit <root>/prompts.yaml or run: gk-stars setup");
 	process.exit(1);
 }
+
+// Export parsed root prompts.yaml for consumers that need configuration text.
+// This import path resolves from src/lib → project root (../../prompts.yaml).
+// Keeping it centralized here ensures all features use the same source.
+export const promptsConfig = rawPrompts as {
+	scoring?: {
+		system?: string;
+		fewshot?: string;
+		/** Raw multi-line block where each line is "slug = only score if ..." */
+		criteria?: string;
+	};
+	summarise?: {
+		one_paragraph?: string;
+		map_header?: string;
+		reduce?: string;
+	};
+};
