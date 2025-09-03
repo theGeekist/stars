@@ -27,6 +27,48 @@ function resolveConfig(
 	return { pageSize, concurrency, debug };
 }
 
+function debugEnv(cfg: ListsConfig, reporter: ListsReporter = NoopReporter) {
+	const { debug } = reporter;
+	debug("env:", {
+		DEBUG: String(cfg.debug),
+		LISTS_CONCURRENCY: String(cfg.concurrency),
+		LISTS_PAGE_SIZE: String(cfg.pageSize),
+	});
+}
+
+async function fetchListsEdgesPage(
+	token: string,
+	after: string | null,
+	gh: typeof githubGraphQL,
+	reporter: ListsReporter = NoopReporter,
+): Promise<ListsEdgesPage> {
+	const { debug } = reporter;
+	debug(`lists: query page after=${JSON.stringify(after)}`);
+	const data: ListsEdgesPage = await gh<ListsEdgesPage>(
+		token,
+		LISTS_EDGES_PAGE,
+		{ after },
+	);
+	const page = data.viewer.lists;
+	debug(
+		`lists: edges=${page.edges.length} hasNext=${page.pageInfo.hasNextPage} endCursor=${JSON.stringify(page.pageInfo.endCursor)}`,
+	);
+	return data;
+}
+
+function metaFromEdge(
+	previousEdgeCursor: string | null,
+	edge: ListsEdgesPage["viewer"]["lists"]["edges"][number],
+) {
+	return {
+		edgeBefore: previousEdgeCursor,
+		listId: edge.node.listId,
+		name: edge.node.name,
+		description: edge.node.description ?? null,
+		isPrivate: edge.node.isPrivate,
+	} as const;
+}
+
 // ──────────────────────────────── queries ──────────────────────────────────
 
 export const Q_REPO_ID = gql`
@@ -300,12 +342,7 @@ export async function getAllLists(
 ): Promise<StarList[]> {
 	const cfg = resolveConfig();
 	const { debug } = reporter;
-
-	debug("env:", {
-		DEBUG: String(cfg.debug),
-		LISTS_CONCURRENCY: String(cfg.concurrency),
-		LISTS_PAGE_SIZE: String(cfg.pageSize),
-	});
+	debugEnv(cfg, reporter);
 
 	const metas = await collectListMetas(token, gh, reporter);
 	debug(
@@ -367,34 +404,15 @@ export async function collectListMetas(
 	const metas: Meta[] = [];
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
-	let pageNo = 0;
-
+	let _pageNo = 0;
 	debug("lists: begin paging metadata");
 	for (;;) {
-		pageNo++;
-		debug(`lists: query page #${pageNo} after=${JSON.stringify(after)}`);
-
-		const data: ListsEdgesPage = await gh<ListsEdgesPage>(
-			token,
-			LISTS_EDGES_PAGE,
-			{ after },
-		);
-
+		_pageNo++;
+		const data = await fetchListsEdgesPage(token, after, gh, reporter);
 		const page = data.viewer.lists;
-		debug(
-			`lists: page #${pageNo} edges=${page.edges.length} hasNext=${
-				page.pageInfo.hasNextPage
-			} endCursor=${JSON.stringify(page.pageInfo.endCursor)}`,
-		);
 
 		for (const edge of page.edges) {
-			metas.push({
-				edgeBefore: previousEdgeCursor,
-				listId: edge.node.listId,
-				name: edge.node.name,
-				description: edge.node.description ?? null,
-				isPrivate: edge.node.isPrivate,
-			});
+			metas.push(metaFromEdge(previousEdgeCursor, edge));
 			debug(
 				`lists: push meta name="${edge.node.name}" edgeBefore=${JSON.stringify(
 					previousEdgeCursor,
@@ -420,22 +438,11 @@ export async function* getAllListsStream(
 	let previousEdgeCursor: string | null = null;
 
 	for (;;) {
-		const pageData: ListsEdgesPage = await gh<ListsEdgesPage>(
-			token,
-			LISTS_EDGES_PAGE,
-			{ after },
-		);
-
+		const pageData = await fetchListsEdgesPage(token, after, gh, reporter);
 		const edges = pageData.viewer.lists.edges;
 
 		for (const edge of edges) {
-			const meta = {
-				edgeBefore: previousEdgeCursor,
-				listId: edge.node.listId,
-				name: edge.node.name,
-				description: edge.node.description ?? null,
-				isPrivate: edge.node.isPrivate,
-			};
+			const meta = metaFromEdge(previousEdgeCursor, edge);
 
 			const repos = await fetchAllItemsAtEdge(
 				token,
