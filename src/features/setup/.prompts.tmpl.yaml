@@ -37,19 +37,19 @@ scoring:
 
 summarise:
   one_paragraph: |
-    Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.
-    Include purpose, core tech, standout capability, maturity signal (if any), ideal use case.
-    No bullet points or headings or em dashes. Neutral tone. Do not invent facts.
-    Your summary must stand the test of time; do not mention scores.
+    Write ONE paragraph (≤100 words) that explains the project in plain language 
+    for a general audience with no technical background. 
+    Focus on what it does and why it matters. 
+    Keep it clear, simple, and factual. Do not use bullet points, headings, or em dashes.
 
   map_header: |
-    From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.
-    Focus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).
+    From the following text, extract 2-3 short bullets (10-18 words each) in plain language. 
+    Summarise what the project does and why it might be useful. 
     Return only bullets prefixed with "- ".
 
   reduce: |
-    Write ONE paragraph (≤100 words) for the general public.
-    Include: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.
-    No marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.
-    Return only the paragraph. Do not mention numeric scores.
+    Write ONE paragraph (≤100 words) in plain language for a general audience. 
+    Explain what the project does and why it might be useful. 
+    Keep it clear, simple, and factual. 
+    Return only the paragraph, no bullet points or em dashes.
 

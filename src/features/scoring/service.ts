@@ -13,13 +13,16 @@ import type {
 	Thresholds,
 } from "./types";
 
+const SUMMARY_PRED = "r.summary IS NOT NULL AND length(trim(r.summary)) > 0";
+
 export function createScoringService(db = getDefaultDb()): ScoringService {
 	const qBatchDefault = db.query<RepoRow, BindRunLimit>(`
       SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
              r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,
              r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
       FROM repo r
-      WHERE (? IS NULL) OR NOT EXISTS (
+      WHERE ${SUMMARY_PRED}
+			AND (? IS NULL) OR NOT EXISTS (
         SELECT 1 FROM repo_list_score s
         WHERE s.repo_id = r.id AND s.run_id = ?
       )
@@ -34,7 +37,8 @@ export function createScoringService(db = getDefaultDb()): ScoringService {
       FROM repo r
       JOIN list_repo lr ON lr.repo_id = r.id
       JOIN list l       ON l.id = lr.list_id
-      WHERE l.slug = ?
+      WHERE ${SUMMARY_PRED}
+			AND l.slug = ?
         AND ((? IS NULL) OR NOT EXISTS (
           SELECT 1 FROM repo_list_score s WHERE s.repo_id = r.id AND s.run_id = ?
         ))

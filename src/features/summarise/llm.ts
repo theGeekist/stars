@@ -1,5 +1,6 @@
 import { OllamaService } from "@jasonnathan/llm-core";
 import { gen as realGen } from "@lib/ollama";
+import { promptsConfig as prompts } from "@lib/prompts";
 import {
 	chunkMarkdown,
 	cleanMarkdown,
@@ -12,7 +13,6 @@ import {
 	linkDensity,
 	summariseAwesomeList,
 } from "@lib/utils";
-import { promptsConfig as prompts } from "@lib/prompts";
 import type { Meta, SummariseDeps } from "./types";
 
 function buildBaseHints(meta: Meta): string {
@@ -96,11 +96,7 @@ async function generateFromMetadata(
 	baseHints: string,
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string> {
-	const header =
-		(prompts?.summarise?.one_paragraph as string) ??
-		`Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.\nInclude purpose, core tech, standout capability, maturity signal (if any), ideal use case.\nNo bullet points or headings or em dashes. Neutral tone. Do not invent facts.\nYour summary must stand the test of time; do not mention scores.`;
-	const prompt = `
-${header}
+	const prompt = `${prompts?.summarise?.one_paragraph}
 
 Project: ${meta.nameWithOwner}
 URL: ${meta.url}
@@ -114,10 +110,7 @@ async function mapChunksToBullets(
 	picked: string[],
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string[]> {
-	const mapHeader = (
-		(prompts?.summarise?.map_header as string) ??
-		`From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.\nFocus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).\nReturn only bullets prefixed with "- ".`
-	).trim();
+	const mapHeader = prompts?.summarise?.map_header;
 	const bullets: string[] = [];
 	const MAX_MAP_CHARS = 7000;
 	let used = 0;
@@ -142,11 +135,8 @@ async function reduceBulletsToParagraph(
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string> {
 	if (baseHints) bullets.push(`- ${baseHints}`);
-	const reduceHeader =
-		(prompts?.summarise?.reduce as string) ??
-		`Write ONE paragraph (≤100 words) for the general public.\nInclude: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.\nNo marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.\nReturn only the paragraph. Do not mention numeric scores.`;
 	const reducePrompt = `
-${reduceHeader}
+${prompts?.summarise?.reduce}
 
 Bullets:
 ${bullets.join("\n")}

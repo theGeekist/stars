@@ -1,6 +1,7 @@
+// src/llm/scoring.ts
 import { OllamaService } from "@jasonnathan/llm-core";
-import { toNum } from "@lib/utils";
 import { promptsConfig as prompts } from "@lib/prompts";
+import { toNum } from "@lib/utils";
 import type { MaybeOllama } from "./types";
 
 /* ---------- Public types ---------- */
@@ -23,7 +24,7 @@ export type RepoFacts = {
 export type ScoreItem = { list: string; score: number; why?: string };
 export type ScoreResponse = { scores: ScoreItem[] };
 
-/* ---------- LLM interface (simple) ---------- */
+/* ---------- LLM interface ---------- */
 
 export type ScoringLLM = {
 	generatePromptAndSend(
@@ -53,7 +54,12 @@ function defaultLLM(): ScoringLLM {
 	};
 }
 
-/* ---------- Tiny helpers ---------- */
+/* ---------- Helpers ---------- */
+
+function requireStr(v: unknown, name: string): string {
+	if (typeof v === "string" && v.trim()) return v;
+	throw new Error(`${name} missing`);
+}
 
 function buildSchema(slugs: string[]): unknown {
 	return {
@@ -78,55 +84,6 @@ function buildSchema(slugs: string[]): unknown {
 	} as const;
 }
 
-function listsBlock(lists: ListDef[]): string {
-	return lists
-		.map((l) => `- ${l.name} (${l.slug}) - ${l.description ?? ""}`.trim())
-		.join("\n");
-}
-
-function listsBlockFromCriteria(lists: ListDef[], criteria?: unknown): string {
-	const arr = Array.isArray(criteria)
-		? (criteria as Array<{ slug: string; description?: string | null }>)
-		: null;
-	if (!arr?.length) return listsBlock(lists);
-	const bySlug = new Map(arr.map((c) => [c.slug, c] as const));
-	return lists
-		.map((l) => {
-			const c = bySlug.get(l.slug);
-			const desc = (c?.description ?? l.description ?? "").trim();
-			return `- ${l.name} (${l.slug}) - ${desc}`.trim();
-		})
-		.join("\n");
-}
-
-const FEWSHOT = `
-Examples (format matches schema):
-
-Repo:
-"CLI that cross-posts your blog posts to Dev.to, Hashnode and Medium; manages canonical URLs; adds UTM; syncs updates."
-
-Expected JSON:
-{
-  "scores": [
-    { "list": "self-marketing", "score": 0.8, "why": "Publishing & cross-posting are personal promotion workflows." },
-    { "list": "productivity", "score": 0.4, "why": "CLI automation helps, but promotion is the primary goal." },
-    { "list": "learning", "score": 0.0 }
-  ]
-}
-
-Repo:
-"Task-runner that automates image optimisation and builds; speeds up local dev commands; no publishing features."
-
-Expected JSON:
-{
-  "scores": [
-    { "list": "productivity", "score": 0.9, "why": "Developer time-saver for day-to-day workflows." },
-    { "list": "self-marketing", "score": 0.1, "why": "Not focused on promoting an individual." },
-    { "list": "learning", "score": 0.0 }
-  ]
-}
-`.trim();
-
 function repoBlock(r: RepoFacts): string {
 	const bits = [
 		`Name: ${r.nameWithOwner}`,
@@ -139,16 +96,46 @@ function repoBlock(r: RepoFacts): string {
 	return bits.join("\n");
 }
 
-/* ---------- Minimal validation/repair (no any) ---------- */
+/** Parse a block with lines like:
+ *  "• productivity = …" or "productivity: …"
+ *  returns Map<slug, description>
+ */
+function parseCriteriaBlock(block: string): Map<string, string> {
+	const map = new Map<string, string>();
+	for (const raw of block.split(/\r?\n/)) {
+		const line = raw.trim();
+		if (!line) continue;
+		const cleaned = line.replace(/^[•*\-\u2022]\s*/, ""); // strip bullet
+		const m = cleaned.match(/^([a-z0-9-]+)\s*[:=]\s*(.+)$/i);
+		if (!m) continue;
+		map.set(m[1].toLowerCase(), m[2].trim());
+	}
+	return map;
+}
+
+function listsBlockFromCriteria(
+	lists: ListDef[],
+	criteriaBlock: string,
+): string {
+	const bySlug = parseCriteriaBlock(criteriaBlock);
+	return lists
+		.map((l) => {
+			const desc = bySlug.get(l.slug);
+			return desc
+				? `- ${l.name} (${l.slug}) - ${desc}`
+				: `- ${l.name} (${l.slug})`;
+		})
+		.join("\n");
+}
+
+/* ---------- Response validation ---------- */
 
 function isRecord(x: unknown): x is Record<string, unknown> {
 	return typeof x === "object" && x !== null;
 }
-
 function getProp(obj: Record<string, unknown>, key: string): unknown {
 	return Object.hasOwn(obj, key) ? obj[key] : undefined;
 }
-
 function getStr(obj: Record<string, unknown>, key: string): string | undefined {
 	const v = getProp(obj, key);
 	return typeof v === "string" ? v : undefined;
@@ -164,7 +151,6 @@ function validateAndRepair(
 	if (!Array.isArray(scoresUnknown)) return false;
 
 	const out: ScoreItem[] = [];
-
 	for (const item of scoresUnknown) {
 		if (!isRecord(item)) continue;
 
@@ -194,9 +180,7 @@ function validateAndRepair(
 	return out.length ? { scores: out } : false;
 }
 
-/* ---------- Prompt + main ---------- */
-
-const SYSTEM_PROMPT = `You are a neutral curator for github repositories.`;
+/* ---------- Main ---------- */
 
 export async function scoreRepoAgainstLists(
 	lists: ListDef[],
@@ -206,32 +190,25 @@ export async function scoreRepoAgainstLists(
 	const slugs = lists.map((l) => l.slug);
 	const schema = buildSchema(slugs);
 
-	const defaultGuide = `
-  productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).
-  monetise = only score if the repo explicitly helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
-  networking = only score if the repo explicitly builds or supports communities, connections, or collaboration (social, professional, or technical).
-  ai = only score if the repo’s primary focus is AI/ML models, frameworks, applications, or tooling.
-  blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, financial systems, or digital assets.
-  learning = only score if the repo explicitly teaches through courses, tutorials, exercises, or curricula (any subject, not just programming).
-  self-marketing = only score if the repo explicitly promotes an individual (portfolio, profile, blogging, personal branding, analytics).
-  team-management = only score if the repo explicitly helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
-`.trim();
+	// STRICT: read strings only; throw if missing
+	const system = requireStr(prompts?.scoring?.system, "prompts.scoring.system");
+	const fewshot = requireStr(
+		prompts?.scoring?.fewshot,
+		"prompts.scoring.fewshot",
+	);
+	const criteria = requireStr(
+		prompts?.scoring?.criteria,
+		"prompts.scoring.criteria",
+	);
 
-	const guide =
-		prompts?.scoring?.criteria && Array.isArray(prompts.scoring.criteria)
-			? listsBlockFromCriteria(lists, prompts.scoring.criteria)
-			: defaultGuide;
-
-	const system = prompts?.scoring?.system ?? SYSTEM_PROMPT;
-	const fewshot = prompts?.scoring?.fewshot ?? FEWSHOT;
+	const guideText = criteria; // injected verbatim
+	const listsText = listsBlockFromCriteria(lists, criteria);
 
 	const userPrompt = `
-Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
-Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):
-${guide}
+${guideText}
 
 Lists:
-${listsBlockFromCriteria(lists, prompts?.scoring?.criteria)}
+${listsText}
 
 ${fewshot}
 
@@ -239,9 +216,7 @@ Repository to score:
 ${repoBlock(repo)}
   `.trim();
 
-	const raw = await llm.generatePromptAndSend(system, userPrompt, {
-		schema,
-	});
+	const raw = await llm.generatePromptAndSend(system, userPrompt, { schema });
 	const repaired = validateAndRepair(raw, new Set(slugs));
 	if (!repaired) throw new Error("Invalid LLM response");
 	return repaired;

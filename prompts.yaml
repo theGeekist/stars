@@ -2,55 +2,61 @@ scoring:
   system: |
     You are a neutral curator for github repositories.
   fewshot: |
-    Examples (format matches schema):
+    Examples (format matches schema).
 
     Repo:
-    "CLI that cross-posts your blog posts to Dev.to, Hashnode and Medium; manages canonical URLs; adds UTM; syncs updates."
-
-    Expected JSON:
+    "Beatstore marketplace: upload & license beats, set pricing, cart/checkout, artist pages."
+    Response:
     {
       "scores": [
-        { "list": "self-marketing", "score": 0.8, "why": "Publishing & cross-posting are personal promotion workflows." },
-        { "list": "productivity", "score": 0.4, "why": "CLI automation helps, but promotion is the primary goal." },
-        { "list": "learning", "score": 0.0 }
+        { "list": "monetise", "score": 0.9, "why": "Directly enables selling/licensing music for income." },
+        { "list": "self-marketing", "score": 0.5, "why": "Artist pages promote an individual's work." }
       ]
     }
 
     Repo:
-    "Task-runner that automates image optimisation and builds; speeds up local dev commands; no publishing features."
-
-    Expected JSON:
+    "Self-hosted community platform: forums, chat, events, moderation, invites."
+    Response:
     {
       "scores": [
-        { "list": "productivity", "score": 0.9, "why": "Developer time-saver for day-to-day workflows." },
-        { "list": "self-marketing", "score": 0.1, "why": "Not focused on promoting an individual." },
-        { "list": "learning", "score": 0.0 }
+        { "list": "networking", "score": 0.9, "why": "Explicit community-building features." },
+        { "list": "team-management", "score": 0.4, "why": "Moderation and events coordinate group activity." }
+      ]
+    }
+
+    Repo:
+    "Project-based 'Build a RAG app' course: 8 modules, exercises with solutions, evaluation harness."
+    Response:
+    {
+      "scores": [
+        { "list": "learning", "score": 0.95, "why": "Structured curriculum with modules, exercises, assessments." },
+        { "list": "ai", "score": 0.6, "why": "Focus on RAG/LLM techniques and evaluation." }
       ]
     }
   criteria: |
-    • productivity = only score if the repo saves time or automates repetitive tasks in any domain (e.g. work, study, daily life).
-    • monetise = only score if the repo explicitly helps generate revenue, enable payments, or provide monetisation strategies (business, commerce, content, services).
-    • networking = only score if the repo explicitly builds or supports communities, connections, or collaboration (social, professional, or technical).
-    • ai = only score if the repo’s primary focus is AI/ML models, frameworks, applications, or tooling.
-    • blockchain-finance = only score if the repo is about blockchain, crypto, DeFi, financial systems, or digital assets.
-    • learning = only score if the repo explicitly teaches through courses, tutorials, exercises, or curricula (any subject, not just programming).
-    • self-marketing = only score if the repo explicitly promotes an individual (portfolio, profile, blogging, personal branding, analytics).
-    • team-management = only score if the repo explicitly helps manage, scale, or structure teams (onboarding, communication, rituals, project or workforce management).
+    productivity = runnable automation or one-command multi-step actions. anything that makes life easier through automation or provides resources to the same.
+    monetise = concrete system/course to make money (bots, arbitrage, dropshipping, affiliate). explicit mentions of "free" resources also qualify.
+    networking = explicit community features or community based solutions (forums/events/social netowrking, communication) but "awesome" lists and aggregated content generally don't qualify.
+    ai = models/training/inference/eval or LLM/RAG pipelines and frameworks.
+    blockchain-finance = smart contracts, wallets, swaps, on-chain ops/analytics.
+    learning = course/curriculum with exercises or assessments, has direct links to resources, directly purposed to teach.
+    self-marketing = portfolio/blog for an individual; personal analytics. social networking, tools/projects/resources that help one to promote themselves
+    team-management = onboarding, rituals, approvals, shifts, project/OKR tools, thought leadership, leadership etc.
 summarise:
   one_paragraph: |
-    Write ONE paragraph (<=100 words) that summarises the project for an experienced engineer.
-    Include purpose, core tech, standout capability, maturity signal (if any), ideal use case.
-    No bullet points or headings or em dashes. Neutral tone. Do not invent facts.
-    Your summary must stand the test of time; do not mention scores.
+    Write ONE paragraph (≤100 words) that explains the project in plain language 
+    for a general audience with no technical background. 
+    Focus on what it does and why it matters. 
+    Keep it clear, simple, and factual. Do not use bullet points, headings, or em dashes.
 
   map_header: |
-    From the following text, extract 2-3 concise bullets (10-18 words each), no fluff.
-    Focus on: purpose, core tech/architecture, standout capabilities, maturity signals (derive only if stated).
+    From the following text, extract 2-3 short bullets (10-18 words each) in plain language. 
+    Summarise what the project does and why it might be useful. 
     Return only bullets prefixed with "- ".
 
   reduce: |
-    Write ONE paragraph (≤100 words) for the general public.
-    Include: purpose, core tech/approach, one standout capability, maturity signal (if present), ideal use case.
-    No marketing language. Present tense. If something isn’t in the notes, omit, do not guess. No em dashes.
-    Return only the paragraph. Do not mention numeric scores.
+    Write ONE paragraph (≤100 words) in plain language for a general audience. 
+    Explain what the project does and why it might be useful. 
+    Keep it clear, simple, and factual. 
+    Return only the paragraph, no bullet points or em dashes.
 
