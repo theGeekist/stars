@@ -1,5 +1,5 @@
 import type { Statement } from "bun:sqlite";
-import { db } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 import { createLogger } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
@@ -19,6 +19,7 @@ function mapRepoRow(row: RepoRow): ApiRepo {
 }
 
 function prepareQueries(): void {
+	const db = getDefaultDb();
 	qLists = db.query<ListRow, []>(`
     SELECT id, name, description, slug, is_private FROM list ORDER BY name
   `);

@@ -1,4 +1,4 @@
-import { db as defaultDb } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import type { ScoreItem } from "./llm";
 import type {
@@ -13,7 +13,7 @@ import type {
 	Thresholds,
 } from "./types";
 
-export function createScoringService(db = defaultDb): ScoringService {
+export function createScoringService(db = getDefaultDb()): ScoringService {
 	const qBatchDefault = db.query<RepoRow, BindRunLimit>(`
       SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
              r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,

@@ -11,7 +11,8 @@ const DEFAULT_DB_FILE = isTestRunner
 	? ":memory:"
 	: Bun.env.DB_FILE || "repolists.db";
 
-export let db = new Database(DEFAULT_DB_FILE);
+// Internal singleton; do not export directly. Use getters/helpers below.
+let _defaultDb = new Database(DEFAULT_DB_FILE);
 
 function resolveSchemaPath(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,10 @@ function resolveSchemaPath(): string {
 }
 
 /** Return column names for a table. */
-function tableColumns(table: string, database: Database = db): Set<string> {
+function tableColumns(
+	table: string,
+	database: Database = getDefaultDb(),
+): Set<string> {
 	// PRAGMA table_info() doesn’t accept bound parameters; safe for known tables.
 	const rows = database.query(`PRAGMA table_info(${table})`).all() as Array<{
 		name: string;
@@ -35,7 +39,7 @@ function addColumnIfMissing(
 	table: string,
 	col: string,
 	sqlType: string,
-	database: Database = db,
+	database: Database = getDefaultDb(),
 ) {
 	const cols = tableColumns(table, database);
 	if (!cols.has(col)) {
@@ -44,7 +48,7 @@ function addColumnIfMissing(
 }
 
 /** Minimal, idempotent migrations for existing DBs. */
-function migrateIfNeeded(database: Database = db): void {
+function migrateIfNeeded(database: Database = getDefaultDb()): void {
 	// topics: newly added fields
 	addColumnIfMissing("topics", "long_description_md", "TEXT", database);
 	addColumnIfMissing("topics", "created_by", "TEXT", database);
@@ -60,7 +64,7 @@ function migrateIfNeeded(database: Database = db): void {
 	// so no action needed here for topic_alias/topic_related.
 }
 
-export function initSchema(database: Database = db): void {
+export function initSchema(database: Database = getDefaultDb()): void {
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
 	database.exec(sql);
@@ -77,5 +81,15 @@ export function createDb(filename = ":memory:"): Database {
 }
 
 export function setDefaultDb(database: Database): void {
-	db = database;
+	_defaultDb = database;
+}
+
+/** Return the current default (singleton) Database instance. */
+export function getDefaultDb(): Database {
+	return _defaultDb;
+}
+
+/** Utility to prefer an explicit Database, or fall back to the default. */
+export function withDB(database?: Database): Database {
+	return database ?? getDefaultDb();
 }

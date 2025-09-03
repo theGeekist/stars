@@ -1,7 +1,7 @@
 // src/topics-report.ts
 
 import { log } from "@lib/bootstrap";
-import { db } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 
 function fmt(n: number) {
 	return new Intl.NumberFormat("en").format(n);
@@ -23,6 +23,7 @@ function firstParagraph(md?: string | null): string {
 }
 
 function getTotals() {
+	const db = getDefaultDb();
 	const repos = db
 		.query<{ c: number }, []>(`SELECT COUNT(*) c FROM repo`)
 		.get()?.c;
@@ -54,6 +55,7 @@ function getTotals() {
 
 /** ALL topics with usage count + metadata + aliases (no limit). */
 function getAllTopics() {
+	const db = getDefaultDb();
 	const q = db.query<
 		{
 			topic: string;
@@ -89,6 +91,7 @@ function getAllTopics() {
 
 function getMissingMeta(limit = 50) {
 	// “Missing” means both short & long are empty
+	const db = getDefaultDb();
 	const q = db.query<{ topic: string; updated_at: string | null }, [number]>(`
     SELECT topic, updated_at
     FROM topics
@@ -101,6 +104,7 @@ function getMissingMeta(limit = 50) {
 }
 
 function getRecentTopics(limit = 50) {
+	const db = getDefaultDb();
 	const q = db.query<{ topic: string; added_at: string }, [number]>(`
     SELECT topic, MAX(added_at) AS added_at
     FROM repo_topics

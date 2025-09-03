@@ -1,4 +1,4 @@
-import { db as defaultDb } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 import { githubGraphQL, gql } from "@lib/github";
 import {
 	getAllLists,
@@ -34,7 +34,7 @@ const M_UPDATE_LISTS_FOR_ITEM = gql`
 
 /** Allow injecting db and a GitHub GraphQL runner for testing */
 export function createListsService(
-	db = defaultDb,
+	db = getDefaultDb(),
 	ghGraphQL: <T>(
 		token: string,
 		query: string,

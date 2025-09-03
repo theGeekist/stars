@@ -2,7 +2,7 @@
 
 import type { Database } from "bun:sqlite";
 import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
-import { db as defaultDb } from "./db";
+import { getDefaultDb } from "./db";
 import { ghHeaders } from "./github";
 import type { ChunkingOptions, FetchLike, ReadmeRow } from "./types";
 
@@ -34,7 +34,7 @@ export async function fetchReadmeWithCache(
 	database?: Database,
 ): Promise<string | null> {
 	const [owner, repo] = nameWithOwner.split("/");
-	const db = database ?? defaultDb;
+	const db = database ?? getDefaultDb();
 	const existing = db
 		.query<ReadmeRow, [number]>(
 			`SELECT id, readme_md, readme_etag FROM repo WHERE id = ?`,
