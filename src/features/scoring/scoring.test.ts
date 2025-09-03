@@ -112,8 +112,13 @@ describe("scoring DB-backed selection & persistence", () => {
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1')`,
 		);
-		db.run(`INSERT INTO repo(name_with_owner, url, stars, forks, watchers, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
-            VALUES ('o/r1','u1',10,1,1,0,0,0,0,1), ('o/r2','u2',5,1,1,0,0,0,0,1)`);
+		db.run(`INSERT INTO repo(
+			name_with_owner, url, stars, forks, watchers,
+			is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled,
+			summary
+		) VALUES
+			('o/r1','u1',10,1,1,0,0,0,0,1,'summary r1'),
+			('o/r2','u2',5,1,1,0,0,0,0,1,'summary r2')`);
 		db.run(`INSERT INTO list_repo(list_id, repo_id) VALUES (1,1), (1,2)`);
 
 		// no resume, by slug
