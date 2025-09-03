@@ -2,24 +2,26 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getDefaultDb } from "@lib/db";
+import { createDb } from "@lib/db";
 import { repoTopicsMany, topicMetaMany } from "./api";
 import type { RepoRef } from "./types";
 
+const db = createDb();
+
 beforeEach(() => {
-	getDefaultDb().run("DELETE FROM repo");
+	db.run("DELETE FROM repo");
 });
 
 describe("topics local helpers", () => {
 	it("repoTopicsMany returns normalized topics from repo table JSON", () => {
-		getDefaultDb().run(`INSERT INTO repo(name_with_owner, url, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled, topics)
+		db.run(`INSERT INTO repo(name_with_owner, url, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled, topics)
             VALUES ('a/r', 'u', 0, 0, 0, 0, 1, json('["X","x "]')),
                    ('b/r', 'u', 0, 0, 0, 0, 1, NULL)`);
 		const refs: RepoRef[] = [
 			{ owner: "a", name: "r" },
 			{ owner: "b", name: "r" },
 		];
-		const map = repoTopicsMany(refs, { concurrency: 2 });
+		const map = repoTopicsMany(refs, { concurrency: 2 }, db);
 		expect(map.get("a/r")).toEqual(["x"]);
 		expect(map.get("b/r")).toEqual([]);
 	});
