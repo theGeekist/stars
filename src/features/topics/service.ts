@@ -4,6 +4,15 @@ import * as api from "./api";
 import type { RepoMini, RepoRef } from "./types";
 
 /* ── Small helpers ──────────────────────────────────────────────────────── */
+function getConfiguredTtlDays(override?: number): number {
+	const envTtl = Number(Bun.env.TOPIC_TTL_DAYS ?? 30);
+	return override ?? envTtl;
+}
+
+function getConfiguredRepoConcurrency(): number {
+	return Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
+}
+
 export function listRepoRefsFromDb(
 	onlyActive?: boolean,
 	database?: Database,
@@ -40,6 +49,44 @@ export function reconcileRowsAndCollectUniverse(
 		for (const t of ts) universe.add(t);
 	}
 	return universe;
+}
+
+function getTopicsByRepo(
+	refs: RepoRef[],
+	repoTopicsMany: typeof api.repoTopicsMany,
+	concurrency: number,
+	db: Database | undefined,
+): Map<string, string[]> {
+	return repoTopicsMany(
+		refs,
+		{
+			concurrency,
+		},
+		db,
+	);
+}
+
+function bindDbToDeps(db: Database | undefined, deps: Deps) {
+	return {
+		selectStaleTopics: ((u: string, t: number) =>
+			deps.selectStaleTopics(u, t, db)) as typeof api.selectStaleTopics,
+		upsertTopic: ((row: Parameters<typeof api.upsertTopic>[0]) =>
+			deps.upsertTopic(row, db)) as typeof api.upsertTopic,
+		upsertTopicAliases: ((topic: string, aliases: string[]) =>
+			deps.upsertTopicAliases(
+				topic,
+				aliases,
+				db,
+			)) as typeof api.upsertTopicAliases,
+		upsertTopicRelated: ((topic: string, related: string[]) =>
+			deps.upsertTopicRelated(
+				topic,
+				related,
+				db,
+			)) as typeof api.upsertTopicRelated,
+		reconcileRepoTopics: ((id: number, ts: string[]) =>
+			deps.reconcileRepoTopics(id, ts, db)) as typeof api.reconcileRepoTopics,
+	};
 }
 
 /* ── Deps shape for DI ──────────────────────────────────────────────────── */
@@ -144,42 +191,42 @@ export function createTopicsService(
 		onlyActive?: boolean;
 		ttlDays?: number;
 	}): { repos: number; unique_topics: number; refreshed: number } {
-		const TTL_DAYS = Number(Bun.env.TOPIC_TTL_DAYS ?? 30);
-		const CONCURRENCY_REPOS = Number(Bun.env.TOPIC_REPO_CONCURRENCY ?? 4);
+		const ttlDays = getConfiguredTtlDays(opts?.ttlDays);
+		const concurrency = getConfiguredRepoConcurrency();
 
-		const ttlDays = opts?.ttlDays ?? TTL_DAYS;
 		const rows = listRepoRefsFromDb(opts?.onlyActive, db);
 		if (!rows.length) return { repos: 0, unique_topics: 0, refreshed: 0 };
 
 		const refs: RepoRef[] = buildRepoRefs(rows);
 
-		// DB-only: collect topics from repo.topics JSON (no network)
-		const topicsByRepo = repoTopicsMany(
-			refs,
-			{
-				concurrency: CONCURRENCY_REPOS,
-			},
-			db,
-		);
+		const topicsByRepo = getTopicsByRepo(refs, repoTopicsMany, concurrency, db);
+
+		const bound = bindDbToDeps(db, {
+			normalizeTopics,
+			reconcileRepoTopics,
+			repoTopicsMany,
+			selectStaleTopics,
+			topicMetaMany,
+			upsertTopic,
+			upsertTopicAliases,
+			upsertTopicRelated,
+		});
 
 		const universe = reconcileRowsAndCollectUniverse(
 			rows,
 			topicsByRepo,
 			normalizeTopics,
-			((id, ts) =>
-				reconcileRepoTopics(id, ts, db)) as typeof reconcileRepoTopics,
+			bound.reconcileRepoTopics,
 		);
 
 		const refreshed = refreshStaleTopicMeta(
 			universe,
 			ttlDays,
-			((u, t) => selectStaleTopics(u, t, db)) as typeof selectStaleTopics,
+			bound.selectStaleTopics,
 			topicMetaMany,
-			((row) => upsertTopic(row, db)) as typeof upsertTopic,
-			((topic, aliases) =>
-				upsertTopicAliases(topic, aliases, db)) as typeof upsertTopicAliases,
-			((topic, related) =>
-				upsertTopicRelated(topic, related, db)) as typeof upsertTopicRelated,
+			bound.upsertTopic,
+			bound.upsertTopicAliases,
+			bound.upsertTopicRelated,
 		);
 
 		return { repos: rows.length, unique_topics: universe.size, refreshed };
