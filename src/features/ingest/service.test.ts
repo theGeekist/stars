@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { db } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 import { ingestFromExports } from "./service";
 
 function mkTempDir(prefix = "ingest-test-") {
@@ -12,6 +12,8 @@ function mkTempDir(prefix = "ingest-test-") {
 	mkdirSync(base, { recursive: true });
 	return base;
 }
+
+const db = getDefaultDb();
 
 beforeEach(() => {
 	db.run("DELETE FROM list_repo");

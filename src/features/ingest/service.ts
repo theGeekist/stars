@@ -1,5 +1,5 @@
-import type { Statement } from "bun:sqlite";
-import { db } from "@lib/db";
+import type { Database, Statement } from "bun:sqlite";
+import { getDefaultDb } from "@lib/db";
 import {
 	chooseFreshnessSource,
 	scoreActiveness,
@@ -82,8 +82,8 @@ let upsertList!: Statement<IdRow, UpsertListBind>;
 let upsertRepo!: Statement<IdRow, UpsertRepoBind>;
 let linkListRepo!: Statement<unknown, LinkListRepoBind>;
 
-function prepareStatements(): void {
-	upsertList = db.prepare<IdRow, UpsertListBind>(`
+function prepareStatements(database: Database): void {
+	upsertList = database.prepare<IdRow, UpsertListBind>(`
     INSERT INTO list(name, description, is_private, slug, list_id)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
@@ -94,7 +94,7 @@ function prepareStatements(): void {
     RETURNING id
   `);
 
-	upsertRepo = db.prepare<IdRow, UpsertRepoBind>(`
+	upsertRepo = database.prepare<IdRow, UpsertRepoBind>(`
     INSERT INTO repo(
       repo_id, name_with_owner, url, description, homepage_url, stars, forks, watchers, open_issues, open_prs,
       default_branch, last_commit_iso, last_release_iso, topics, primary_language, languages, license,
@@ -121,7 +121,7 @@ function prepareStatements(): void {
     RETURNING id
   `);
 
-	linkListRepo = db.prepare<unknown, LinkListRepoBind>(
+	linkListRepo = database.prepare<unknown, LinkListRepoBind>(
 		`INSERT OR IGNORE INTO list_repo(list_id, repo_id) VALUES (?, ?)`,
 	);
 }
@@ -205,6 +205,7 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 export async function ingestFromExports(
 	dir: string,
 	reporter?: IngestReporter,
+	database: Database = getDefaultDb(),
 ): Promise<{ lists: number }> {
 	const indexRaw = (await Bun.file(`${dir}/index.json`).json()) as unknown;
 	assertIndexEntryArray(indexRaw);
@@ -229,9 +230,9 @@ export async function ingestFromExports(
 		reporter?.listStart?.(meta, i, indexRaw.length, starList.repos.length);
 	}
 
-	prepareStatements();
+	prepareStatements(database);
 
-	db.transaction(() => {
+	database.transaction(() => {
 		for (const { meta, data } of listsPreloaded) {
 			const listIdRow = upsertList.get(
 				meta.name,
