@@ -142,6 +142,60 @@ function showPlan(plan: {
 	}
 }
 
+// Small pure helpers to reduce cognitive load in score* functions
+function buildLists(
+	listRows: Array<{ slug: string; name: string; description?: string | null }>,
+): ListDef[] {
+	return listRows.map((l) => ({
+		slug: l.slug,
+		name: l.name,
+		description: l.description ?? undefined,
+	}));
+}
+
+function buildFacts(r: RepoRow): RepoFacts {
+	return {
+		nameWithOwner: r.name_with_owner,
+		url: r.url,
+		summary: r.summary ?? undefined,
+		description: r.description ?? undefined,
+		primaryLanguage: r.primary_language ?? undefined,
+		topics: parseStringArray(r.topics),
+	};
+}
+
+async function ensureApplyPrereqs(
+	apply: boolean,
+	token: string,
+	listsSvc: ReturnType<typeof createListsService>,
+): Promise<void> {
+	const forceMissing = Bun.env.FORCE_TOKEN_MISSING === "1";
+	if (apply && (forceMissing || token.trim().length === 0)) {
+		throw new Error("GITHUB_TOKEN not set");
+	}
+	if (apply && token) {
+		await log.withSpinner("Ensuring GitHub list IDs", () =>
+			listsSvc.apply.ensureListGhIds(token),
+		);
+	}
+}
+
+async function persistScoresMaybe(
+	scoring: ReturnType<typeof createScoringService>,
+	runId: number | null,
+	repoId: number,
+	scores: Array<{ list: string; score: number; why?: string }>,
+): Promise<void> {
+	if (runId == null) {
+		log.info("Dry run (not saved)");
+		return;
+	}
+	await log.withSpinner("Saving scores", () =>
+		scoring.persistScores(runId, repoId, scores),
+	);
+	log.success("Saved");
+}
+
 // ---- Main -------------------------------------------------------------------
 export async function scoreBatchAll(
 	limit: number,
@@ -174,22 +228,9 @@ export async function scoreBatchAll(
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);
-	const lists: ListDef[] = listRows.map((l) => ({
-		slug: l.slug,
-		name: l.name,
-		description: l.description ?? undefined,
-	}));
-
+	const lists: ListDef[] = buildLists(listRows);
 	const token = Bun.env.GITHUB_TOKEN ?? "";
-	const forceMissing = Bun.env.FORCE_TOKEN_MISSING === "1";
-	if (apply && (forceMissing || token.trim().length === 0)) {
-		throw new Error("GITHUB_TOKEN not set");
-	}
-	if (apply && token) {
-		await log.withSpinner("Ensuring GitHub list IDs", () =>
-			listsSvc.apply.ensureListGhIds(token),
-		);
-	}
+	await ensureApplyPrereqs(apply, token, listsSvc);
 
 	const svc =
 		llm ??
@@ -199,28 +240,14 @@ export async function scoreBatchAll(
 		const r = repos[i];
 		showRepoHeader(r, i + 1, total);
 
-		const facts: RepoFacts = {
-			nameWithOwner: r.name_with_owner,
-			url: r.url,
-			summary: r.summary ?? undefined,
-			description: r.description ?? undefined,
-			primaryLanguage: r.primary_language ?? undefined,
-			topics: parseStringArray(r.topics),
-		};
+		const facts: RepoFacts = buildFacts(r);
 
 		const result = await log.withSpinner("Scoring", () =>
 			scoreRepoAgainstLists(lists, facts, svc),
 		);
 		showTopScores(result.scores);
 
-		if (runId != null) {
-			await log.withSpinner("Saving scores", () =>
-				scoring.persistScores(runId, r.id, result.scores),
-			);
-			log.success("Saved");
-		} else {
-			log.info("Dry run (not saved)");
-		}
+		await persistScoresMaybe(scoring, runId, r.id, result.scores);
 
 		const currentSlugs = await listsSvc.read.currentMembership(r.id);
 		const plan = scoring.planMembership(
@@ -308,21 +335,9 @@ export async function scoreOne(
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);
-	const lists: ListDef[] = listRows.map((l) => ({
-		slug: l.slug,
-		name: l.name,
-		description: l.description ?? undefined,
-	}));
+	const lists: ListDef[] = buildLists(listRows);
 	const token = Bun.env.GITHUB_TOKEN ?? "";
-	const forceMissing = Bun.env.FORCE_TOKEN_MISSING === "1";
-	if (apply && (forceMissing || token.trim().length === 0)) {
-		throw new Error("GITHUB_TOKEN not set");
-	}
-	if (apply && token) {
-		await log.withSpinner("Ensuring GitHub list IDs", () =>
-			listsSvc.apply.ensureListGhIds(token),
-		);
-	}
+	await ensureApplyPrereqs(apply, token, listsSvc);
 
 	const svc =
 		llm ??
@@ -330,27 +345,13 @@ export async function scoreOne(
 
 	showRepoHeader(row);
 
-	const facts: RepoFacts = {
-		nameWithOwner: row.name_with_owner,
-		url: row.url,
-		summary: row.summary ?? undefined,
-		description: row.description ?? undefined,
-		primaryLanguage: row.primary_language ?? undefined,
-		topics: parseStringArray(row.topics),
-	};
+	const facts: RepoFacts = buildFacts(row);
 	const result = await log.withSpinner("Scoring", () =>
 		scoreRepoAgainstLists(lists, facts, svc),
 	);
 	showTopScores(result.scores);
 
-	if (runId != null) {
-		await log.withSpinner("Saving scores", () =>
-			scoring.persistScores(runId, row.id, result.scores),
-		);
-		log.success("Saved");
-	} else {
-		log.info("Dry run (not saved)");
-	}
+	await persistScoresMaybe(scoring, runId, row.id, result.scores);
 
 	const currentSlugs = await listsSvc.read.currentMembership(row.id);
 	const plan = scoring.planMembership(
