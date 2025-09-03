@@ -15,24 +15,9 @@ import type {
 	UpsertListBind,
 	UpsertRepoBind,
 } from "@src/types";
+import type { IngestReporter } from "./types";
 
 /* ------------------------ Optional progress reporter ----------------------- */
-
-export type IngestReporter = {
-	/** Called after index.json is read & validated */
-	start?: (totalLists: number) => void;
-	/** Called before importing a list */
-	listStart?: (
-		meta: IndexEntry,
-		index: number, // 0-based
-		total: number,
-		repoCount: number,
-	) => void;
-	/** Called after a list (and all repos) are upserted */
-	listDone?: (meta: IndexEntry, repoCount: number) => void;
-	/** Called after all work is done */
-	done?: (summary: { lists: number; repos: number }) => void;
-};
 
 /* ------------------------------- Validators -------------------------------- */
 
@@ -202,36 +187,41 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 
 /* --------------------------------- Ingest ---------------------------------- */
 
-export async function ingestFromExports(
-	dir: string,
-	reporter?: IngestReporter,
-	database: Database = getDefaultDb(),
-): Promise<{ lists: number }> {
+async function readIndex(dir: string): Promise<IndexEntry[]> {
 	const indexRaw = (await Bun.file(`${dir}/index.json`).json()) as unknown;
 	assertIndexEntryArray(indexRaw);
+	return indexRaw as IndexEntry[];
+}
 
-	reporter?.start?.(indexRaw.length);
-
+async function preloadLists(
+	dir: string,
+	index: IndexEntry[],
+	reporter?: IngestReporter,
+): Promise<{
+	listsPreloaded: Array<{ meta: IndexEntry; data: StarList }>;
+	totalRepos: number;
+}> {
 	const listsPreloaded: Array<{ meta: IndexEntry; data: StarList }> = [];
 	let totalRepos = 0;
-
-	for (let i = 0; i < indexRaw.length; i++) {
-		const meta = indexRaw[i];
-
+	for (let i = 0; i < index.length; i++) {
+		const meta = index[i];
 		const dataRaw = (await Bun.file(`${dir}/${meta.file}`).json()) as unknown;
 		assertStarList(dataRaw);
-
 		const starList = dataRaw as StarList;
 		for (const r of starList.repos) assertRepoInfo(r);
-
 		listsPreloaded.push({ meta, data: starList });
 		totalRepos += starList.repos.length;
-
-		reporter?.listStart?.(meta, i, indexRaw.length, starList.repos.length);
+		reporter?.listStart?.(meta, i, index.length, starList.repos.length);
 	}
+	return { listsPreloaded, totalRepos };
+}
 
+function ingestTransaction(
+	database: Database,
+	listsPreloaded: Array<{ meta: IndexEntry; data: StarList }>,
+	reporter?: IngestReporter,
+): void {
 	prepareStatements(database);
-
 	database.transaction(() => {
 		for (const { meta, data } of listsPreloaded) {
 			const listIdRow = upsertList.get(
@@ -251,7 +241,21 @@ export async function ingestFromExports(
 			reporter?.listDone?.(meta, data.repos.length);
 		}
 	})();
+}
 
+export async function ingestFromExports(
+	dir: string,
+	reporter?: IngestReporter,
+	database: Database = getDefaultDb(),
+): Promise<{ lists: number }> {
+	const index = await readIndex(dir);
+	reporter?.start?.(index.length);
+	const { listsPreloaded, totalRepos } = await preloadLists(
+		dir,
+		index,
+		reporter,
+	);
+	ingestTransaction(database, listsPreloaded, reporter);
 	reporter?.done?.({ lists: listsPreloaded.length, repos: totalRepos });
 	return { lists: listsPreloaded.length };
 }

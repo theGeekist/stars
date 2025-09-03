@@ -1,8 +1,6 @@
 // src/ingest.ts
-import {
-	type IngestReporter,
-	ingestFromExports,
-} from "@features/ingest/service";
+import { ingestFromExports } from "@features/ingest/service";
+import type { IngestReporter } from "@features/ingest/types";
 import { log } from "@lib/bootstrap";
 
 export default async function ingest(dir?: string): Promise<void> {
