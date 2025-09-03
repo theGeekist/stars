@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { db, initSchema } from "@lib/db";
+import { getDefaultDb, initSchema } from "@lib/db";
 
 describe("cli-scorer", () => {
 	// Ensure schema exists before any cleanup
@@ -9,7 +9,7 @@ describe("cli-scorer", () => {
 		initSchema();
 	});
 	beforeEach(() => {
-		db.exec(
+		getDefaultDb().exec(
 			"DELETE FROM repo_list_score; DELETE FROM model_run; DELETE FROM list_repo; DELETE FROM list; DELETE FROM repo;",
 		);
 		// Use a test-specific output directory to avoid CI conflicts
@@ -28,7 +28,7 @@ describe("cli-scorer", () => {
 
 	it("scoreOne throws when apply=true and GITHUB_TOKEN missing", async () => {
 		const { scoreOne } = await import("./cli-scorer");
-		db.exec(
+		getDefaultDb().exec(
 			"INSERT INTO repo(id, name_with_owner, url, stars) VALUES (1, 'o/r1', 'u', 10);",
 		);
 		// Ensure error path triggers even if CI provides a token
@@ -59,7 +59,7 @@ describe("cli-scorer", () => {
 	it("scoreBatchAll logs listless CSV when avoidListless blocks (dry run)", async () => {
 		const { scoreBatchAll } = await import("./cli-scorer");
 		// Seed one list and one repo with high stars (avoid minStars block)
-		db.exec(`
+		getDefaultDb().exec(`
       INSERT INTO list(id, list_id, name, slug, is_private) VALUES (1, 'L1', 'Alpha', 'alpha', 0);
       INSERT INTO repo(id, name_with_owner, url, stars, popularity, freshness, activeness, topics)
       VALUES (1, 'o/r1', 'https://example.com/o/r1', 100, 0.9, 0.5, 0.4, '[]');

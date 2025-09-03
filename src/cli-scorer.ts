@@ -12,7 +12,7 @@ import {
 import { OllamaService } from "@jasonnathan/llm-core";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
-import { db } from "@lib/db";
+import { getDefaultDb } from "@lib/db";
 
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
@@ -202,8 +202,9 @@ export async function scoreBatchAll(
 	apply: boolean,
 	llm?: ScoringLLM,
 	opts?: { resume?: number | "last"; notes?: string; fresh?: boolean },
+	database = getDefaultDb(),
 ): Promise<void> {
-	const scoring = createScoringService();
+	const scoring = createScoringService(database);
 
 	// Run context
 	const { runId, filterRunId } = scoring.resolveRunContext({
@@ -224,7 +225,7 @@ export async function scoreBatchAll(
 	const total = repos.length;
 
 	// Lists + GH prerequisites
-	const listsSvc = createListsService();
+	const listsSvc = createListsService(database);
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);
@@ -314,8 +315,9 @@ export async function scoreOne(
 	selector: string,
 	apply: boolean,
 	llm?: ScoringLLM,
+	database = getDefaultDb(),
 ): Promise<void> {
-	const row = db
+	const row = database
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
               stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
@@ -328,10 +330,10 @@ export async function scoreOne(
 		return;
 	}
 
-	const scoring = createScoringService();
+	const scoring = createScoringService(database);
 	const { runId } = scoring.resolveRunContext({ dry: !apply });
 
-	const listsSvc = createListsService();
+	const listsSvc = createListsService(database);
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);
