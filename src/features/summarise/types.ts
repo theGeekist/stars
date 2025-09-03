@@ -19,3 +19,8 @@ export type Meta = {
 	topics?: string[];
 	metrics?: Metrics;
 };
+
+export type SummariseDeps = {
+	gen?: (prompt: string, opts?: Record<string, unknown>) => Promise<string>;
+	embed?: { embedTexts: (texts: string[]) => Promise<number[][]> };
+};
