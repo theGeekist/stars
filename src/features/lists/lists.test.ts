@@ -78,8 +78,8 @@ describe("lists service DB ops", () => {
 		db.run(`INSERT INTO list_repo(list_id, repo_id) VALUES (1,1), (2,1)`);
 		const slugs = await svc.read.currentMembership(1);
 		const { compareAlpha } = await import("@lib/utils");
-		expect(slugs.sort(compareAlpha)).toEqual(
-			["ai", "productivity"].sort(compareAlpha),
+		expect(slugs.toSorted(compareAlpha)).toEqual(
+			["ai", "productivity"].toSorted(compareAlpha),
 		);
 	});
 
@@ -95,7 +95,7 @@ describe("lists service DB ops", () => {
 		await svc.apply.reconcileLocal(1, ["ai", "productivity"]);
 		let cur = await svc.read.currentMembership(1);
 		const { compareAlpha: cmp } = await import("@lib/utils");
-		expect(cur.sort(cmp)).toEqual(["ai", "productivity"].sort(cmp));
+		expect(cur.toSorted(cmp)).toEqual(["ai", "productivity"].toSorted(cmp));
 		// change to learning only
 		await svc.apply.reconcileLocal(1, ["learning"]);
 		cur = await svc.read.currentMembership(1);

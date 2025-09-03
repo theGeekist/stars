@@ -75,8 +75,8 @@ describe("lists lib", () => {
 		expect(info.nameWithOwner).toBe("o/r");
 		expect(info.stars).toBe(10);
 		expect(info.openPRs).toBe(4);
-		expect(info.topics.sort(compareAlpha)).toEqual(
-			["x", "y"].sort(compareAlpha),
+		expect(info.topics.toSorted(compareAlpha)).toEqual(
+			["x", "y"].toSorted(compareAlpha),
 		);
 	});
 

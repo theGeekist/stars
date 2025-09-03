@@ -196,6 +196,184 @@ function ensurePromptsReadyOrExit(): void {
 	process.exit(1);
 }
 
+/* -------------------------- Command handlers --------------------------- */
+
+async function handleLists(args: string[]): Promise<void> {
+	let json = false;
+	let out: string | undefined;
+	let dir: string | undefined;
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--json") json = true;
+		else if (a === "--out" && args[i + 1]) {
+			i += 1;
+			out = args[i];
+		} else if (a === "--dir" && args[i + 1]) {
+			i += 1;
+			dir = args[i];
+		}
+	}
+	await runLists(json, out, dir);
+}
+
+async function handleRepos(args: string[]): Promise<void> {
+	let list: string | undefined;
+	let json = false;
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--list" && args[i + 1]) {
+			i += 1;
+			list = args[i];
+		} else if (a === "--json") json = true;
+	}
+	if (!list) {
+		log.error("--list <name> is required");
+		process.exit(1);
+	}
+	await runRepos(list, json);
+}
+
+async function handleScore(argv: string[], args: string[]): Promise<void> {
+	ensurePromptsReadyOrExit();
+	const s = parseSimpleArgs(argv);
+	let resume: number | "last" | undefined;
+	let notes: string | undefined;
+	let fresh = false;
+	let dry = s.dry;
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--resume" && args[i + 1]) {
+			i += 1;
+			const v = args[i];
+			resume =
+				v === "last"
+					? "last"
+					: Number.isFinite(Number(v))
+						? Number(v)
+						: undefined;
+			continue;
+		}
+		if (a === "--notes" && args[i + 1]) {
+			i += 1;
+			notes = args[i];
+			continue;
+		}
+		if (a === "--fresh" || a === "--from-scratch") {
+			fresh = true;
+			continue;
+		}
+		if (a === "--dry") dry = true;
+	}
+	const apply = s.apply || !dry;
+	if (s.mode === "one") {
+		if (!s.one) {
+			log.error("--one requires a value");
+			process.exit(1);
+		}
+		await scoreOne(s.one, apply);
+	} else {
+		const limit = Math.max(1, s.limit ?? 999999999);
+		log.info(
+			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+		);
+		await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
+	}
+}
+
+async function handleSummarise(argv: string[], args: string[]): Promise<void> {
+	ensurePromptsReadyOrExit();
+	const s = parseSimpleArgs(argv);
+	let resummarise = false;
+	let dry = s.dry;
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--resummarise" || a === "--resummarize") resummarise = true;
+		if (a === "--dry") dry = true;
+	}
+	const apply = s.apply || !dry;
+	if (s.mode === "one") {
+		if (!s.one) {
+			log.error("--one requires a value");
+			process.exit(1);
+		}
+		await summariseOne(s.one, apply);
+	} else {
+		const limit = Math.max(1, s.limit ?? 999999999);
+		log.info(
+			`Summarise --all limit=${limit} apply=${apply}${resummarise ? " resummarise=true" : ""}`,
+		);
+		await summariseBatchAll(limit, apply, undefined, { resummarise });
+	}
+}
+
+async function handleIngest(args: string[]): Promise<void> {
+	const dirIdx = args.indexOf("--dir");
+	const dir =
+		dirIdx > -1 && args[dirIdx + 1]
+			? args[dirIdx + 1]
+			: (Bun.env.EXPORTS_DIR ?? "./exports");
+	await ingest(dir);
+}
+
+function handleTopicsEnrich(args: string[]): void {
+	const onlyActive = args.includes("--active");
+	const ttlIdx = args.indexOf("--ttl");
+	const ttl =
+		ttlIdx > -1 && args[ttlIdx + 1] ? Number(args[ttlIdx + 1]) : undefined;
+	log.info(
+		`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
+	);
+	enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
+}
+
+async function handleTopicsReport(args: string[]): Promise<void> {
+	const showMissing = args.includes("--missing");
+	const showRecent = args.includes("--recent");
+	const json = args.includes("--json");
+	const full = args.includes("--full");
+	await topicsReport({ full, showMissing, showRecent, json });
+}
+
+async function handleSetup(): Promise<void> {
+	const token = Bun.env.GITHUB_TOKEN;
+	if (!token) {
+		log.error("GITHUB_TOKEN missing");
+		process.exit(1);
+	}
+	const { generatePromptsYaml, testOllamaReady } = await import(
+		"@features/setup"
+	);
+	const ready = await testOllamaReady();
+	if (!ready.ok) {
+		log.warn(
+			"Ollama not ready to generate criteria:",
+			ready.reason ?? "unknown",
+		);
+		log.line("");
+		log.info("To enable automatic criteria generation:");
+		log.line(
+			"  1) Ensure Ollama is installed and running (e.g. 'ollama serve')",
+		);
+		log.line(
+			"  2) Set OLLAMA_MODEL in your .env, e.g. OLLAMA_MODEL=llama3.1:8b",
+		);
+		log.line("");
+		log.info("Continuing with placeholders. Fill criteria manually. Examples:");
+		for (const ex of criteriaExamples()) log.line(`  ${ex}`);
+		await generatePromptsYaml(token);
+	} else {
+		await generatePromptsYaml(token);
+	}
+	const state = checkPromptsState();
+	if (state.kind === "incomplete") {
+		log.warn(
+			`prompts.yaml contains ${state.placeholderCount} placeholder criteria — edit them before running scoring.`,
+		);
+	} else {
+		printSetupStatus(state);
+	}
+}
+
 /* --------------------------------- Main CLI -------------------------------- */
 
 async function main(argv: string[]) {
@@ -207,210 +385,36 @@ async function main(argv: string[]) {
 		case "--help":
 		case "-h":
 			usage();
-			await showSetupHintIfNotReady();
-			return;
+			return showSetupHintIfNotReady();
 
-		case "lists": {
-			let json = false;
-			let out: string | undefined;
-			let dir: string | undefined;
-			for (let i = 1; i < args.length; i++) {
-				const a = args[i];
-				if (a === "--json") json = true;
-				else if (a === "--out" && args[i + 1]) {
-					i += 1;
-					out = args[i];
-				} else if (a === "--dir" && args[i + 1]) {
-					i += 1;
-					dir = args[i];
-				}
-			}
-			await runLists(json, out, dir);
-			return;
-		}
+		case "lists":
+			return handleLists(args);
 
-		case "repos": {
-			let list: string | undefined,
-				json = false;
-			for (let i = 1; i < args.length; i++) {
-				const a = args[i];
-				if (a === "--list" && args[i + 1]) {
-					i += 1;
-					list = args[i];
-				} else if (a === "--json") json = true;
-			}
-			if (!list) {
-				log.error("--list <name> is required");
-				process.exit(1);
-			}
-			await runRepos(list, json);
-			return;
-		}
+		case "repos":
+			return handleRepos(args);
 
-		case "score": {
-			ensurePromptsReadyOrExit();
-
-			const s = parseSimpleArgs(argv);
-			let resume: number | "last" | undefined;
-			let notes: string | undefined;
-			let fresh = false;
-			let dry = s.dry;
-
-			for (let i = 1; i < args.length; i++) {
-				const a = args[i];
-				if (a === "--resume" && args[i + 1]) {
-					i += 1;
-					const v = args[i];
-					resume =
-						v === "last"
-							? "last"
-							: Number.isFinite(Number(v))
-								? Number(v)
-								: undefined;
-					continue;
-				}
-				if (a === "--notes" && args[i + 1]) {
-					i += 1;
-					notes = args[i];
-					continue;
-				}
-				if (a === "--fresh" || a === "--from-scratch") {
-					fresh = true;
-					continue;
-				}
-				if (a === "--dry") dry = true;
-			}
-
-			const apply = s.apply || !dry;
-			if (s.mode === "one") {
-				if (!s.one) {
-					log.error("--one requires a value");
-					process.exit(1);
-				}
-				await scoreOne(s.one, apply);
-			} else {
-				const limit = Math.max(1, s.limit ?? 999999999);
-				log.info(
-					`Score --all limit=${limit} apply=${apply}${
-						resume ? ` resume=${resume}` : ""
-					}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
-				);
-				await scoreBatchAll(limit, apply, undefined, { resume, notes, fresh });
-			}
-			return;
-		}
+		case "score":
+			return handleScore(argv, args);
 
 		case "summarise":
-		case "summarize": {
-			ensurePromptsReadyOrExit();
+		case "summarize":
+			return handleSummarise(argv, args);
 
-			const s = parseSimpleArgs(argv);
-			let resummarise = false;
-			let dry = s.dry;
-			for (let i = 1; i < args.length; i++) {
-				const a = args[i];
-				if (a === "--resummarise" || a === "--resummarize") resummarise = true;
-				if (a === "--dry") dry = true;
-			}
-			const apply = s.apply || !dry;
-			if (s.mode === "one") {
-				if (!s.one) {
-					log.error("--one requires a value");
-					process.exit(1);
-				}
-				await summariseOne(s.one, apply);
-			} else {
-				const limit = Math.max(1, s.limit ?? 999999999);
-				log.info(
-					`Summarise --all limit=${limit} apply=${apply}${
-						resummarise ? " resummarise=true" : ""
-					}`,
-				);
-				await summariseBatchAll(limit, apply, undefined, { resummarise });
-			}
-			return;
-		}
+		case "ingest":
+			return handleIngest(args);
 
-		case "ingest": {
-			const dirIdx = args.indexOf("--dir");
-			const dir =
-				dirIdx > -1 && args[dirIdx + 1]
-					? args[dirIdx + 1]
-					: (Bun.env.EXPORTS_DIR ?? "./exports");
+		case "topics:enrich":
+			return handleTopicsEnrich(args);
 
-			await ingest(dir); // pretty reporting happens inside
-			return;
-		}
+		case "topics:report":
+			return handleTopicsReport(args);
 
-		case "topics:enrich": {
-			const onlyActive = args.includes("--active");
-			const ttlIdx = args.indexOf("--ttl");
-			const ttl =
-				ttlIdx > -1 && args[ttlIdx + 1] ? Number(args[ttlIdx + 1]) : undefined;
-			log.info(
-				`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
-			);
-			enrichAllRepoTopics({ onlyActive, ttlDays: ttl }); // ← no await
-			return;
-		}
-
-		case "topics:report": {
-			const showMissing = args.includes("--missing");
-			const showRecent = args.includes("--recent");
-			const json = args.includes("--json");
-			const full = args.includes("--full");
-			await topicsReport({ full, showMissing, showRecent, json });
-			return;
-		}
-		case "setup": {
-			const token = Bun.env.GITHUB_TOKEN;
-			if (!token) {
-				log.error("GITHUB_TOKEN missing");
-				process.exit(1);
-			}
-
-			const { generatePromptsYaml, testOllamaReady } = await import(
-				"@features/setup"
-			);
-			const ready = await testOllamaReady();
-
-			if (!ready.ok) {
-				log.warn(
-					"Ollama not ready to generate criteria:",
-					ready.reason ?? "unknown",
-				);
-				log.line("");
-				log.info("To enable automatic criteria generation:");
-				log.line(
-					"  1) Ensure Ollama is installed and running (e.g. 'ollama serve')",
-				);
-				log.line(
-					"  2) Set OLLAMA_MODEL in your .env, e.g. OLLAMA_MODEL=llama3.1:8b",
-				);
-				log.line("");
-				log.info(
-					"Continuing with placeholders. Fill criteria manually. Examples:",
-				);
-				for (const ex of criteriaExamples()) log.line(`  ${ex}`);
-				await generatePromptsYaml(token);
-			} else {
-				await generatePromptsYaml(token);
-			}
-
-			const state = checkPromptsState();
-			if (state.kind === "incomplete") {
-				log.warn(
-					`prompts.yaml contains ${state.placeholderCount} placeholder criteria — edit them before running scoring.`,
-				);
-			} else {
-				printSetupStatus(state);
-			}
-			return;
-		}
+		case "setup":
+			return handleSetup();
 
 		default:
 			usage();
-			await showSetupHintIfNotReady();
+			return showSetupHintIfNotReady();
 	}
 }
 
@@ -420,3 +424,5 @@ if (import.meta.main) {
 		process.exit(1);
 	});
 }
+// For tests: allow calling the router without executing as main
+export { main as _testMain };

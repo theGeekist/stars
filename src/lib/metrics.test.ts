@@ -18,8 +18,8 @@ describe("metrics: deriveTags", () => {
 			is_fork: true,
 			is_mirror: false,
 		});
-		expect(tags.sort(compareAlpha)).toEqual(
-			["archived", "fork", "license:mit", "lang:ts", "Ml", "ml"].sort(
+		expect(tags.toSorted(compareAlpha)).toEqual(
+			["archived", "fork", "license:mit", "lang:ts", "Ml", "ml"].toSorted(
 				compareAlpha,
 			),
 		);
