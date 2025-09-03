@@ -5,6 +5,7 @@ import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
 import { getDefaultDb } from "./db";
 import { ghHeaders } from "./github";
 import type { ChunkingOptions, FetchLike, ReadmeRow } from "./types";
+import { linkDensity, stripCatalogue, stripFrontmatter } from "./utils";
 
 // NOTE: No module-level prepared statements; use provided DB or default DB per call.
 
@@ -96,7 +97,7 @@ export async function fetchReadmeWithCache(
 
 // --- clean + chunk -----------------------------------------------------------
 export function cleanMarkdown(md: string): string {
-	const withoutFrontmatter = md.replace(/^---\s*[\s\S]*?\s*---\s*\n/, "");
+	const withoutFrontmatter = stripFrontmatter(md);
 	return withoutFrontmatter
 		.replace(/\r\n/g, "\n")
 		.replace(/\n{3,}/g, "\n\n")
@@ -195,17 +196,6 @@ export async function fetchAndChunkReadmeCached(
 	return chunkMarkdown(clean, options);
 }
 
-// readme.ts (append)
-
-function linkDensity(s: string): number {
-	const lines = s.split(/\r?\n/);
-	if (lines.length === 0) return 0;
-	const linkish = lines.filter((l) =>
-		/\[[^\]]+\]\([^)]+\)|https?:\/\//i.test(l),
-	).length;
-	return linkish / lines.length;
-}
-
 function looksLikeDirectoryRepo(
 	nameWithOwner: string,
 	description?: string | null,
@@ -219,48 +209,6 @@ function looksLikeDirectoryRepo(
 	const nameHit = /awesome-|awesome$|^awesome|list|lists/.test(name);
 	const descHit = /curated\s+list|awesome\s+list|directory|index/.test(desc);
 	return topicHit || nameHit || descHit;
-}
-
-/** strip long catalogue sections (bulleted link farms, companies tables, etc.) */
-function stripCatalogue(md: string): string {
-	const lines = md.split(/\r?\n/);
-
-	// drop code blocks as they often bloat tokens
-	const cleaned = [];
-	let inCode = false;
-	for (const l of lines) {
-		if (/^```/.test(l)) {
-			inCode = !inCode;
-			continue;
-		}
-		if (inCode) continue;
-		cleaned.push(l);
-	}
-
-	// remove list/table “cataloguey” blocks: paragraph with >40% link lines
-	const out: string[] = [];
-	let buf: string[] = [];
-	const flush = () => {
-		if (buf.length) {
-			const block = buf.join("\n");
-			if (linkDensity(block) < 0.4) out.push(block);
-			buf = [];
-		}
-	};
-	for (const l of cleaned) {
-		if (/^\s*([-*+] |\d+\. |\|)/.test(l) || /\[[^\]]+\]\([^)]+\)/.test(l)) {
-			buf.push(l);
-		} else {
-			flush();
-			out.push(l);
-		}
-	}
-	flush();
-
-	return out
-		.join("\n")
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
 }
 
 export type SelectedChunk = { text: string; score: number };

@@ -209,11 +209,16 @@ function splitFrontMatter(src: string): { fm: string; body: string } {
 // very small YAML-ish parser that handles key: value, key: [a, b], and
 // simple list forms for the fields we care about.
 function parseFM(yaml: string): Record<string, unknown> {
+	// 2) Header style "Key: Value"
+	// Before:  /^([a-zA-Z0-9_-]+):\s*(.*)$/
+	// Risk:    Greedy (.*) + trailing anchors encourages backtracking.
+	// After:   forbid newlines; make the group non-greedy by construction.
+	const HEADER_RE = /^([A-Za-z0-9_-]+):\s*([^\r\n]*)$/u;
 	const obj: Record<string, unknown> = {};
 	const lines = yaml.split(/\r?\n/);
 	let i = 0;
 	while (i < lines.length) {
-		const m = /^([a-zA-Z0-9_-]+):\s*(.*)$/.exec(lines[i]);
+		const m = HEADER_RE.exec(lines[i]);
 		if (!m) {
 			i++;
 			continue;

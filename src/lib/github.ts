@@ -1,3 +1,4 @@
+import { jitter } from "./rand";
 import type { FetchLike } from "./types";
 
 // src/lib/github.ts
@@ -12,9 +13,7 @@ const DEBUG = !!Bun.env.DEBUG;
 export function sleep(ms: number) {
 	return new Promise((r) => setTimeout(r, ms));
 }
-export function jitter(ms: number) {
-	return Math.floor(Math.random() * ms);
-}
+
 export function shouldRetry(status: number) {
 	return status >= 500 || status === 429 || status === 403;
 }

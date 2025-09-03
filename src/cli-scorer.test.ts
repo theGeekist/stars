@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createDb, initSchema } from "@lib/db";
+import { randHex } from "@lib/rand";
 
 const db = createDb();
 
@@ -15,11 +16,7 @@ describe("cli-scorer", () => {
 			"DELETE FROM repo_list_score; DELETE FROM model_run; DELETE FROM list_repo; DELETE FROM list; DELETE FROM repo;",
 		);
 		// Use a test-specific output directory to avoid CI conflicts
-		const testOut = join(
-			process.cwd(),
-			"exports-test",
-			String(Math.random()).slice(2),
-		);
+		const testOut = join(process.cwd(), "exports-test", randHex(12));
 		(Bun.env as Record<string, string>).LISTLESS_OUT_DIR = testOut;
 		// Clean any previous CSV in default path just in case
 		const f = join(process.cwd(), "exports", "listless.csv");

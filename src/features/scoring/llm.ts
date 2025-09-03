@@ -101,12 +101,18 @@ function repoBlock(r: RepoFacts): string {
  *  returns Map<slug, description>
  */
 function parseCriteriaBlock(block: string): Map<string, string> {
+	// ───────────────────────────────────────────────────────────────────────────────
+	// 1) Key–value lines (":", "=")
+	// Before:  /^([a-z0-9-]+)\s*[:=]\s*(.+)$/i
+	// Risk:    Greedy (.+) may cause backtracking over long lines.
+	// After:   anchor to line; forbid newlines in the value; keep it linear.
+	const KV_RE = /^([a-z0-9-]+)\s*[:=]\s*([^\r\n]+)$/iu;
 	const map = new Map<string, string>();
 	for (const raw of block.split(/\r?\n/)) {
 		const line = raw.trim();
 		if (!line) continue;
 		const cleaned = line.replace(/^[•*\-\u2022]\s*/, ""); // strip bullet
-		const m = cleaned.match(/^([a-z0-9-]+)\s*[:=]\s*(.+)$/i);
+		const m = KV_RE.exec(cleaned);
 		if (!m) continue;
 		map.set(m[1].toLowerCase(), m[2].trim());
 	}

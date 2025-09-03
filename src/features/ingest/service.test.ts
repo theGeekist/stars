@@ -2,13 +2,11 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultDb } from "@lib/db";
+import { randBase36 } from "@lib/rand";
 import { ingestFromExports } from "./service";
 
 function mkTempDir(prefix = "ingest-test-") {
-	const base = join(
-		process.cwd(),
-		`.${prefix}${Math.random().toString(36).slice(2, 8)}`,
-	);
+	const base = join(process.cwd(), `.${prefix}${randBase36(6)}`);
 	mkdirSync(base, { recursive: true });
 	return base;
 }
