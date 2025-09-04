@@ -1,40 +1,23 @@
 // src/lib/lists.ts
+
+import {
+	debugEnv,
+	NoopReporter,
+	pMap,
+	type Reporter,
+	resolvePagingConfig,
+} from "./common.js";
 import { githubGraphQL, gql } from "./github.js";
 import type {
 	ListItemsAtEdge,
-	ListsConfig,
 	ListsEdgesPage,
 	RepoInfo,
 	StarList,
 } from "./types.js";
 
 /* Reporter interface */
-export type ListsReporter = {
-	debug: (...args: unknown[]) => void;
-};
-const NoopReporter: ListsReporter = { debug: () => {} };
 
-function resolveConfig(
-	env: Record<string, string | undefined> = Bun.env,
-): ListsConfig {
-	const pageSize = Math.max(
-		10,
-		Math.min(100, Number(env.LISTS_PAGE_SIZE ?? 25)),
-	);
-	const concurrency = Number(env.LISTS_CONCURRENCY ?? 3);
-	// keep for compatibility, but we won’t write directly to console anymore
-	const debug = !!env.DEBUG;
-	return { pageSize, concurrency, debug };
-}
-
-function debugEnv(cfg: ListsConfig, reporter: ListsReporter = NoopReporter) {
-	const { debug } = reporter;
-	debug("env:", {
-		DEBUG: String(cfg.debug),
-		LISTS_CONCURRENCY: String(cfg.concurrency),
-		LISTS_PAGE_SIZE: String(cfg.pageSize),
-	});
-}
+export type ListsReporter = Reporter;
 
 async function fetchListsEdgesPage(
 	token: string,
@@ -304,35 +287,6 @@ async function fetchAllItemsAtEdge(
 	return repos;
 }
 
-/** small bounded parallel map */
-async function pMap<T, R>(
-	input: T[],
-	concurrency: number,
-	fn: (value: T, index: number) => Promise<R>,
-	reporter: ListsReporter = NoopReporter,
-): Promise<R[]> {
-	const { debug } = reporter;
-	const results: R[] = new Array(input.length) as R[];
-	let i = 0;
-	const workers = Array.from(
-		{ length: Math.min(concurrency, input.length) },
-		async (_, w) => {
-			debug(`pMap: worker#${w} start`);
-			for (;;) {
-				const idx = i++;
-				if (idx >= input.length) {
-					debug(`pMap: worker#${w} done`);
-					return;
-				}
-				debug(`pMap: worker#${w} running index=${idx}`);
-				results[idx] = await fn(input[idx], idx);
-			}
-		},
-	);
-	await Promise.all(workers);
-	return results;
-}
-
 // ─────────────────────────────── public API ────────────────────────────────
 
 export async function getAllLists(
@@ -340,9 +294,9 @@ export async function getAllLists(
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
 ): Promise<StarList[]> {
-	const cfg = resolveConfig();
+	const cfg = resolvePagingConfig();
 	const { debug } = reporter;
-	debugEnv(cfg, reporter);
+	debugEnv("lists", cfg, reporter);
 
 	const metas = await collectListMetas(token, gh, reporter);
 	debug(
@@ -432,7 +386,7 @@ export async function* getAllListsStream(
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
 ): AsyncGenerator<StarList, void, void> {
-	const cfg = resolveConfig();
+	const cfg = resolvePagingConfig();
 
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
@@ -475,7 +429,7 @@ export async function getReposFromList(
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
 ): Promise<RepoInfo[]> {
-	const cfg = resolveConfig();
+	const cfg = resolvePagingConfig();
 	const { debug } = reporter;
 
 	const target: string = listName.toLowerCase();

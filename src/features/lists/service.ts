@@ -1,4 +1,5 @@
-import { getDefaultDb } from "@lib/db";
+import type { Database } from "bun:sqlite";
+import { withDB } from "@lib/db";
 import { githubGraphQL, gql } from "@lib/github";
 import {
 	getAllLists,
@@ -34,13 +35,14 @@ const M_UPDATE_LISTS_FOR_ITEM = gql`
 
 /** Allow injecting db and a GitHub GraphQL runner for testing */
 export function createListsService(
-	db = getDefaultDb(),
+	database?: Database,
 	ghGraphQL: <T>(
 		token: string,
 		query: string,
 		vars?: Record<string, unknown>,
 	) => Promise<T> = githubGraphQL,
 ): ListsService {
+	const db = withDB(database);
 	const qReposDefault = db.query<RepoRow, BindLimit>(`
     SELECT id, name_with_owner, url, description, primary_language, topics,
            stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary

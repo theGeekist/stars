@@ -1,7 +1,9 @@
 import type { Database, Statement } from "bun:sqlite";
-import { getDefaultDb } from "@lib/db";
+import { existsSync } from "node:fs";
+import { withDB } from "@lib/db";
 import {
 	chooseFreshnessSource,
+	deriveTags,
 	scoreActiveness,
 	scoreFreshnessFromISO,
 	scorePopularity,
@@ -17,9 +19,7 @@ import type {
 } from "@src/types";
 import type { IngestReporter } from "./types";
 
-/* ------------------------ Optional progress reporter ----------------------- */
-
-/* ------------------------------- Validators -------------------------------- */
+/* -------------------------------- Validators ------------------------------- */
 
 function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 	if (!Array.isArray(x)) throw new Error("exports/index.json must be an array");
@@ -33,8 +33,8 @@ function assertIndexEntryArray(x: unknown): asserts x is IndexEntry[] {
 			throw new Error("Index item.file must be string");
 		if (it.description != null && typeof it.description !== "string")
 			throw new Error("Index item.description must be string|null");
-		if (it.listId != null && typeof it.listId !== "string")
-			throw new Error("Index item.listId must be string|null");
+		if (typeof it.listId !== "string" || !it.listId.trim())
+			throw new Error("Index item.listId must be a non-empty string");
 	}
 }
 
@@ -55,6 +55,11 @@ function assertRepoInfo(x: unknown): asserts x is RepoInfo {
 	}
 }
 
+function assertRepoInfoArray(x: unknown): asserts x is RepoInfo[] {
+	if (!Array.isArray(x)) throw new Error("Expected an array of RepoInfo");
+	for (const it of x) assertRepoInfo(it);
+}
+
 function assertStarList(x: unknown): asserts x is StarList {
 	if (!isObject(x)) throw new Error("StarList must be an object");
 	if (!Array.isArray((x as StarList).repos))
@@ -63,12 +68,23 @@ function assertStarList(x: unknown): asserts x is StarList {
 
 /* --------------------------- Prepared statements --------------------------- */
 
-let upsertList!: Statement<IdRow, UpsertListBind>;
-let upsertRepo!: Statement<IdRow, UpsertRepoBind>;
+let upsertList!: Statement<IdRow | null, UpsertListBind>;
+let upsertRepoById!: Statement<IdRow | null, UpsertRepoBind>; // primary path
+let upsertRepoByName!: Statement<IdRow | null, UpsertRepoBind>; // fallback
+let updateRepoFieldsById!: Statement<IdRow | null, [...UpsertRepoBind, number]>;
+let forceUpdateName!: Statement<unknown, [string, number]>;
+
+let selRepoByName!: Statement<
+	{ id: number; repo_id: string | null } | null,
+	[string]
+>;
+let selRepoByNode!: Statement<{ id: number } | null, [string]>;
+let moveLinksToRepo!: Statement<unknown, [number, number]>;
+let deleteRepoById!: Statement<unknown, [number]>;
 let linkListRepo!: Statement<unknown, LinkListRepoBind>;
 
 function prepareStatements(database: Database): void {
-	upsertList = database.prepare<IdRow, UpsertListBind>(`
+	upsertList = database.prepare<IdRow | null, UpsertListBind>(`
     INSERT INTO list(name, description, is_private, slug, list_id)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
@@ -79,18 +95,50 @@ function prepareStatements(database: Database): void {
     RETURNING id
   `);
 
-	upsertRepo = database.prepare<IdRow, UpsertRepoBind>(`
-    INSERT INTO repo(
-      repo_id, name_with_owner, url, description, homepage_url, stars, forks, watchers, open_issues, open_prs,
-      default_branch, last_commit_iso, last_release_iso, topics, primary_language, languages, license,
-      is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled, pushed_at, updated_at, created_at,
-      disk_usage, readme_md, summary, tags, popularity, freshness, activeness
-    ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?
-    )
+	// Column order matches schema.sql (includes readme_etag, readme_fetched_at)
+	const UPSERT_REPO_COLUMNS = `
+    repo_id, name_with_owner, url, description, homepage_url,
+    stars, forks, watchers, open_issues, open_prs,
+    default_branch, last_commit_iso, last_release_iso,
+    topics, primary_language, languages, license,
+    is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled,
+    pushed_at, updated_at, created_at, disk_usage,
+    readme_md, readme_etag, readme_fetched_at,
+    summary, tags, popularity, freshness, activeness
+  `;
+
+	const UPSERT_REPO_VALUES = `
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?, ?
+  `;
+
+	upsertRepoById = database.prepare<IdRow | null, UpsertRepoBind>(`
+    INSERT INTO repo(${UPSERT_REPO_COLUMNS})
+    VALUES (${UPSERT_REPO_VALUES})
+    ON CONFLICT(repo_id) DO UPDATE SET
+      name_with_owner = excluded.name_with_owner,
+      url=excluded.url, description=excluded.description, homepage_url=excluded.homepage_url,
+      stars=excluded.stars, forks=excluded.forks, watchers=excluded.watchers,
+      open_issues=excluded.open_issues, open_prs=excluded.open_prs,
+      default_branch=excluded.default_branch, last_commit_iso=excluded.last_commit_iso, last_release_iso=excluded.last_release_iso,
+      topics=excluded.topics, primary_language=excluded.primary_language, languages=excluded.languages,
+      license=excluded.license, is_archived=excluded.is_archived, is_disabled=excluded.is_disabled,
+      is_fork=excluded.is_fork, is_mirror=excluded.is_mirror, has_issues_enabled=excluded.has_issues_enabled,
+      pushed_at=excluded.pushed_at, updated_at=excluded.updated_at, created_at=excluded.created_at,
+      disk_usage=excluded.disk_usage, tags=excluded.tags,
+      popularity=excluded.popularity, freshness=excluded.freshness, activeness=excluded.activeness
+    RETURNING id
+  `);
+
+	upsertRepoByName = database.prepare<IdRow | null, UpsertRepoBind>(`
+    INSERT INTO repo(${UPSERT_REPO_COLUMNS})
+    VALUES (${UPSERT_REPO_VALUES})
     ON CONFLICT(name_with_owner) DO UPDATE SET
       repo_id=COALESCE(repo.repo_id, excluded.repo_id),
       url=excluded.url, description=excluded.description, homepage_url=excluded.homepage_url,
@@ -106,9 +154,115 @@ function prepareStatements(database: Database): void {
     RETURNING id
   `);
 
+	updateRepoFieldsById = database.prepare<
+		IdRow | null,
+		[...UpsertRepoBind, number]
+	>(`
+  UPDATE repo SET
+    repo_id=?,
+    name_with_owner=?,
+    url=?, description=?, homepage_url=?,
+    stars=?, forks=?, watchers=?, open_issues=?, open_prs=?,
+    default_branch=?, last_commit_iso=?, last_release_iso=?,
+    topics=?, primary_language=?, languages=?, license=?,
+    is_archived=?, is_disabled=?, is_fork=?, is_mirror=?, has_issues_enabled=?,
+    pushed_at=?, updated_at=?, created_at=?, disk_usage=?,
+    readme_md = COALESCE(?, readme_md),
+    readme_etag = COALESCE(?, readme_etag),
+    readme_fetched_at = COALESCE(?, readme_fetched_at),
+    summary = COALESCE(?, summary),
+    tags=?, popularity=?, freshness=?, activeness=?
+  WHERE id = ?
+  RETURNING id
+`);
+
+	forceUpdateName = database.prepare<unknown, [string, number]>(
+		`UPDATE repo SET name_with_owner = ? WHERE id = ?`,
+	);
+
+	selRepoByName = database.prepare<
+		{ id: number; repo_id: string | null } | null,
+		[string]
+	>(`SELECT id, repo_id FROM repo WHERE name_with_owner = ? LIMIT 1`);
+	selRepoByNode = database.prepare<{ id: number } | null, [string]>(
+		`SELECT id FROM repo WHERE repo_id = ? LIMIT 1`,
+	);
+
+	moveLinksToRepo = database.prepare<unknown, [number, number]>(
+		`UPDATE OR IGNORE list_repo SET repo_id = ? WHERE repo_id = ?`,
+	);
+	deleteRepoById = database.prepare<unknown, [number]>(
+		`DELETE FROM repo WHERE id = ?`,
+	);
+
 	linkListRepo = database.prepare<unknown, LinkListRepoBind>(
 		`INSERT OR IGNORE INTO list_repo(list_id, repo_id) VALUES (?, ?)`,
 	);
+}
+
+/* -------------------------------- Utilities -------------------------------- */
+
+function getIdOrThrow(label: string, row: IdRow | null): number {
+	if (!row) throw new Error(`${label} returned null`);
+	return row.id;
+}
+
+function requireListId(meta: IndexEntry, data: StarList): string {
+	const id = meta.listId ?? data.listId;
+	if (!id || typeof id !== "string" || !id.trim()) {
+		throw new Error(`Missing listId for list "${meta.name}" (${meta.file})`);
+	}
+	return id;
+}
+
+/**
+ * Write/merge policy:
+ *  - If repo_id exists → upsert by repo_id.
+ *  - If both name row and repo_id row exist and differ → merge into repo_id row
+ *    (move links, delete loser, then set name to the incoming value).
+ *  - If only one exists → update it.
+ *  - Else insert (by repo_id if present, otherwise by name).
+ */
+function upsertRepoSmart(bind: UpsertRepoBind, db: Database): number {
+	const [repoId, nameWithOwner] = bind;
+
+	const byName = selRepoByName.get(nameWithOwner) ?? null;
+	const byNode = repoId ? (selRepoByNode.get(repoId) ?? null) : null;
+
+	// A) Merge name-row into node-row deterministically
+	if (byName && byNode && byName.id !== byNode.id) {
+		const winner = byNode.id;
+		const loser = byName.id;
+		db.transaction(() => {
+			moveLinksToRepo.run(winner, loser); // move list links
+			deleteRepoById.run(loser); // free UNIQUE(name_with_owner)
+			forceUpdateName.run(nameWithOwner, winner); // set incoming name explicitly
+			getIdOrThrow(
+				"updateRepoFieldsById",
+				updateRepoFieldsById.get(...bind, winner),
+			);
+		})();
+		return winner;
+	}
+
+	// B) Update existing single row
+	if (byNode) {
+		return getIdOrThrow(
+			"updateRepoFieldsById",
+			updateRepoFieldsById.get(...bind, byNode.id),
+		);
+	}
+	if (byName) {
+		return getIdOrThrow(
+			"updateRepoFieldsById",
+			updateRepoFieldsById.get(...bind, byName.id),
+		);
+	}
+
+	// C) Insert new
+	if (repoId)
+		return getIdOrThrow("upsertRepoById", upsertRepoById.get(...bind));
+	return getIdOrThrow("upsertRepoByName", upsertRepoByName.get(...bind));
 }
 
 /* ----------------------------- Normalisation ------------------------------- */
@@ -117,6 +271,7 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 	const languageNames = (r.languages ?? [])
 		.map((l) => l?.name)
 		.filter(Boolean) as string[];
+
 	const lastCommitISO =
 		typeof r.lastCommitISO === "string" ? r.lastCommitISO : null;
 	const lastReleaseISO = r.lastRelease?.publishedAt ?? null;
@@ -134,22 +289,20 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 		r.openIssues,
 		r.openPRs,
 		r.pushedAt ?? null,
-		{
-			hasIssuesEnabled: r.hasIssuesEnabled,
-			isArchived: r.isArchived,
-		},
+		{ hasIssuesEnabled: r.hasIssuesEnabled, isArchived: r.isArchived },
 	);
 
-	const tags: string[] = [];
-	if (r.primaryLanguage) tags.push(`lang:${r.primaryLanguage.toLowerCase()}`);
-	if (r.license) tags.push(`license:${r.license.toLowerCase()}`);
-	if (r.isArchived) tags.push("archived");
-	if (r.isFork) tags.push("fork");
-	if (r.isMirror) tags.push("mirror");
-	for (const t of r.topics ?? []) if (t) tags.push(t);
+	const tags = deriveTags({
+		topics: r.topics ?? [],
+		primary_language: r.primaryLanguage ?? null,
+		license: r.license ?? null,
+		is_archived: r.isArchived,
+		is_fork: r.isFork,
+		is_mirror: r.isMirror,
+	});
 
 	const bind: UpsertRepoBind = [
-		r.repoId,
+		r.repoId ?? null,
 		r.nameWithOwner,
 		r.url,
 		r.description ?? null,
@@ -176,6 +329,8 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 		r.createdAt ?? null,
 		r.diskUsage ?? null,
 		null, // readme_md
+		null, // readme_etag
+		null, // readme_fetched_at
 		null, // summary
 		JSON.stringify(tags),
 		popularity,
@@ -185,12 +340,22 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 	return bind;
 }
 
-/* --------------------------------- Ingest ---------------------------------- */
+/* ----------------------------------- I/O ----------------------------------- */
 
-async function readIndex(dir: string): Promise<IndexEntry[]> {
-	const indexRaw = (await Bun.file(`${dir}/index.json`).json()) as unknown;
-	assertIndexEntryArray(indexRaw);
-	return indexRaw as IndexEntry[];
+async function readIndex(dir: string): Promise<IndexEntry[] | null> {
+	const file = `${dir}/index.json`;
+	if (!existsSync(file)) return null;
+	const raw = (await Bun.file(file).json()) as unknown;
+	assertIndexEntryArray(raw);
+	return raw as IndexEntry[];
+}
+
+async function readUnlisted(dir: string): Promise<RepoInfo[] | null> {
+	const file = `${dir}/unlisted.json`;
+	if (!existsSync(file)) return null;
+	const raw = (await Bun.file(file).json()) as unknown;
+	assertRepoInfoArray(raw);
+	return raw as RepoInfo[];
 }
 
 async function preloadLists(
@@ -203,59 +368,113 @@ async function preloadLists(
 }> {
 	const listsPreloaded: Array<{ meta: IndexEntry; data: StarList }> = [];
 	let totalRepos = 0;
+
 	for (let i = 0; i < index.length; i++) {
 		const meta = index[i];
 		const dataRaw = (await Bun.file(`${dir}/${meta.file}`).json()) as unknown;
+
 		assertStarList(dataRaw);
 		const starList = dataRaw as StarList;
 		for (const r of starList.repos) assertRepoInfo(r);
+
 		listsPreloaded.push({ meta, data: starList });
 		totalRepos += starList.repos.length;
+
 		reporter?.listStart?.(meta, i, index.length, starList.repos.length);
 	}
+
 	return { listsPreloaded, totalRepos };
 }
 
-function ingestTransaction(
-	database: Database,
-	listsPreloaded: Array<{ meta: IndexEntry; data: StarList }>,
-	reporter?: IngestReporter,
-): void {
-	prepareStatements(database);
-	database.transaction(() => {
-		for (const { meta, data } of listsPreloaded) {
-			const listIdRow = upsertList.get(
-				meta.name,
-				meta.description ?? "",
-				meta.isPrivate ? 1 : 0,
-				slugify(meta.name),
-				meta.listId ?? data.listId ?? null,
-			) as IdRow;
+/* ---------------------------------- Service -------------------------------- */
 
-			for (const repo of data.repos) {
+export function createIngestService(database?: Database) {
+	const db = withDB(database);
+
+	function ingestListsTx(
+		listsPreloaded: Array<{ meta: IndexEntry; data: StarList }>,
+		reporter?: IngestReporter,
+	): { lists: number; reposFromLists: number } {
+		prepareStatements(db);
+		let reposFromLists = 0;
+
+		db.transaction(() => {
+			for (const { meta, data } of listsPreloaded) {
+				const listInternalId = getIdOrThrow(
+					"upsertList",
+					upsertList.get(
+						meta.name,
+						meta.description ?? "",
+						meta.isPrivate ? 1 : 0,
+						slugify(meta.name),
+						requireListId(meta, data),
+					),
+				);
+
+				for (const repo of data.repos) {
+					const repoBind = normaliseRepo(repo);
+					const repoInternalId = upsertRepoSmart(repoBind, db);
+					linkListRepo.run(listInternalId, repoInternalId);
+					reposFromLists++;
+				}
+
+				reporter?.listDone?.(meta, data.repos.length);
+			}
+		})();
+
+		return { lists: listsPreloaded.length, reposFromLists };
+	}
+
+	function ingestUnlistedTx(unlisted: RepoInfo[]): number {
+		prepareStatements(db);
+		let count = 0;
+		db.transaction(() => {
+			for (const repo of unlisted) {
 				const repoBind = normaliseRepo(repo);
-				const repoIdRow = upsertRepo.get(...repoBind) as IdRow;
-				linkListRepo.run(listIdRow.id, repoIdRow.id);
+				upsertRepoSmart(repoBind, db); // no list link here
+				count++;
+			}
+		})();
+		return count;
+	}
+
+	return {
+		/** Ingest order: UNLISTED FIRST, then LISTS (lists win on conflicts). */
+		async ingestFromExports(
+			dir: string,
+			reporter?: IngestReporter,
+		): Promise<{ lists: number; reposFromLists: number; unlisted: number }> {
+			prepareStatements(db);
+
+			// unlisted first (so lists win on any subsequent conflicts)
+			const unlistedArr = await readUnlisted(dir);
+			let unlisted = 0;
+			if (unlistedArr?.length) {
+				unlisted = ingestUnlistedTx(unlistedArr);
 			}
 
-			reporter?.listDone?.(meta, data.repos.length);
-		}
-	})();
-}
+			// lists (optional)
+			const index = await readIndex(dir);
+			let lists = 0;
+			let reposFromLists = 0;
 
-export async function ingestFromExports(
-	dir: string,
-	reporter?: IngestReporter,
-	database: Database = getDefaultDb(),
-): Promise<{ lists: number }> {
-	const index = await readIndex(dir);
-	reporter?.start?.(index.length);
-	const { listsPreloaded, totalRepos } = await preloadLists(
-		dir,
-		index,
-		reporter,
-	);
-	ingestTransaction(database, listsPreloaded, reporter);
-	reporter?.done?.({ lists: listsPreloaded.length, repos: totalRepos });
-	return { lists: listsPreloaded.length };
+			if (index?.length) {
+				reporter?.start?.(index.length);
+				const { listsPreloaded, totalRepos } = await preloadLists(
+					dir,
+					index,
+					reporter,
+				);
+				const res = ingestListsTx(listsPreloaded, reporter);
+				lists = res.lists;
+				reposFromLists = res.reposFromLists;
+				reporter?.done?.({ lists, repos: totalRepos });
+			} else {
+				reporter?.start?.(0);
+				reporter?.done?.({ lists: 0, repos: 0 });
+			}
+
+			return { lists, reposFromLists, unlisted };
+		},
+	};
 }

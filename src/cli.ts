@@ -1,7 +1,7 @@
 // src/cli.ts
-// Unified CLI entry with subcommands: lists, score, summarise, ingest, topics:enrich, setup
+// Unified CLI entry with subcommands: lists, stars, unlisted, score, summarise, ingest, topics:enrich, setup
 
-import { log } from "@lib/bootstrap";
+import { initBootstrap, log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import {
 	checkPromptsState,
@@ -10,15 +10,15 @@ import {
 	printSetupStatus,
 	showSetupHintIfNotReady,
 } from "@lib/prompts";
-import { runLists, runRepos } from "@src/cli-lists";
 import { scoreBatchAll, scoreOne } from "@src/cli-scorer";
+import { runLists, runRepos, runStars, runUnlisted } from "@src/cli-stars";
 import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
 import ingest from "@src/ingest";
 import { enrichAllRepoTopics } from "@src/topics";
 import { topicsReport } from "@src/topics-report";
 
 /* ----------------------------- Usage banner ----------------------------- */
-
+initBootstrap();
 function usage(): void {
 	log.header("gk-stars");
 
@@ -26,6 +26,8 @@ function usage(): void {
 	log.list([
 		"gk-stars lists [--json] [--out <file>] [--dir <folder>]",
 		"gk-stars repos --list <name> [--json]",
+		"gk-stars stars [--json] [--out <file>] [--dir <folder>]",
+		"gk-stars unlisted [--json] [--out <file>]",
 		"gk-stars score (--one <owner/repo> | --all [--limit N]) [--dry]",
 		"gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]",
 		"gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)",
@@ -39,8 +41,6 @@ function usage(): void {
 	log.line(SIMPLE_USAGE.trim());
 	log.line("");
 }
-
-/* ------------------------ Prompts readiness helpers ------------------------ */
 
 /* -------------------------- Command handlers --------------------------- */
 
@@ -77,6 +77,42 @@ async function handleRepos(args: string[]): Promise<void> {
 		process.exit(1);
 	}
 	await runRepos(list, json);
+}
+
+async function handleStars(args: string[]): Promise<void> {
+	let json = false;
+	let out: string | undefined;
+	let dir: string | undefined;
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--json") json = true;
+		else if (a === "--out" && args[i + 1]) {
+			i += 1;
+			out = args[i];
+		} else if (a === "--dir" && args[i + 1]) {
+			i += 1;
+			dir = args[i];
+		}
+	}
+	await runStars(json, out, dir);
+}
+
+async function handleUnlisted(args: string[]): Promise<void> {
+	let json = false;
+	let out: string | undefined;
+	let dir: string | undefined; // ← add
+	for (let i = 1; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--json") json = true;
+		else if (a === "--out" && args[i + 1]) {
+			i += 1;
+			out = args[i];
+		} else if (a === "--dir" && args[i + 1]) {
+			i += 1;
+			dir = args[i];
+		} // ← add
+	}
+	await runUnlisted(json, out, dir); // ← pass dir
 }
 
 async function handleScore(argv: string[], args: string[]): Promise<void> {
@@ -238,6 +274,12 @@ async function main(argv: string[]) {
 
 		case "repos":
 			return handleRepos(args);
+
+		case "stars":
+			return handleStars(args);
+
+		case "unlisted":
+			return handleUnlisted(args);
 
 		case "score":
 			return handleScore(argv, args);

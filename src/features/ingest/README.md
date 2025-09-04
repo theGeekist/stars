@@ -1,23 +1,208 @@
 # Ingest Feature
 
-Imports GitHub Lists and repositories into SQLite, computes lightweight metrics (popularity, freshness, activeness), and normalises topics.
+Imports exported GitHub Lists (and optional `unlisted.json`) into the local SQLite corpus.
+Normalises repo records, computes lightweight health signals, reconciles duplicates, and links repos to lists.
+
+- **Local-first**: all writes go to SQLite via `withDB`.
+- **Deterministic merge policy**: prefers `repo_id` rows; moves list links when merging by name.
+- **Signals**: popularity, freshness, activeness, plus derived `tags`.
+- **Order matters**: **UNLISTED FIRST**, then **LISTS** (lists win on conflicts).
+
+---
+
+## Import / DI
+
+```ts
+import { createIngestService } from '@features/ingest';
+
+const svc = createIngestService(database?); // Database from 'bun:sqlite' optional
+```
+
+- `database` _(optional)_: if omitted, `withDB()` opens the default DB.
+- No network calls here: this feature only reads local exports.
+
+---
 
 ## Public API
 
-- Default export `ingest(dir?: string): Promise<void>` from `@src/ingest` – reads exports from a directory (defaults to `EXPORTS_DIR` or `./exports`) and upserts into `list`, `repo`, and `list_repo`.
+```ts
+type IngestReporter = {
+  start?: (listsCount: number) => void;
+  listStart?: (meta: IndexEntry, i: number, total: number, repos: number) => void;
+  listDone?: (meta: IndexEntry, repos: number) => void;
+  done?: (x: { lists: number; repos: number }) => void;
+};
 
-## Usage (programmatic)
+createIngestService(database?).ingestFromExports(
+  dir: string,
+  reporter?: IngestReporter
+): Promise<{ lists: number; reposFromLists: number; unlisted: number }>;
+```
+
+**Behaviour**
+
+- Reads `dir/unlisted.json` (optional) **first**.
+- Reads `dir/index.json` and each listed file (`meta.file`) **after**.
+- Validates shapes strictly; throws with explicit messages if anything is off.
+- Upserts lists and repos; links list↔repo; computes signals and tags.
+- Returns counts: number of lists ingested, total repos added/updated from lists, and number of unlisted repos processed.
+
+---
+
+## File Formats
+
+- `exports/index.json` → `IndexEntry[]`
+
+  ```ts
+  type IndexEntry = {
+    name: string;
+    description: string | null;
+    isPrivate: boolean;
+    file: string; // e.g. "ai-machine-learning.json"
+    listId: string; // GitHub list global ID (required)
+  };
+  ```
+
+- `exports/<list>.json` → `StarList`
+
+  ```ts
+  type StarList = {
+    listId: string; // may mirror meta.listId
+    repos: RepoInfo[];
+  };
+  ```
+
+- `exports/unlisted.json` → `RepoInfo[]`
+
+All three are **strictly validated**. Missing or malformed fields throw.
+
+---
+
+## Normalisation & Signals
+
+`normaliseRepo(r: RepoInfo): UpsertRepoBind` maps raw export to DB columns and computes:
+
+- **popularity** = `scorePopularity(stars, forks, watchers)`
+- **freshness** = `scoreFreshnessFromISO(chooseFreshnessSource(...), 90)`
+- **activeness** = `scoreActiveness(openIssues, openPRs, pushedAt, { hasIssuesEnabled, isArchived })`
+- **tags** = `deriveTags({ topics, primary_language, license, is_archived, is_fork, is_mirror })`
+
+Other notes:
+
+- `topics` and `languages` are JSON-stringified arrays for storage.
+- README fields (`readme_md`, `readme_etag`, `readme_fetched_at`) and `summary` are **left null** at ingest; other features populate them later.
+- Dates (`pushed_at`, `updated_at`, `created_at`, `last_commit_iso`, `last_release_iso`) persist as ISO strings when present.
+
+---
+
+## Merge / Upsert Policy
+
+```txt
+A) If both a row-by-name and a row-by-repo_id exist (and differ):
+   - winner = node(row-by-repo_id)
+   - move list links to winner
+   - delete loser (name row)
+   - force-update winner.name_with_owner to incoming value
+   - update winner fields with incoming payload
+
+B) If only one exists (by repo_id or by name): update it.
+
+C) Else insert:
+   - prefer insert by repo_id when available
+   - otherwise insert by name_with_owner
+```
+
+This is implemented via:
+
+- `upsertRepoSmart(bind, db)` (internal)
+- prepared statements:
+  - `upsertRepoById`, `upsertRepoByName`, `updateRepoFieldsById`
+  - `selRepoByName`, `selRepoByNode`
+  - `moveLinksToRepo`, `deleteRepoById`, `forceUpdateName`
+  - `linkListRepo`
+
+---
+
+## Ingest Order & Conflict Resolution
+
+1. **Unlisted** (`unlisted.json`)
+   - Upsert repos **without** adding list links.
+
+2. **Lists** (`index.json` + per-list files)
+   - Upsert or merge repos again.
+   - **Link** repos to the specific list (`list_repo`).
+   - Because this runs **after** unlisted, **lists win** on any field conflicts.
+
+This ensures “later” list membership and fresher fields override earlier unlisted-only data.
+
+---
+
+## Programmatic Usage
 
 ```ts
-import ingest from "@src/ingest";
-await ingest(process.env.EXPORTS_DIR ?? "./exports");
+import { createIngestService } from "@features/ingest";
+
+const svc = createIngestService();
+
+const res = await svc.ingestFromExports("./exports", {
+  start: (n) => console.log(`Starting ingest: ${n} lists`),
+  listStart: (meta, i, total, repos) =>
+    console.log(`[${i + 1}/${total}] ${meta.name} (${repos} repos)`),
+  listDone: (meta, repos) => console.log(`Done ${meta.name}: ${repos} repos`),
+  done: ({ lists, repos }) =>
+    console.log(`Ingested ${lists} lists, ${repos} repos`),
+});
+
+console.log(
+  `Lists=${res.lists} | FromLists=${res.reposFromLists} | Unlisted=${res.unlisted}`,
+);
 ```
+
+**Example log line you may print after ingest (unique-aware)**
+
+```
+✔ Ingest complete: 13 lists | 544 total | 427 listed (unique) | 117 unlisted | 117 duplicate placements
+```
+
+(Where _duplicate placements_ = sum of list sizes − unique listed.)
+
+---
+
+## Edge Cases & Guarantees
+
+- **Missing `listId`**
+  In `index.json` or per-list payload → **throws** with a helpful message including the list name/file.
+
+- **Name change on GitHub**
+  If a repo was previously saved by `name_with_owner` and later arrives with `repo_id`, the merge path **moves links** and **de-duplicates** cleanly.
+
+- **Idempotency**
+  Running ingest multiple times with the same payload produces the same DB state.
+
+- **Performance**
+  All hot paths use prepared statements and batched transactions; large lists ingest efficiently.
+
+---
 
 ## CLI
 
-- `gk-stars ingest [--dir <folder>]`
+This feature powers:
 
-Environment:
+- `gk-stars ingest --dir ./exports`
 
-- `GITHUB_TOKEN` – used by upstream utilities when fetching from the API (not required for local exports).
+Typical flow:
 
+```bash
+gk-stars lists --dir ./exports   # export lists/unlisted to JSON
+gk-stars ingest --dir ./exports  # ingest into SQLite
+```
+
+---
+
+## Internals (for maintainers)
+
+- **Validators**: `assertIndexEntryArray`, `assertRepoInfo`, `assertRepoInfoArray`, `assertStarList`
+- **Metrics**: `chooseFreshnessSource`, `scorePopularity`, `scoreFreshnessFromISO`, `scoreActiveness`, `deriveTags`
+- **Utils**: `slugify`, `isObject`
+- **Statements** prepared lazily in `prepareStatements(database)`
+- **Transactions** wrap per-list and per-batch operations for atomicity.

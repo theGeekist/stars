@@ -1,5 +1,6 @@
 // src/ingest.ts
-import { ingestFromExports as realIngestFromExports } from "@features/ingest/service";
+import type { Database } from "bun:sqlite";
+import { createIngestService } from "@features/ingest/service";
 import type { IngestReporter } from "@features/ingest/types";
 import { log as realLog } from "@lib/bootstrap";
 
@@ -12,6 +13,7 @@ export type SpinnerLike = {
 export type LoggerLike = {
 	spinner(text: string): SpinnerLike;
 	success(msg: string): void;
+	info?(msg: string): void; // optional – used if available
 	line(msg?: string): void;
 };
 
@@ -62,21 +64,66 @@ export function createReporter(
 	};
 }
 
-/** Core (dependency-injectable for tests). */
+/** New concrete return type from the service. */
+type IngestReturn = { lists: number; reposFromLists: number; unlisted: number };
+
+/**
+ * Core (dependency-injectable for tests).
+ * - You can inject a Database (recommended in tests).
+ * - You can inject a custom logger.
+ * - `dir` resolves via Bun env fallback.
+ */
 export async function ingestCore(
+	db?: Database,
+	log: LoggerLike = realLog,
+	dir?: string,
+): Promise<IngestReturn> {
+	const source = resolveSourceDir(dir);
+	const { reporter } = createReporter(log, source);
+
+	const service = createIngestService(db);
+	const result = await service.ingestFromExports(source, reporter);
+
+	// Details line (concise)
+	log.line(
+		`Details: ${result.reposFromLists} repos via lists, ${result.unlisted} unlisted repos`,
+	);
+	log.line("");
+
+	return result;
+}
+
+/** Test helper: legacy-injectable variant used by unit tests. */
+export async function ingestCoreWith(
 	ingestFn: (
 		source: string,
 		r: Required<IngestReporter>,
-	) => Promise<{ lists: number }> = realIngestFromExports,
+	) => Promise<
+		| { lists: number }
+		| { lists: number; reposFromLists: number; unlisted: number }
+	>,
 	log: LoggerLike = realLog,
 	dir?: string,
 ): Promise<void> {
 	const source = resolveSourceDir(dir);
 	const { reporter } = createReporter(log, source);
-	await ingestFn(source, reporter);
+	const result = await ingestFn(source, reporter);
+
+	// reporter.done already printed the summary; add details line if present
+	if ("unlisted" in result || "reposFromLists" in result) {
+		const unlisted = "unlisted" in result ? result.unlisted : 0;
+		const fromLists =
+			"reposFromLists" in result ? result.reposFromLists : undefined;
+		log.line(
+			fromLists != null
+				? `Details: ${fromLists} repos via lists, ${unlisted} unlisted repos`
+				: `Details: ${unlisted} unlisted repos`,
+		);
+		log.line("");
+	}
 }
 
-/** Public API – unchanged. */
+/** Public CLI entry – unchanged signature, uses default DB via service factory. */
 export default async function ingest(dir?: string): Promise<void> {
-	return ingestCore(realIngestFromExports, realLog, dir);
+	await ingestCore(undefined, realLog, dir);
 }

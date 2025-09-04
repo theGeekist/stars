@@ -3,13 +3,12 @@ import { describe, expect, mock, test } from "bun:test";
 import type { IngestReporter } from "@features/ingest/types";
 import {
 	createReporter,
-	ingestCore,
+	ingestCoreWith,
 	type LoggerLike,
 	resolveSourceDir,
 	type SpinnerLike,
 } from "./ingest";
 
-/** Typed fake logger using Bun's mock(), no `as any`. */
 function makeLog(): {
 	log: LoggerLike;
 	succeedCalls: string[];
@@ -123,7 +122,7 @@ describe("ingestCore", () => {
 			},
 		);
 
-		await ingestCore(fakeService, log, "/my/exports");
+		await ingestCoreWith(fakeService, log, "/my/exports");
 
 		expect(captured).toBe("/my/exports");
 		expect(fakeService).toHaveBeenCalledTimes(1);
@@ -145,11 +144,90 @@ describe("ingestCore", () => {
 			},
 		);
 
-		await ingestCore(fakeService, log);
+		await ingestCoreWith(fakeService, log);
 
 		expect(captured).toBe("/env/exports");
 		expect(succeedCalls).toContain("Ingest complete: 0 lists, 0 repos");
 
 		Bun.env.EXPORTS_DIR = prev;
+	});
+});
+
+describe("ingestCore (unlisted support)", () => {
+	function makeLogWithLines(): {
+		log: LoggerLike;
+		succeedCalls: string[];
+		lineCalls: string[];
+	} {
+		const succeedCalls: string[] = [];
+		const lineCalls: string[] = [];
+
+		const succeedFn = mock((msg: string) => {
+			succeedCalls.push(msg);
+		});
+		const stopFn = mock(() => {});
+
+		const log: LoggerLike = {
+			spinner(_text: string): SpinnerLike {
+				return {
+					text: "",
+					succeed: (msg: string) => succeedFn(msg),
+					stop: () => stopFn(),
+				};
+			},
+			success: (msg: string) => succeedFn(msg),
+			line: (msg?: string) => {
+				if (typeof msg === "string") lineCalls.push(msg);
+			},
+		};
+		return { log, succeedCalls, lineCalls };
+	}
+
+	test("prints extra details line when service returns reposFromLists + unlisted", async () => {
+		const { log, succeedCalls, lineCalls } = makeLogWithLines();
+
+		const fakeService = mock(
+			async (_src: string, r: Required<IngestReporter>) => {
+				r.start(2);
+				r.listStart(
+					{ name: "A", isPrivate: false, file: "", listId: "A" },
+					0,
+					2,
+					1,
+				);
+				r.listDone({ name: "A", isPrivate: false, file: "", listId: "A" }, 1);
+				r.listStart(
+					{ name: "B", isPrivate: false, file: "", listId: "B" },
+					1,
+					2,
+					3,
+				);
+				r.listDone({ name: "B", isPrivate: false, file: "", listId: "B" }, 3);
+				r.done({ lists: 2, repos: 4 });
+				return { lists: 2, reposFromLists: 4, unlisted: 2 };
+			},
+		);
+
+		await ingestCoreWith(fakeService, log, "/exports");
+
+		expect(succeedCalls).toContain("Ingest complete: 2 lists, 4 repos");
+		expect(lineCalls).toContain("Details: 4 repos via lists, 2 unlisted repos");
+	});
+
+	test("prints details line with only unlisted present (no reposFromLists)", async () => {
+		const { log, succeedCalls, lineCalls } = makeLogWithLines();
+
+		const fakeService = mock(
+			async (_src: string, r: Required<IngestReporter>) => {
+				r.start(0);
+				r.done({ lists: 0, repos: 0 });
+				return { lists: 0, unlisted: 3 }; // minimal new-shape
+			},
+		);
+
+		await ingestCoreWith(fakeService, log, "/exports");
+
+		expect(succeedCalls).toContain("Ingest complete: 0 lists, 0 repos");
+		expect(lineCalls).toContain("Details: 3 unlisted repos");
 	});
 });
