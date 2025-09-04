@@ -119,7 +119,7 @@ describe("stars service", () => {
 			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
 		});
 
-		const svc = createStarsService(db, fakeGh);
+		const svc = createStarsService(db, fakeGh, { token: "TEST" });
 		const all = await svc.read.getAll();
 		expect(all.map((r) => r.nameWithOwner)).toEqual(["o1/r1", "o2/r2"]);
 	});
@@ -142,7 +142,7 @@ describe("stars service", () => {
 			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
 		});
 
-		const svc = createStarsService(db, fakeGh);
+		const svc = createStarsService(db, fakeGh, { token: "TEST" });
 		const seen: string[] = [];
 		for await (const batch of svc.read.getAllStream()) {
 			for (const r of batch) seen.push(r.nameWithOwner);
@@ -169,7 +169,7 @@ describe("stars service", () => {
 
 	it("read.collectLocallyListedRepoIdsSet returns GH node ids linked via lists", async () => {
 		const db = createDb();
-		const svc = createStarsService(db);
+		const svc = createStarsService(db, undefined, { token: "TEST" });
 
 		// list table and repo table with GH node ids, link one repo via list_repo
 		db.run(
@@ -219,7 +219,7 @@ describe("stars service", () => {
 			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
 		});
 
-		const svc = createStarsService(db, fakeGh);
+		const svc = createStarsService(db, fakeGh, { token: "TEST" });
 		const unlisted = await svc.read.getUnlistedStars();
 
 		// Expect R2, R3 only (R1 is listed locally)
