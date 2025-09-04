@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { makeFakeGh } from "@src/__test__/github-fakes";
 import {
 	getAllLists,
 	getAllListsStream,
@@ -6,23 +7,6 @@ import {
 	LISTS_EDGES_PAGE,
 } from "./lists";
 import type { ListItemsAtEdge, ListsEdgesPage } from "./types";
-
-function makeFakeGh(seq: Array<Record<string, (vars?: unknown) => unknown>>) {
-	let i = 0;
-	return async function fake<T>(
-		_token: string,
-		query: string,
-		vars?: unknown,
-	): Promise<T> {
-		const table = seq[Math.min(i, seq.length - 1)];
-		const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-		const key = Object.keys(table).find((k) => norm(query).includes(norm(k)));
-		if (!key) throw new Error("no handler for query");
-		const res = table[key]?.(vars);
-		if (norm(query).includes(norm(LISTS_EDGES_PAGE))) i++; // move to next page only on lists query
-		return res as T;
-	};
-}
 
 describe("lists coverage (DEBUG paths)", () => {
 	it("getAllLists logs with DEBUG and uses pMap workers", async () => {

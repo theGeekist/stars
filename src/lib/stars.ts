@@ -240,3 +240,73 @@ export async function collectStarIdsSet(
 
 /* Re-export map for parity/testing if you snapshot raw GraphQL responses */
 export const __testing = { mapStarEdgeToRepoInfo };
+
+// Keep predictable, frozen defaults for deterministic tests
+const DEFAULT_EDGE: Readonly<StarEdge> = {
+	starredAt: "2024-01-01T00:00:00Z",
+	node: {
+		id: "R_id",
+		nameWithOwner: "o/r",
+		url: "https://x",
+		description: "d",
+		homepageUrl: null,
+		stargazerCount: 10,
+		forkCount: 2,
+		issues: { totalCount: 3 },
+		pullRequests: { totalCount: 4 },
+		defaultBranchRef: {
+			name: "main",
+			target: { committedDate: "2024-01-02T00:00:00Z" },
+		},
+		primaryLanguage: { name: "TS" },
+		licenseInfo: { spdxId: "MIT" },
+		isArchived: false,
+		isDisabled: false,
+		isFork: false,
+		isMirror: false,
+		hasIssuesEnabled: true,
+		pushedAt: "2024-01-03T00:00:00Z",
+		updatedAt: "2024-01-04T00:00:00Z",
+		createdAt: "2023-01-01T00:00:00Z",
+		repositoryTopics: {
+			nodes: [{ topic: { name: "x" } }, { topic: { name: "y" } }],
+		},
+	},
+};
+
+export function makeEdge(
+	partial: Partial<StarEdge> & { node: Partial<StarEdge["node"]> },
+): StarEdge {
+	const n = partial.node ?? {};
+	return {
+		starredAt: partial.starredAt ?? DEFAULT_EDGE.starredAt,
+		node: {
+			...DEFAULT_EDGE.node,
+			...n,
+			// deep-merge nested objects that matter
+			issues: n.issues ?? DEFAULT_EDGE.node.issues,
+			pullRequests: n.pullRequests ?? DEFAULT_EDGE.node.pullRequests,
+			defaultBranchRef:
+				n.defaultBranchRef ?? DEFAULT_EDGE.node.defaultBranchRef,
+			primaryLanguage: n.primaryLanguage ?? DEFAULT_EDGE.node.primaryLanguage,
+			licenseInfo: n.licenseInfo ?? DEFAULT_EDGE.node.licenseInfo,
+			repositoryTopics:
+				n.repositoryTopics ?? DEFAULT_EDGE.node.repositoryTopics,
+		},
+	};
+}
+
+export function starsPage(
+	edges: StarEdge[],
+	hasNextPage: boolean,
+	endCursor: string | null,
+) {
+	return {
+		viewer: {
+			starredRepositories: {
+				pageInfo: { hasNextPage, endCursor },
+				edges,
+			},
+		},
+	};
+}

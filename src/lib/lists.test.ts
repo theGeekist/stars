@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { compareAlpha } from "@lib/utils";
+import { makeFakeGh } from "@src/__test__/github-fakes";
 import {
 	collectListMetas,
 	getAllListsStream,
@@ -9,32 +10,6 @@ import {
 	mapRepoNodeToRepoInfo,
 } from "./lists";
 import type { ListItemsAtEdge, ListsEdgesPage } from "./types";
-
-function makeFakeGh(
-	handlers: Record<string, (vars?: Record<string, unknown>) => unknown>,
-) {
-	const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-	const table = new Map<string, (vars?: Record<string, unknown>) => unknown>();
-	for (const [k, v] of Object.entries(handlers)) table.set(norm(k), v);
-	return async function fakeGh<T>(
-		_token: string,
-		query: string,
-		vars?: Record<string, unknown>,
-	): Promise<T> {
-		const q = norm(query);
-		let h = table.get(q);
-		if (!h) {
-			for (const [k, fn] of table) {
-				if (q.includes(k)) {
-					h = fn;
-					break;
-				}
-			}
-		}
-		if (!h) throw new Error("no handler for query");
-		return h(vars) as T;
-	};
-}
 
 describe("lists lib", () => {
 	it("mapRepoNodeToRepoInfo maps fields safely", () => {

@@ -7,46 +7,7 @@ import {
 	Q_REPO_ID,
 } from "@lib/lists";
 import type { ListsEdgesPage } from "@lib/types"; // add this
-
-// test/utils/makeFakeGh.ts
-export function makeFakeGh(
-	handlers: Record<string, (vars?: Record<string, unknown>) => unknown>,
-) {
-	const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-
-	// normalised lookup table
-	const table = new Map<string, (vars?: Record<string, unknown>) => unknown>();
-	for (const [k, v] of Object.entries(handlers)) {
-		table.set(norm(k), v);
-	}
-
-	// Signature compatible with githubGraphQL<T>
-	return async function fakeGh<T>(
-		_token: string,
-		query: string,
-		vars?: Record<string, unknown>,
-	): Promise<T> {
-		const q = norm(query);
-		let h = table.get(q);
-
-		// Fallback: allow substring match after normalisation
-		if (!h) {
-			for (const [k, fn] of table) {
-				if (q.includes(k)) {
-					h = fn;
-					break;
-				}
-			}
-		}
-
-		if (!h) {
-			throw new Error(
-				`No fake handler for query:\n\n${query.slice(0, 200)}...`,
-			);
-		}
-		return h(vars) as T;
-	};
-}
+import { makeFakeGh } from "@src/__test__/github-fakes";
 
 describe("lists service DB ops", () => {
 	it("getReposToScore selects default and by slug", async () => {
