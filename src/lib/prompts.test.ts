@@ -9,12 +9,10 @@ import {
 	printSetupStatus,
 	showSetupHintIfNotReady,
 } from "./prompts";
+import { randBase36 } from "./rand";
 
 function mkTempDir() {
-	const d = join(
-		process.cwd(),
-		`.prompts-test-${Math.random().toString(36).slice(2, 8)}`,
-	);
+	const d = join(process.cwd(), `.prompts-test-${randBase36(8)}`);
 	mkdirSync(d, { recursive: true });
 	return d;
 }
@@ -156,10 +154,7 @@ summarise:
 });
 
 function mkTemp() {
-	const d = join(
-		process.cwd(),
-		`.prompts-test-${Math.random().toString(36).slice(2, 8)}`,
-	);
+	const d = join(process.cwd(), `.prompts-test-${randBase36(8)}`);
 	mkdirSync(d, { recursive: true });
 	return d;
 }
