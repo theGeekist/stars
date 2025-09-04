@@ -2,11 +2,22 @@
 import type { Database } from "bun:sqlite";
 import { withDB } from "@lib/db";
 import { githubGraphQL } from "@lib/github";
-import { collectStarIdsSet, getAllStars, getAllStarsStream } from "@lib/stars";
+import {
+	collectStarIdsSet as _collectStarIdsSet,
+	getAllStars as _getAllStars,
+	getAllStarsStream as _getAllStarsStream,
+} from "@lib/stars";
 import type { RepoInfo } from "@lib/types";
 import type { BatchSelector, RepoRow, StarsService } from "./types";
 
-/** Construct a StarsService with an explicit DB and GH runner (both injectable for tests). */
+type Deps = {
+	token?: string;
+	getAllStars?: typeof _getAllStars;
+	getAllStarsStream?: typeof _getAllStarsStream;
+	collectStarIdsSet?: typeof _collectStarIdsSet;
+};
+
+/** Construct a StarsService with explicit DB, GH runner, and optional DI. */
 export function createStarsService(
 	database?: Database,
 	ghGraphQL: <T>(
@@ -14,8 +25,15 @@ export function createStarsService(
 		query: string,
 		vars?: Record<string, unknown>,
 	) => Promise<T> = githubGraphQL,
+	deps: Deps = {},
 ): StarsService {
 	const db = withDB(database);
+
+	// one-time resolution; tests can inject these
+	const token = deps.token ?? Bun.env.GITHUB_TOKEN ?? "";
+	const getAllStars = deps.getAllStars ?? _getAllStars;
+	const getAllStarsStream = deps.getAllStarsStream ?? _getAllStarsStream;
+	const collectStarIdsSet = deps.collectStarIdsSet ?? _collectStarIdsSet;
 
 	// ────────────────────────────── DB reads ──────────────────────────────
 	const qReposDefault = db.query<RepoRow, [number]>(`
@@ -27,7 +45,6 @@ export function createStarsService(
     LIMIT ?
   `);
 
-	// Distinct GitHub node IDs for repos that are currently in any local list
 	const qListedRepoNodeIds = db.query<{ repo_id: string | null }, []>(`
     SELECT DISTINCT r.repo_id
     FROM repo r
@@ -49,20 +66,19 @@ export function createStarsService(
 
 	// ─────────────────────────── Cross-source diff ─────────────────────────
 	async function getUnlistedStars(): Promise<RepoInfo[]> {
-		const token = Bun.env.GITHUB_TOKEN ?? "";
 		if (!token) throw new Error("Missing GITHUB_TOKEN");
 
-		// Stream stars from GitHub (via injected GH runner) and flatten
+		// Stream stars and flatten
 		const stars: RepoInfo[] = [];
 		for await (const page of getAllStarsStream(token, ghGraphQL)) {
 			stars.push(...page);
 		}
 
-		// Compute set difference vs locally listed repo node IDs
+		// diff vs locally listed repo node IDs
 		const listed = await collectLocallyListedRepoIdsSet();
 		const out: RepoInfo[] = [];
 		for (const r of stars) {
-			if (!r.repoId) continue; // defensive: require node id for diffing
+			if (!r.repoId) continue;
 			if (!listed.has(r.repoId)) out.push(r);
 		}
 		return out;
@@ -70,18 +86,12 @@ export function createStarsService(
 
 	return {
 		read: {
-			// direct GH pulls (use injected runner)
-			getAll: () => getAllStars(Bun.env.GITHUB_TOKEN ?? "", ghGraphQL),
-			getAllStream: () =>
-				getAllStarsStream(Bun.env.GITHUB_TOKEN ?? "", ghGraphQL),
-			collectStarIdsSet: () =>
-				collectStarIdsSet(Bun.env.GITHUB_TOKEN ?? "", ghGraphQL),
+			getAll: () => getAllStars(token, ghGraphQL),
+			getAllStream: () => getAllStarsStream(token, ghGraphQL),
+			collectStarIdsSet: () => collectStarIdsSet(token, ghGraphQL),
 
-			// local helpers / cross-source
 			collectLocallyListedRepoIdsSet,
 			getUnlistedStars,
-
-			// parity helper for pipelines
 			getReposToScore,
 		},
 	};
