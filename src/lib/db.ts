@@ -4,15 +4,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Default DB selection: use in-memory when running under `bun test` to avoid
-// accidentally touching a developer's on-disk database during tests.
+/** Default DB selection: in-memory under tests; otherwise env or local file. */
 const isTestRunner = Array.isArray(Bun.argv) && Bun.argv.includes("test");
 const DEFAULT_DB_FILE = isTestRunner
 	? ":memory:"
 	: Bun.env.DB_FILE || "repolists.db";
 
-// Internal singleton; do not export directly. Use getters/helpers below.
+/** Internal singleton. Do not touch directly; use withDB() for fallbacks. */
 let _defaultDb = new Database(DEFAULT_DB_FILE);
+
+/* ------------------------------ path helpers ------------------------------ */
 
 function resolveSchemaPath(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -23,73 +24,78 @@ function resolveSchemaPath(): string {
 	throw new Error("schema.sql not found");
 }
 
-/** Return column names for a table. */
-function tableColumns(
-	table: string,
-	database: Database = getDefaultDb(),
-): Set<string> {
-	// PRAGMA table_info() doesn’t accept bound parameters; safe for known tables.
-	const rows = database.query(`PRAGMA table_info(${table})`).all() as Array<{
+/* ----------------------------- tiny migrations ---------------------------- */
+
+function tableColumns(table: string, database?: Database): Set<string> {
+	const db = withDB(database);
+	// PRAGMA table_info() doesn’t accept parameters; safe for known tables.
+	const rows = db.query(`PRAGMA table_info(${table})`).all() as Array<{
 		name: string;
 	}>;
 	return new Set(rows.map((r) => r.name));
 }
 
-function addColumnIfMissing(
+function _addColumnIfMissing(
 	table: string,
 	col: string,
 	sqlType: string,
-	database: Database = getDefaultDb(),
-) {
-	const cols = tableColumns(table, database);
+	database?: Database,
+): void {
+	const db = withDB(database);
+	const cols = tableColumns(table, db);
 	if (!cols.has(col)) {
-		database.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${sqlType}`);
+		db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${sqlType}`);
 	}
 }
 
-/** Minimal, idempotent migrations for existing DBs. */
+/** Idempotent migration layer for existing DBs. Keep minimal. */
 function migrateIfNeeded(database: Database = getDefaultDb()): void {
-	// topics: newly added fields
-	addColumnIfMissing("topics", "long_description_md", "TEXT", database);
-	addColumnIfMissing("topics", "created_by", "TEXT", database);
-	addColumnIfMissing("topics", "released", "TEXT", database);
-	addColumnIfMissing("topics", "wikipedia_url", "TEXT", database);
-	addColumnIfMissing("topics", "logo", "TEXT", database);
-
-	// repo: keep these guards for older DBs that predate readme caching etc.
-	addColumnIfMissing("repo", "readme_etag", "TEXT", database);
-	addColumnIfMissing("repo", "readme_fetched_at", "TEXT", database);
-
-	// New tables are created by schema.sql via CREATE TABLE IF NOT EXISTS,
-	// so no action needed here for topic_alias/topic_related.
+	// If an older partial unique index exists, drop it and recreate as non-partial.
+	// Partial unique indexes are not eligible for ON CONFLICT targets.
+	database.run(`
+    DROP INDEX IF EXISTS ux_repo_repo_id;
+  `);
+	database.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_repo_repo_id
+    ON repo(repo_id);
+  `);
 }
 
-export function initSchema(database: Database = getDefaultDb()): void {
+/* --------------------------------- API ------------------------------------ */
+
+/** Apply schema.sql + migrations to a provided DB (or the default via withDB). */
+export function initSchema(database?: Database): void {
+	const db = withDB(database);
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
-	database.exec(sql);
-	migrateIfNeeded(database);
+	db.exec(sql);
+	migrateIfNeeded(db);
 }
 
+/** Create a brand-new DB file (or :memory:) pre-initialised with schema+migrations. */
 export function createDb(filename = ":memory:"): Database {
-	const newDb = new Database(filename);
+	const db = new Database(filename);
 	const schemaPath = resolveSchemaPath();
 	const sql = readFileSync(schemaPath, "utf-8");
-	newDb.exec(sql);
-	migrateIfNeeded(newDb);
-	return newDb;
+	db.exec(sql);
+	migrateIfNeeded(db);
+	return db;
 }
 
+/** Swap the internal default DB (useful for app boot or specialised runners). */
 export function setDefaultDb(database: Database): void {
 	_defaultDb = database;
 }
 
-/** Return the current default (singleton) Database instance. */
+/** Get the current default DB (avoid in tests; inject instead). */
 export function getDefaultDb(): Database {
 	return _defaultDb;
 }
 
-/** Utility to prefer an explicit Database, or fall back to the default. */
+/**
+ * Prefer an explicit Database, or fall back to the singleton.
+ * This is the **only** function that should read the default DB.
+ */
 export function withDB(database?: Database): Database {
-	return database ?? getDefaultDb();
+	return database ?? _defaultDb;
 }
