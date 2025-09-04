@@ -1,28 +1,33 @@
+// src/features/lists.service.test.ts
 import { describe, expect, it } from "bun:test";
-import { createListsService } from "@features/lists";
+import { createListsService } from "@features/lists"; // re-exports service
 import { createDb } from "@lib/db";
 import {
 	LISTS_EDGES_PAGE,
-	M_UPDATE_LISTS_FOR_ITEM,
+	M_UPDATE_LISTS_FOR_ITEM, // ensure this is exported from the source module
 	Q_REPO_ID,
 } from "@lib/lists";
-import type { ListsEdgesPage } from "@lib/types"; // add this
+import type { ListsEdgesPage } from "@lib/types";
 import { makeFakeGh } from "@src/__test__/github-fakes";
 
 describe("lists service DB ops", () => {
 	it("getReposToScore selects default and by slug", async () => {
 		const db = createDb();
-		const svc = createListsService(db);
+		const svc = createListsService(undefined, db); // api first (use default), then db
+
 		// seed two lists and repos
 		db.run(
-			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
+			`INSERT INTO list(name, description, is_private, slug, list_id)
+       VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
 		);
 		db.run(`INSERT INTO repo(name_with_owner, url, stars, forks, watchers, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled, popularity, freshness)
-            VALUES ('o/r1','u1',50,1,1,0,0,0,0,1, 10, 5), ('o/r2','u2',10,1,1,0,0,0,0,1, 5,  3)`);
+            VALUES ('o/r1','u1',50,1,1,0,0,0,0,1, 10, 5),
+                   ('o/r2','u2',10,1,1,0,0,0,0,1,  5, 3)`);
 		db.run(`INSERT INTO list_repo(list_id, repo_id) VALUES (1,1), (2,2)`);
 
 		const all = await svc.read.getReposToScore({ limit: 10 });
 		expect(all.length).toBe(2);
+
 		const ai = await svc.read.getReposToScore({ limit: 10, listSlug: "ai" });
 		expect(ai.length).toBe(1);
 		expect(ai[0].name_with_owner).toBe("o/r1");
@@ -30,13 +35,16 @@ describe("lists service DB ops", () => {
 
 	it("currentMembership returns slugs", async () => {
 		const db = createDb();
-		const svc = createListsService(db);
+		const svc = createListsService(undefined, db);
+
 		db.run(
-			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
+			`INSERT INTO list(name, description, is_private, slug, list_id)
+       VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
 		);
 		db.run(`INSERT INTO repo(name_with_owner, url, stars, forks, watchers, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
             VALUES ('o/r1','u1',50,1,1,0,0,0,0,1)`);
 		db.run(`INSERT INTO list_repo(list_id, repo_id) VALUES (1,1), (2,1)`);
+
 		const slugs = await svc.read.currentMembership(1);
 		const { compareAlpha } = await import("@lib/utils");
 		expect(slugs.toSorted(compareAlpha)).toEqual(
@@ -46,17 +54,23 @@ describe("lists service DB ops", () => {
 
 	it("reconcileLocal makes mapping exact", async () => {
 		const db = createDb();
-		const svc = createListsService(db);
+		const svc = createListsService(undefined, db);
+
 		db.run(
-			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2'),('Learn','',0,'learning','L3')`,
+			`INSERT INTO list(name, description, is_private, slug, list_id)
+       VALUES ('AI','',0,'ai','L1'),
+              ('Prod','',0,'productivity','L2'),
+              ('Learn','',0,'learning','L3')`,
 		);
 		db.run(`INSERT INTO repo(name_with_owner, url, stars, forks, watchers, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
             VALUES ('o/r1','u1',50,1,1,0,0,0,0,1)`);
+
 		// start with ai + prod
 		await svc.apply.reconcileLocal(1, ["ai", "productivity"]);
 		let cur = await svc.read.currentMembership(1);
 		const { compareAlpha: cmp } = await import("@lib/utils");
 		expect(cur.toSorted(cmp)).toEqual(["ai", "productivity"].toSorted(cmp));
+
 		// change to learning only
 		await svc.apply.reconcileLocal(1, ["learning"]);
 		cur = await svc.read.currentMembership(1);
@@ -65,20 +79,25 @@ describe("lists service DB ops", () => {
 
 	it("mapSlugsToGhIds returns only known GH ids", async () => {
 		const db = createDb();
-		const svc = createListsService(db);
+		const svc = createListsService(undefined, db);
+
 		db.run(
-			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
+			`INSERT INTO list(name, description, is_private, slug, list_id)
+       VALUES ('AI','',0,'ai','L1'),('Prod','',0,'productivity','L2')`,
 		);
+
 		const ids = await svc.read.mapSlugsToGhIds(["ai", "unknown"]);
 		expect(ids).toEqual(["L1"]);
 	});
 
 	it("ensureListGhIds maps by list name and updates DB using injected GH client", async () => {
 		const db = createDb();
-		// seed two lists
+		// seed two lists with missing list_id
 		db.run(
-			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai',''),('Prod','',0,'productivity','')`,
+			`INSERT INTO list(name, description, is_private, slug, list_id)
+       VALUES ('AI','',0,'ai',''),('Prod','',0,'productivity','')`,
 		);
+
 		const listsPage: ListsEdgesPage = {
 			viewer: {
 				lists: {
@@ -107,13 +126,14 @@ describe("lists service DB ops", () => {
 			},
 		};
 
-		// fake github runner returning a single page of ListsEdgesPage
+		// fake github runner returning a single page
 		const fakeGh = makeFakeGh({
 			[LISTS_EDGES_PAGE]: () => listsPage,
 		});
 
-		const svc = createListsService(db, fakeGh);
+		const svc = createListsService(undefined, db, fakeGh);
 		const map = await svc.apply.ensureListGhIds("token");
+
 		expect(map.get("ai")).toBe("L_AI");
 		expect(map.get("productivity")).toBe("L_PROD");
 
@@ -132,10 +152,10 @@ describe("lists service DB ops", () => {
 
 		type RepoIdResp = { repository: { id: string } };
 		const fakeGh = makeFakeGh({
-			[Q_REPO_ID]: (_vars) => ({ repository: { id: "R_kgNEW" } }) as RepoIdResp,
+			[Q_REPO_ID]: () => ({ repository: { id: "R_kgNEW" } }) as RepoIdResp,
 		});
 
-		const svc = createListsService(db, fakeGh);
+		const svc = createListsService(undefined, db, fakeGh);
 		const id = await svc.apply.ensureRepoGhId("token", 1);
 		expect(id).toBe("R_kgNEW");
 
@@ -164,7 +184,8 @@ describe("lists service DB ops", () => {
 				return resp;
 			},
 		});
-		const svc = createListsService(db, fakeGh);
+
+		const svc = createListsService(undefined, db, fakeGh);
 		await svc.apply.updateOnGitHub("token", "R_kgX", ["L1", "L2"]);
 
 		expect(captured).toBeDefined();

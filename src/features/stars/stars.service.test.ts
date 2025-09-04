@@ -1,66 +1,116 @@
 // src/features/stars.service.test.ts
 import { describe, expect, it } from "bun:test";
-import { createStarsService } from "@features/stars";
+import { createStarsService, type StarsApi } from "@features/stars/service";
 import { createDb } from "@lib/db";
+import * as starsLib from "@lib/stars";
 import { makeEdge, starsPage, VIEWER_STARS_PAGE } from "@lib/stars";
 import { compareAlpha } from "@lib/utils";
 import { makeFakeGh } from "@src/__test__/github-fakes";
 
+/* ---------------------------------- helpers --------------------------------- */
+
+function makeFakeApi(batches: string[][]): StarsApi {
+	return {
+		async getAllStars() {
+			return batches.flat().map((name, i) => ({
+				repoId: `R${i}`,
+				nameWithOwner: name,
+				url: "",
+				stars: 0,
+				forks: 0,
+				openIssues: 0,
+				openPRs: 0,
+				primaryLanguage: null,
+				languages: [],
+				license: null,
+				topics: [],
+				defaultBranch: "main",
+				lastCommitISO: undefined,
+				description: null,
+				homepageUrl: null,
+				isArchived: false,
+				isDisabled: false,
+				isFork: false,
+				isMirror: false,
+				hasIssuesEnabled: true,
+				watchers: 0,
+				pushedAt: "",
+				updatedAt: "",
+				createdAt: "",
+			}));
+		},
+		async *getAllStarsStream() {
+			for (const b of batches) {
+				yield b.map((name, i) => ({
+					repoId: `RB${i}`,
+					nameWithOwner: name,
+					url: "",
+					stars: 0,
+					forks: 0,
+					openIssues: 0,
+					openPRs: 0,
+					primaryLanguage: null,
+					license: null,
+					topics: [],
+					defaultBranch: "main",
+					languages: [],
+					lastCommitISO: undefined,
+					description: null,
+					homepageUrl: null,
+					isArchived: false,
+					isDisabled: false,
+					isFork: false,
+					isMirror: false,
+					hasIssuesEnabled: true,
+					watchers: 0,
+					pushedAt: "",
+					updatedAt: "",
+					createdAt: "",
+				}));
+			}
+		},
+		async collectStarIdsSet() {
+			return new Set<string>(["R1", "R2"]);
+		},
+	};
+}
+
 /* ---------------------------------- tests ---------------------------------- */
 
-describe("stars service", () => {
-	it("read.getAll streams through lib and aggregates across pages", async () => {
-		const db = createDb(); // not used here but keeps constructor shape stable
-
-		const p1 = starsPage(
-			[makeEdge({ node: { id: "R1", nameWithOwner: "o1/r1", url: "" } })],
-			true,
-			"c1",
+describe("stars service — delegation (no pagination duplication)", () => {
+	it("read.getAll delegates to lib and returns combined list", async () => {
+		const db = createDb();
+		const svc = createStarsService(
+			makeFakeApi([["o1/r1"], ["o2/r2"]]),
+			db,
+			undefined,
+			{ token: "T" },
 		);
-		const p2 = starsPage(
-			[makeEdge({ node: { id: "R2", nameWithOwner: "o2/r2", url: "" } })],
-			false,
-			null,
-		);
-
-		const fakeGh = makeFakeGh({
-			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
-		});
-
-		const svc = createStarsService(db, fakeGh, { token: "TEST" });
 		const all = await svc.read.getAll();
 		expect(all.map((r) => r.nameWithOwner)).toEqual(["o1/r1", "o2/r2"]);
 	});
 
-	it("read.getAllStream yields batches in order", async () => {
+	it("read.getAllStream yields batches passed through from lib", async () => {
 		const db = createDb();
-
-		const p1 = starsPage(
-			[makeEdge({ node: { id: "RA", nameWithOwner: "a/r", url: "" } })],
-			true,
-			"c1",
+		const svc = createStarsService(
+			makeFakeApi([["a/r"], ["b/r"]]),
+			db,
+			undefined,
+			{ token: "T" },
 		);
-		const p2 = starsPage(
-			[makeEdge({ node: { id: "RB", nameWithOwner: "b/r", url: "" } })],
-			false,
-			null,
-		);
-
-		const fakeGh = makeFakeGh({
-			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
-		});
-
-		const svc = createStarsService(db, fakeGh, { token: "TEST" });
 		const seen: string[] = [];
 		for await (const batch of svc.read.getAllStream()) {
 			for (const r of batch) seen.push(r.nameWithOwner);
 		}
 		expect(seen).toEqual(["a/r", "b/r"]);
 	});
+});
 
+describe("stars service — DB-centric behaviour", () => {
 	it("read.getReposToScore selects top N from local DB", async () => {
 		const db = createDb();
-		const svc = createStarsService(db);
+		// use real api surface; GH client not needed here
+		const svc = createStarsService(starsLib, db);
 
 		// Seed local repo table (no lists linkage required)
 		db.run(`
@@ -77,7 +127,7 @@ describe("stars service", () => {
 
 	it("read.collectLocallyListedRepoIdsSet returns GH node ids linked via lists", async () => {
 		const db = createDb();
-		const svc = createStarsService(db, undefined, { token: "TEST" });
+		const svc = createStarsService(starsLib, db, undefined, { token: "TEST" });
 
 		// list table and repo table with GH node ids, link one repo via list_repo
 		db.run(
@@ -127,7 +177,8 @@ describe("stars service", () => {
 			[VIEWER_STARS_PAGE]: (vars) => (vars?.after ? p2 : p1),
 		});
 
-		const svc = createStarsService(db, fakeGh, { token: "TEST" });
+		// Use real lib for stream diffing, but inject GH client & token
+		const svc = createStarsService(starsLib, db, fakeGh, { token: "TEST" });
 		const unlisted = await svc.read.getUnlistedStars();
 
 		// Expect R2, R3 only (R1 is listed locally)

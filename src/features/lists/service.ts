@@ -1,12 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { withDB } from "@lib/db";
 import { githubGraphQL, gql } from "@lib/github";
-import {
-	getAllLists,
-	getAllListsStream,
-	LISTS_EDGES_PAGE,
-	Q_REPO_ID,
-} from "@lib/lists";
+import * as listsLib from "@lib/lists";
 import type { ListsEdgesPage, RepoRow } from "@lib/types";
 import type {
 	BatchSelector,
@@ -20,6 +15,11 @@ import type {
 	NoRow,
 	RepoIdLookupRow,
 } from "./types";
+
+export type ListsApi = {
+	getAllLists: typeof listsLib.getAllLists;
+	getAllListsStream: typeof listsLib.getAllListsStream;
+};
 
 /** Mutations */
 const M_UPDATE_LISTS_FOR_ITEM = gql`
@@ -35,6 +35,7 @@ const M_UPDATE_LISTS_FOR_ITEM = gql`
 
 /** Allow injecting db and a GitHub GraphQL runner for testing */
 export function createListsService(
+	api: ListsApi = listsLib,
 	database?: Database,
 	ghGraphQL: <T>(
 		token: string,
@@ -149,7 +150,7 @@ export function createListsService(
 		for (;;) {
 			const data: ListsEdgesPage = await ghGraphQL<ListsEdgesPage>(
 				token,
-				LISTS_EDGES_PAGE,
+				listsLib.LISTS_EDGES_PAGE,
 				{ after },
 			);
 			const page = data.viewer.lists;
@@ -210,7 +211,7 @@ export function createListsService(
 		const [owner, name] = (row.name_with_owner || "").split("/");
 		const data = await ghGraphQL<{ repository: { id: string } }>(
 			token,
-			Q_REPO_ID,
+			listsLib.Q_REPO_ID,
 			{ owner, name },
 		);
 		const newId = data.repository.id;
@@ -224,8 +225,8 @@ export function createListsService(
 
 	return {
 		read: {
-			getAll: () => getAllLists(Bun.env.GITHUB_TOKEN ?? ""),
-			getAllStream: () => getAllListsStream(Bun.env.GITHUB_TOKEN ?? ""),
+			getAll: () => api.getAllLists(Bun.env.GITHUB_TOKEN ?? ""),
+			getAllStream: () => api.getAllListsStream(Bun.env.GITHUB_TOKEN ?? ""),
 			getListDefs: async () => qListDefs.all(),
 			getReposToScore,
 			currentMembership,

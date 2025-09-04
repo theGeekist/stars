@@ -2,17 +2,21 @@
 import type { Database } from "bun:sqlite";
 import { withDB } from "@lib/db";
 import { githubGraphQL } from "@lib/github";
-import {
-	collectStarIdsSet as _collectStarIdsSet,
-	getAllStars as _getAllStars,
-	getAllStarsStream as _getAllStarsStream,
-} from "@lib/stars";
+import * as starsLib from "@lib/stars";
 import type { RepoInfo } from "@lib/types";
 import type { BatchSelector, RepoRow, StarsService } from "./types";
 
 type StarsOpts = { token?: string };
 
+// Narrow API surface we depend on, so we can inject a fake in tests
+export type StarsApi = {
+	getAllStars: typeof starsLib.getAllStars;
+	getAllStarsStream: typeof starsLib.getAllStarsStream;
+	collectStarIdsSet: typeof starsLib.collectStarIdsSet;
+};
+
 export function createStarsService(
+	api: StarsApi = starsLib, // <-- injectable, defaults to real lib
 	database?: Database,
 	ghGraphQLParam: <T>(
 		token: string,
@@ -22,11 +26,9 @@ export function createStarsService(
 	opts?: StarsOpts,
 ): StarsService {
 	const db = withDB(database);
-
-	// Resolve once; tests can inject
 	const token = opts?.token ?? Bun.env.GITHUB_TOKEN ?? "";
 
-	// DB queries (unchanged)
+	// -------------------- DB queries (unchanged) --------------------
 	const qReposDefault = db.query<RepoRow, [number]>(/* sql */ `
     SELECT id, name_with_owner, url, description, primary_language, topics,
            stars, forks, popularity, freshness, activeness,
@@ -58,13 +60,10 @@ export function createStarsService(
 		return s;
 	}
 
-	// Cross-source diff (stars vs locally listed)
+	// -------------------- Cross-source diff --------------------
 	async function getUnlistedStars(): Promise<RepoInfo[]> {
-		// If you want to *require* a token, re-enable this guard:
-		// if (!token) throw new Error("Missing GITHUB_TOKEN");
-
 		const stars: RepoInfo[] = [];
-		for await (const page of _getAllStarsStream(token, ghGraphQLParam)) {
+		for await (const page of api.getAllStarsStream(token, ghGraphQLParam)) {
 			stars.push(...page);
 		}
 
@@ -77,11 +76,12 @@ export function createStarsService(
 		return out;
 	}
 
+	// -------------------- Public service --------------------
 	return {
 		read: {
-			getAll: () => _getAllStars(token, ghGraphQLParam),
-			getAllStream: () => _getAllStarsStream(token, ghGraphQLParam),
-			collectStarIdsSet: () => _collectStarIdsSet(token, ghGraphQLParam),
+			getAll: () => api.getAllStars(token, ghGraphQLParam),
+			getAllStream: () => api.getAllStarsStream(token, ghGraphQLParam),
+			collectStarIdsSet: () => api.collectStarIdsSet(token, ghGraphQLParam),
 
 			collectLocallyListedRepoIdsSet,
 			getUnlistedStars,

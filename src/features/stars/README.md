@@ -13,8 +13,10 @@ Also exposes small DB helpers and a parity batch selector.
 
 ```ts
 import { createStarsService } from '@features/stars';
+import * as starsLib from "@lib/stars";
 
 const svc = createStarsService(
+  starsLib,
   database?,          // optional Database from 'bun:sqlite'
   ghGraphQL?          // optional runner <T>(token, query, vars?) => Promise<T>
 );
@@ -135,7 +137,7 @@ type RepoInfo = {
 ### Fetch “unlisted stars” for export
 
 ```ts
-const starsSvc = createStarsService();
+const starsSvc = createStarsService(starsLib);
 
 const unlisted = await starsSvc.read.getUnlistedStars();
 // write to exports/unlisted.json for ingest to pick up

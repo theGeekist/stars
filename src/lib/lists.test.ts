@@ -245,113 +245,113 @@ describe("lists lib", () => {
 			[LIST_ITEMS_AT_EDGE]: () => items,
 		});
 
-		it("getAllLists aggregates pages with concurrency", async () => {
-			const listsEdges: ListsEdgesPage = {
-				viewer: {
-					lists: {
-						pageInfo: { endCursor: null, hasNextPage: false },
-						edges: [
-							{
-								cursor: "c1",
-								node: {
-									listId: "L1",
-									name: "One",
-									description: null,
-									isPrivate: false,
-								},
-							},
-							{
-								cursor: "c2",
-								node: {
-									listId: "L2",
-									name: "Two",
-									description: null,
-									isPrivate: true,
-								},
-							},
-						],
-					},
-				},
-			};
-			const itemsResp = (name: string): ListItemsAtEdge => ({
-				viewer: {
-					lists: {
-						nodes: [
-							{
-								name,
-								items: {
-									pageInfo: { endCursor: null, hasNextPage: false },
-									nodes: [
-										{
-											__typename: "Repository",
-											repoId: `R_${name}`,
-											nameWithOwner: `${name.toLowerCase()}/r`,
-											url: "u",
-											repositoryTopics: { nodes: [] },
-										} as unknown as ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number],
-									],
-								},
-							},
-						],
-					},
-				},
-			});
-			const gh = makeFakeGh({
-				[LISTS_EDGES_PAGE]: () => listsEdges,
-				[LIST_ITEMS_AT_EDGE]: (_vars) => itemsResp("ignore"),
-			});
-			const lists = await (await import("./lists")).getAllLists("t", gh);
-			expect(lists.length).toBe(2);
-			expect(lists.map((l) => l.listId)).toEqual(["L1", "L2"]);
-		});
-
-		it("getReposFromList throws when list not found", async () => {
-			const listsEdges = {
-				viewer: {
-					lists: {
-						pageInfo: { endCursor: null, hasNextPage: false },
-						edges: [],
-					},
-				},
-			} as unknown as ListsEdgesPage;
-			const gh = makeFakeGh({ [LISTS_EDGES_PAGE]: () => listsEdges });
-			await expect(
-				(await import("./lists")).getReposFromList("t", "Missing", gh),
-			).rejects.toThrow();
-		});
-
-		it("getReposFromList bubbles when list node missing during item fetch", async () => {
-			const listsEdges = {
-				viewer: {
-					lists: {
-						pageInfo: { endCursor: null, hasNextPage: false },
-						edges: [
-							{
-								cursor: "x",
-								node: {
-									listId: "L",
-									name: "L",
-									description: null,
-									isPrivate: false,
-								},
-							},
-						],
-					},
-				},
-			} as unknown as ListsEdgesPage;
-			const itemsEmpty = {
-				viewer: { lists: { nodes: [] } },
-			} as unknown as ListItemsAtEdge;
-			const gh = makeFakeGh({
-				[LISTS_EDGES_PAGE]: () => listsEdges,
-				[LIST_ITEMS_AT_EDGE]: () => itemsEmpty,
-			});
-			await expect(
-				(await import("./lists")).getReposFromList("t", "L", gh),
-			).rejects.toThrow();
-		});
 		const repos = await getReposFromList("t", "AI", gh);
 		expect(repos.length).toBe(1);
 		expect(repos[0].nameWithOwner).toBe("ai/r1");
+	});
+	it("getAllLists aggregates pages with concurrency", async () => {
+		const listsEdges: ListsEdgesPage = {
+			viewer: {
+				lists: {
+					pageInfo: { endCursor: null, hasNextPage: false },
+					edges: [
+						{
+							cursor: "c1",
+							node: {
+								listId: "L1",
+								name: "One",
+								description: null,
+								isPrivate: false,
+							},
+						},
+						{
+							cursor: "c2",
+							node: {
+								listId: "L2",
+								name: "Two",
+								description: null,
+								isPrivate: true,
+							},
+						},
+					],
+				},
+			},
+		};
+		const itemsResp = (name: string): ListItemsAtEdge => ({
+			viewer: {
+				lists: {
+					nodes: [
+						{
+							name,
+							items: {
+								pageInfo: { endCursor: null, hasNextPage: false },
+								nodes: [
+									{
+										__typename: "Repository",
+										repoId: `R_${name}`,
+										nameWithOwner: `${name.toLowerCase()}/r`,
+										url: "u",
+										repositoryTopics: { nodes: [] },
+									} as unknown as ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number],
+								],
+							},
+						},
+					],
+				},
+			},
+		});
+		const gh = makeFakeGh({
+			[LISTS_EDGES_PAGE]: () => listsEdges,
+			[LIST_ITEMS_AT_EDGE]: (_vars) => itemsResp("ignore"),
+		});
+		const lists = await (await import("./lists")).getAllLists("t", gh);
+		expect(lists.length).toBe(2);
+		expect(lists.map((l) => l.listId)).toEqual(["L1", "L2"]);
+	});
+
+	it("getReposFromList throws when list not found", async () => {
+		const listsEdges = {
+			viewer: {
+				lists: {
+					pageInfo: { endCursor: null, hasNextPage: false },
+					edges: [],
+				},
+			},
+		} as unknown as ListsEdgesPage;
+		const gh = makeFakeGh({ [LISTS_EDGES_PAGE]: () => listsEdges });
+		await expect(
+			(await import("./lists")).getReposFromList("t", "Missing", gh),
+		).rejects.toThrow();
+	});
+
+	it("getReposFromList bubbles when list node missing during item fetch", async () => {
+		const listsEdges = {
+			viewer: {
+				lists: {
+					pageInfo: { endCursor: null, hasNextPage: false },
+					edges: [
+						{
+							cursor: "x",
+							node: {
+								listId: "L",
+								name: "L",
+								description: null,
+								isPrivate: false,
+							},
+						},
+					],
+				},
+			},
+		} as unknown as ListsEdgesPage;
+		const itemsEmpty = {
+			viewer: { lists: { nodes: [] } },
+		} as unknown as ListItemsAtEdge;
+		const gh = makeFakeGh({
+			[LISTS_EDGES_PAGE]: () => listsEdges,
+			[LIST_ITEMS_AT_EDGE]: () => itemsEmpty,
+		});
+		await expect(
+			(await import("./lists")).getReposFromList("t", "L", gh),
+		).rejects.toThrow();
 	});
 });

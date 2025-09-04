@@ -14,6 +14,7 @@ import { OllamaService } from "@jasonnathan/llm-core";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
 import { withDB } from "@lib/db";
+import * as listsLib from "@lib/lists";
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
 
@@ -223,7 +224,7 @@ export async function scoreBatchAll(
 	const total = repos.length;
 
 	// Lists + GH prerequisites
-	const listsSvc = createListsService(database);
+	const listsSvc = createListsService(listsLib, database);
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);
@@ -274,7 +275,7 @@ export async function scoreOne(
 	const scoring = createScoringService(db);
 	const { runId } = scoring.resolveRunContext({ dry: !apply });
 
-	const listsSvc = createListsService(db);
+	const listsSvc = createListsService(listsLib, db);
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);

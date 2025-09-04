@@ -14,6 +14,7 @@ Provides **read** helpers (candidates to categorise, current membership, list de
 ```ts
 import { Database } from "bun:sqlite";
 import { createListsService } from "@features/lists";
+import * as listsLib from "@lib/lists";
 ```
 
 ---
@@ -22,6 +23,7 @@ import { createListsService } from "@features/lists";
 
 ```ts
 createListsService(
+  listsLib,
   database?: Database,
   ghGraphQL?: <T>(token: string, query: string, vars?: Record<string, unknown>) => Promise<T>
 ): ListsService
@@ -169,8 +171,9 @@ type ListsService = {
 
 ```ts
 import { createListsService } from "@features/lists";
+import * as listsLib from "@lib/lists";
 
-const svc = createListsService(); // uses default DB and githubGraphQL
+const svc = createListsService(listsLib); // uses default DB and githubGraphQL
 
 const defs = await svc.read.getListDefs();
 const repos = await svc.read.getReposToScore({
@@ -212,6 +215,7 @@ await svc.apply.updateOnGitHub(token, repoGlobalId, ghListIds);
 
 ```ts
 import { Database } from "bun:sqlite";
+import * as listsLib from "@lib/lists";
 
 const db = new Database(":memory:");
 const mockGraphQL = async <T>(
@@ -223,7 +227,7 @@ const mockGraphQL = async <T>(
   return {} as T;
 };
 
-const svc = createListsService(db, mockGraphQL);
+const svc = createListsService(listsLib, db, mockGraphQL);
 ```
 
 ---

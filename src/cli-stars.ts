@@ -2,12 +2,13 @@ import type { Database } from "bun:sqlite";
 // src/cli-stars.ts
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createStarsService } from "@features/stars"; // feature layer provides getUnlistedStars()
+import { createStarsService } from "@features/stars";
 import { log } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import type { ListsReporter } from "@lib/lists";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
 import type { StarsReporter } from "@lib/stars";
+import * as starsLib from "@lib/stars";
 import { getAllStars, getAllStarsStream } from "@lib/stars";
 import type { RepoInfo, StarList } from "@lib/types";
 import { slugify } from "@lib/utils";
@@ -240,7 +241,7 @@ export async function runUnlisted(
 	ensureToken();
 	const s = log.spinner("Computing unlisted stars...").start();
 
-	const svc = createStarsService(withDB(database));
+	const svc = createStarsService(starsLib, withDB(database));
 	const unlisted = await svc.read.getUnlistedStars();
 
 	s.succeed(`Found ${unlisted.length} unlisted starred repositories`);
