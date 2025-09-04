@@ -1,4 +1,5 @@
-import { getDefaultDb } from "@lib/db";
+import type { Database } from "bun:sqlite";
+import { withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import type { ScoreItem } from "./llm";
 import type {
@@ -15,7 +16,8 @@ import type {
 
 const SUMMARY_PRED = "r.summary IS NOT NULL AND length(trim(r.summary)) > 0";
 
-export function createScoringService(db = getDefaultDb()): ScoringService {
+export function createScoringService(database?: Database): ScoringService {
+	const db = withDB(database);
 	const qBatchDefault = db.query<RepoRow, BindRunLimit>(`
       SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
              r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,

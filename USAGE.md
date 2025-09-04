@@ -2,16 +2,16 @@
 
 Back to main README: [README.md](README.md)
 
-This project ships a single CLI named `gk-stars`. Below is a practical guide to what each command does, why you would run it, and small examples that you can copy and paste.
+This project ships a single CLI named `gk-stars`. Below is a practical guide to what each command does, why you would run it, and small examples you can copy and paste.
 
 ---
 
 ## Environment
 
-Set these before running the CLI.
+Set these before running the CLI:
 
 - `GITHUB_TOKEN`
-  Required for reading your GitHub Stars Lists and for applying list updates.
+  Required for reading your GitHub Stars Lists and applying list updates.
 
 - `OLLAMA_MODEL`
   Local model name for all LLM work. Example `llama3.1:8b`.
@@ -31,16 +31,16 @@ Optional helpers:
 
 ## Quick patterns you will use a lot
 
-- Preview first
+- **Preview first**
   Most commands write by default. Add `--dry` to preview without writing.
 
-- One repo vs All repos
+- **One repo vs All repos**
   Use `--one <owner/repo>` to target a single repository. Use `--all` to batch, optionally with `--limit N`.
 
-- JSON output
+- **JSON output**
   Add `--json` to print machine-readable results.
 
-- Streams to disk
+- **Streams to disk**
   `lists --dir <folder>` streams each list to its own JSON file and creates an `index.json`.
 
 ---
@@ -68,8 +68,6 @@ gk-stars lists --out lists.json
 gk-stars lists --dir ./exports
 ```
 
-See also: [src/features/lists/README.md](src/features/lists/README.md)
-
 ---
 
 ### `gk-stars repos`
@@ -84,11 +82,9 @@ Show repositories for one list by name.
 **Examples**
 
 ```bash
-gk-stars repos --list "AI"
-gk-stars repos --list "Learning" --json
+gk-stars repos --list "AI & Machine Learning"
+gk-stars repos --list "Productivity & Utilities" --json
 ```
-
-See also: [src/features/lists/README.md](src/features/lists/README.md)
 
 ---
 
@@ -98,7 +94,7 @@ Load previously exported lists into the local SQLite database.
 
 **Flags**
 
-- `--dir <folder>` source folder for `index.json` and list files
+- `--dir <folder>` source folder for `index.json` and list files.
   Defaults to `EXPORTS_DIR` or `./exports`.
 
 **Examples**
@@ -108,8 +104,6 @@ gk-stars ingest
 gk-stars ingest --dir ./exports
 ```
 
-See also: [src/features/ingest/README.md](src/features/ingest/README.md)
-
 ---
 
 ### `gk-stars summarise`
@@ -117,7 +111,7 @@ See also: [src/features/ingest/README.md](src/features/ingest/README.md)
 Generate a concise summary for each repository using your local Ollama model and store it in `repo.summary`.
 
 **Why**
-Good summaries improve downstream scoring and search. The summariser uses the repository metadata and works even without a full README.
+Summaries improve downstream categorisation and search. The summariser uses repo metadata and works even when READMEs are sparse.
 
 **Flags**
 
@@ -136,46 +130,44 @@ gk-stars summarise --one facebook/react --dry
 gk-stars summarise --all --limit 100
 ```
 
-See also: [src/features/summarise/README.md](src/features/summarise/README.md)
-
 ---
 
-### `gk-stars score`
+### `gk-stars categorise` (alias: `score`)
 
-Score repositories against your lists, using the editable criteria in `prompts.yaml`. Optionally update list membership on GitHub.
+Evaluate repositories against your lists using the editable criteria in `prompts.yaml`. Optionally update list membership on GitHub.
 
 **Why**
-Keep your lists tidy. The model ranks each repo against each list, then proposes adds and removes. It can apply the plan to your GitHub account.
+Keep your lists structured. The model rates each repo against each list, proposes add/remove/review actions, and can apply the plan back to GitHub.
 
 **Flags**
 
 - `--one <owner/repo>` or `--all [--limit N]`
 - `--dry` preview only
-- `--resume <id|last>` continue a previous scoring run
-- `--notes <text>` annotate the model run
-- `--fresh` or `--from-scratch` ignore previous runs when selecting repos
+- `--resume <id|last>` continue a previous run
+- `--notes <text>` annotate the run
+- `--fresh` or `--from-scratch` ignore previous runs
 
 **Examples**
 
 ```bash
 # Dry-run one repo
-gk-stars score --one facebook/react --dry
+gk-stars categorise --one facebook/react --dry
 
 # Plan for 200 repos and apply to GitHub
-gk-stars score --all --limit 200
+gk-stars categorise --all --limit 200
 
-# Resume the last model run with a note
-gk-stars score --all --resume last --notes "tuning thresholds"
+# Resume the last run with a note
+gk-stars categorise --all --resume last --notes "tuning thresholds"
 ```
-
-See also: [src/features/scoring/README.md](src/features/scoring/README.md)
 
 ---
 
 ### `gk-stars topics:enrich`
 
 Populate and refresh topic metadata for your repos using your local `github/explore` clone. No GitHub API calls are needed.
-This attaches repo topics, then fills `topics` and cross-links aliases and related topics.
+
+**Why**
+Attach repo topics, enrich them with canonical names and descriptions, and reconcile aliases/related links.
 
 **Flags**
 
@@ -189,8 +181,6 @@ gk-stars topics:enrich
 gk-stars topics:enrich --active --ttl 14
 ```
 
-See also: [src/features/topics/README.md](src/features/topics/README.md)
-
 ---
 
 ### `gk-stars topics:report`
@@ -200,9 +190,9 @@ Display topic statistics from your database.
 **Flags**
 
 - `--missing` show topics without metadata
-- `--recent` show topics most recently attached
+- `--recent` show most recently attached topics
 - `--full` do not truncate descriptions or aliases
-- `--json` print machine-readable output
+- `--json` print JSON
 
 **Examples**
 
@@ -213,22 +203,18 @@ gk-stars topics:report --missing --recent
 gk-stars topics:report --json > topics.json
 ```
 
-See also: [src/features/topics/README.md](src/features/topics/README.md)
-
 ---
 
 ### `gk-stars setup`
 
 Generate `prompts.yaml` from your current GitHub lists.
-If Ollama is available, the tool proposes first-pass criteria. If not, it writes placeholders that you can edit.
+If Ollama is available, the tool proposes first-pass criteria; otherwise it writes placeholders to edit manually.
 
 **Examples**
 
 ```bash
 gk-stars setup
 ```
-
-See also: [src/features/setup/README.md](src/features/setup/README.md)
 
 ---
 
@@ -245,20 +231,20 @@ gk-stars ingest --dir ./exports
 # 3) Create summaries using a local model
 gk-stars summarise --all --limit 200
 
-# 4) Score and preview changes
-gk-stars score --all --limit 200 --dry
+# 4) Categorise and preview changes
+gk-stars categorise --all --limit 200 --dry
 
 # 5) Apply when happy
-gk-stars score --all --limit 200
+gk-stars categorise --all --limit 200
 ```
 
 ---
 
 ## Notes on models and prompts
 
-- All LLM work runs against your local Ollama runtime. Set `OLLAMA_MODEL` to choose the model and size that fits your machine.
-- `prompts.yaml` is part of your workflow and is fully editable. Update criteria anytime, then re-run scoring.
-- Scoring uses summaries and repository metadata to reduce hallucinations and to keep the criteria focused.
+- All LLM work runs through your local Ollama runtime. Set `OLLAMA_MODEL` to choose the model that fits your machine.
+- `prompts.yaml` is fully editable. Update criteria anytime, then re-run categorisation.
+- Categorisation uses summaries + repo metadata to reduce hallucination and keep criteria grounded.
 
 ---
 
@@ -271,7 +257,7 @@ bun run build
 
 Build outputs:
 
-- `dist/cli.js` the CLI entry
-- `dist/index.js` the library entry
+- `dist/cli.js` — CLI entry
+- `dist/index.js` — library entry
 
 The `setup` template is bundled so `gk-stars setup` works after install.

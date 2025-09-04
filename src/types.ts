@@ -22,7 +22,7 @@ export type UpsertListBind = [
 export type LinkListRepoBind = [list_id: number, repo_id: number];
 
 export type UpsertRepoBind = [
-	repoId: string,
+	repo_id: string | null,
 	name_with_owner: string,
 	url: string,
 	description: string | null,
@@ -37,7 +37,7 @@ export type UpsertRepoBind = [
 	last_release_iso: string | null,
 	topics: string,
 	primary_language: string | null,
-	languages: string,
+	languages: string, // JSON
 	license: string | null,
 	is_archived: number,
 	is_disabled: number,
@@ -49,12 +49,15 @@ export type UpsertRepoBind = [
 	created_at: string | null,
 	disk_usage: number | null,
 	readme_md: string | null,
+	readme_etag: string | null, // << added
+	readme_fetched_at: string | null, // << added
 	summary: string | null,
-	tags: string,
+	tags: string, // JSON
 	popularity: number,
 	freshness: number,
 	activeness: number,
 ];
+
 export type ListRow = {
 	id: number;
 	name: string;

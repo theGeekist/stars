@@ -1,7 +1,7 @@
 // src/topics-report.ts
-
+import type { Database } from "bun:sqlite";
 import { log } from "@lib/bootstrap";
-import { getDefaultDb } from "@lib/db";
+import { withDB } from "@lib/db";
 
 function fmt(n: number) {
 	return new Intl.NumberFormat("en").format(n);
@@ -22,8 +22,8 @@ function firstParagraph(md?: string | null): string {
 		.trim();
 }
 
-function getTotals() {
-	const db = getDefaultDb();
+function getTotals(database?: Database) {
+	const db = withDB(database);
 	const repos = db
 		.query<{ c: number }, []>(`SELECT COUNT(*) c FROM repo`)
 		.get()?.c;
@@ -54,8 +54,8 @@ function getTotals() {
 }
 
 /** ALL topics with usage count + metadata + aliases (no limit). */
-function getAllTopics() {
-	const db = getDefaultDb();
+function getAllTopics(database?: Database) {
+	const db = withDB(database);
 	const q = db.query<
 		{
 			topic: string;
@@ -89,9 +89,9 @@ function getAllTopics() {
 	return q.all();
 }
 
-function getMissingMeta(limit = 50) {
+function getMissingMeta(limit = 50, database?: Database) {
 	// “Missing” means both short & long are empty
-	const db = getDefaultDb();
+	const db = withDB(database);
 	const q = db.query<{ topic: string; updated_at: string | null }, [number]>(`
     SELECT topic, updated_at
     FROM topics
@@ -103,8 +103,8 @@ function getMissingMeta(limit = 50) {
 	return q.all(limit);
 }
 
-function getRecentTopics(limit = 50) {
-	const db = getDefaultDb();
+function getRecentTopics(limit = 50, database?: Database) {
+	const db = withDB(database);
 	const q = db.query<{ topic: string; added_at: string }, [number]>(`
     SELECT topic, MAX(added_at) AS added_at
     FROM repo_topics

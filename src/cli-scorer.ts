@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 // src/cli-scorer.ts
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -12,8 +13,7 @@ import {
 import { OllamaService } from "@jasonnathan/llm-core";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
-import { getDefaultDb } from "@lib/db";
-
+import { withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import { formatNum, parseStringArray } from "@lib/utils";
 
@@ -201,7 +201,7 @@ export async function scoreBatchAll(
 	limit: number,
 	apply: boolean,
 	llm?: ScoringLLM,
-	database = getDefaultDb(),
+	database?: Database,
 ): Promise<void> {
 	const scoring = createScoringService(database);
 
@@ -255,9 +255,10 @@ export async function scoreOne(
 	selector: string,
 	apply: boolean,
 	llm?: ScoringLLM,
-	database = getDefaultDb(),
+	database?: Database,
 ): Promise<void> {
-	const row = database
+	const db = withDB(database);
+	const row = db
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
               stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary
@@ -270,10 +271,10 @@ export async function scoreOne(
 		return;
 	}
 
-	const scoring = createScoringService(database);
+	const scoring = createScoringService(db);
 	const { runId } = scoring.resolveRunContext({ dry: !apply });
 
-	const listsSvc = createListsService(database);
+	const listsSvc = createListsService(db);
 	const listRows = await log.withSpinner("Loading list definitions", () =>
 		listsSvc.read.getListDefs(),
 	);

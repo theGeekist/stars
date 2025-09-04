@@ -1,9 +1,7 @@
-import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { createScoringService } from "@features/scoring";
 import type { ScoreItem } from "@features/scoring/llm";
+import { createDb } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 
 const makeRepoRow = (id: number, stars: number): RepoRow => ({
@@ -28,7 +26,8 @@ const makeRepoRow = (id: number, stars: number): RepoRow => ({
 });
 
 describe("scoring planTargets", () => {
-	const scoring = createScoringService();
+	const db = createDb();
+	const scoring = createScoringService(db);
 
 	it("adds when score >= slug threshold and not in current", () => {
 		const current: string[] = ["ai"];
@@ -62,7 +61,8 @@ describe("scoring planTargets", () => {
 });
 
 describe("scoring planMembership", () => {
-	const scoring = createScoringService();
+	const db = createDb();
+	const scoring = createScoringService(db);
 	const repo: RepoRow = makeRepoRow(1, 100);
 
 	it("blocks apply for low stars when minStars set", () => {
@@ -95,18 +95,8 @@ describe("scoring planMembership", () => {
 });
 
 describe("scoring DB-backed selection & persistence", () => {
-	function makeDb() {
-		const db = new Database(":memory:");
-		const schema = readFileSync(
-			resolve(process.cwd(), "sql/schema.sql"),
-			"utf-8",
-		);
-		db.exec(schema);
-		return db;
-	}
-
 	it("selectRepos filters by listSlug and respects resume filter", () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createScoringService(db);
 		// seed list and repos
 		db.run(
@@ -139,7 +129,7 @@ describe("scoring DB-backed selection & persistence", () => {
 	});
 
 	it("resolveRunContext covers last/no-run dry and create flow", () => {
-		const db = makeDb();
+		const db = createDb();
 		const svc = createScoringService(db);
 		// resume last with dry and no runs
 		const a = svc.resolveRunContext({ dry: true, resume: "last" });
@@ -174,7 +164,8 @@ describe("scoring DB-backed selection & persistence", () => {
 	});
 
 	it("planMembership blocks when listless and no review candidate", () => {
-		const svc = createScoringService();
+		const db = createDb();
+		const svc = createScoringService(db);
 		const current: string[] = ["old-cat"];
 		const scores: ScoreItem[] = [
 			{ list: "old-cat", score: 0.1 }, // removed

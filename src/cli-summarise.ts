@@ -1,11 +1,11 @@
 // src/lib/cli-summarise.ts
-
+import type { Database } from "bun:sqlite";
 import { summariseRepoOneParagraph } from "@features/summarise/llm";
 import { createSummariseService } from "@features/summarise/service";
 import type { SummariseDeps } from "@features/summarise/types";
 import { log } from "@lib/bootstrap";
 import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
-import { getDefaultDb } from "@lib/db";
+import { withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 
 // ---- Helpers ----------------------------------------------------------------
@@ -29,7 +29,7 @@ export async function summariseBatchAll(
 	apply: boolean,
 	deps?: SummariseDeps,
 	opts?: { resummarise?: boolean },
-	database = getDefaultDb(),
+	database?: Database,
 ): Promise<void> {
 	const svc = createSummariseService(database);
 	const rows = svc.selectRepos({ limit, resummarise: !!opts?.resummarise });
@@ -100,9 +100,10 @@ export async function summariseOne(
 	selector: string,
 	apply: boolean,
 	deps?: SummariseDeps,
-	database = getDefaultDb(),
+	database?: Database,
 ): Promise<void> {
-	const row = database
+	const db = withDB(database);
+	const row = db
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics,
               stars, forks, popularity, freshness, activeness, pushed_at, last_commit_iso, last_release_iso, updated_at, summary

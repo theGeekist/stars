@@ -162,3 +162,35 @@ export type FetchLike = (
 	input: RequestInfo | URL,
 	init?: RequestInit,
 ) => Promise<Response>;
+/* ──────────────────────── mapping ────────────────────────── */
+export type StarEdge = {
+	starredAt: string;
+	node: {
+		id: string;
+		nameWithOwner: string;
+		url: string;
+		description?: string | null;
+		homepageUrl?: string | null;
+		stargazerCount?: number;
+		forkCount?: number;
+		issues?: { totalCount: number };
+		pullRequests?: { totalCount: number };
+		defaultBranchRef?: {
+			name?: string | null;
+			target?: { committedDate?: string } | null;
+		} | null;
+		primaryLanguage?: { name?: string | null } | null;
+		licenseInfo?: { spdxId?: string | null } | null;
+		isArchived?: boolean;
+		isDisabled?: boolean;
+		isFork?: boolean;
+		isMirror?: boolean;
+		hasIssuesEnabled?: boolean;
+		pushedAt?: string;
+		updatedAt?: string;
+		createdAt?: string;
+		repositoryTopics?: {
+			nodes?: Array<{ topic?: { name?: string | null } | null } | null>;
+		} | null;
+	};
+};

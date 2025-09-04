@@ -2,29 +2,55 @@ scoring:
   system: |
     You are a neutral curator for github repositories.
   fewshot: |
-    Examples (format matches schema):
+    Examples (format matches schema).
 
     Repo:
-    "CLI that cross-posts your blog posts to Dev.to, Hashnode and Medium; manages canonical URLs; adds UTM; syncs updates."
-
-    Expected JSON:
+    "Beatstore marketplace: upload & license beats, set pricing, cart/checkout, artist pages."
+    Response:
     {
       "scores": [
-        { "list": "self-marketing", "score": 0.8, "why": "Publishing & cross-posting are personal promotion workflows." },
-        { "list": "productivity", "score": 0.4, "why": "CLI automation helps, but promotion is the primary goal." },
-        { "list": "learning", "score": 0.0 }
+        { "list": "growth-monetization", "score": 0.9, "why": "Directly enables selling/licensing music for income." },
+        { "list": "content-publishing", "score": 0.5, "why": "Artists publish and showcase their work via storefront pages." }
       ]
     }
 
     Repo:
-    "Task-runner that automates image optimisation and builds; speeds up local dev commands; no publishing features."
-
-    Expected JSON:
+    "Self-hosted community platform: forums, chat, events, moderation, invites."
+    Response:
     {
       "scores": [
-        { "list": "productivity", "score": 0.9, "why": "Developer time-saver for day-to-day workflows." },
-        { "list": "self-marketing", "score": 0.1, "why": "Not focused on promoting an individual." },
-        { "list": "learning", "score": 0.0 }
+        { "list": "communication-community", "score": 0.9, "why": "Explicit community-building features like forums and chat." },
+        { "list": "project-collaboration", "score": 0.4, "why": "Moderation and events coordinate group activity." }
+      ]
+    }
+
+    Repo:
+    "Project-based 'Build a RAG app' course: 8 modules, exercises with solutions, evaluation harness."
+    Response:
+    {
+      "scores": [
+        { "list": "learning-resources", "score": 0.95, "why": "Structured curriculum with modules, exercises, and assessments." },
+        { "list": "ai-machine-learning", "score": 0.6, "why": "Focus on RAG/LLM techniques and evaluation." }
+      ]
+    }
+
+    Repo:
+    "Workflow engine with drag-and-drop editor: automate tasks across APIs, cron triggers, webhook listeners."
+    Response:
+    {
+      "scores": [
+        { "list": "automation-workflows", "score": 0.9, "why": "Low-code workflow automation with triggers and API integrations." },
+        { "list": "productivity-utilities", "score": 0.5, "why": "Simplifies repetitive multi-step actions for efficiency." }
+      ]
+    }
+
+    Repo:
+    "Headless CMS with GraphQL API, plugin system, and markdown blog support."
+    Response:
+    {
+      "scores": [
+        { "list": "content-publishing", "score": 0.9, "why": "CMS and blog features for publishing workflows." },
+        { "list": "business-commerce", "score": 0.3, "why": "Plugin system may extend into e-commerce integrations." }
       ]
     }
   criteria:

@@ -9,8 +9,8 @@ scoring:
     Response:
     {
       "scores": [
-        { "list": "monetise", "score": 0.9, "why": "Directly enables selling/licensing music for income." },
-        { "list": "self-marketing", "score": 0.5, "why": "Artist pages promote an individual's work." }
+        { "list": "growth-monetization", "score": 0.9, "why": "Directly enables selling/licensing music for income." },
+        { "list": "content-publishing", "score": 0.5, "why": "Artists publish and showcase their work via storefront pages." }
       ]
     }
 
@@ -19,8 +19,8 @@ scoring:
     Response:
     {
       "scores": [
-        { "list": "networking", "score": 0.9, "why": "Explicit community-building features." },
-        { "list": "team-management", "score": 0.4, "why": "Moderation and events coordinate group activity." }
+        { "list": "communication-community", "score": 0.9, "why": "Explicit community-building features like forums and chat." },
+        { "list": "project-collaboration", "score": 0.4, "why": "Moderation and events coordinate group activity." }
       ]
     }
 
@@ -29,19 +29,44 @@ scoring:
     Response:
     {
       "scores": [
-        { "list": "learning", "score": 0.95, "why": "Structured curriculum with modules, exercises, assessments." },
-        { "list": "ai", "score": 0.6, "why": "Focus on RAG/LLM techniques and evaluation." }
+        { "list": "learning-resources", "score": 0.95, "why": "Structured curriculum with modules, exercises, and assessments." },
+        { "list": "ai-machine-learning", "score": 0.6, "why": "Focus on RAG/LLM techniques and evaluation." }
+      ]
+    }
+
+    Repo:
+    "Workflow engine with drag-and-drop editor: automate tasks across APIs, cron triggers, webhook listeners."
+    Response:
+    {
+      "scores": [
+        { "list": "automation-workflows", "score": 0.9, "why": "Low-code workflow automation with triggers and API integrations." },
+        { "list": "productivity-utilities", "score": 0.5, "why": "Simplifies repetitive multi-step actions for efficiency." }
+      ]
+    }
+
+    Repo:
+    "Headless CMS with GraphQL API, plugin system, and markdown blog support."
+    Response:
+    {
+      "scores": [
+        { "list": "content-publishing", "score": 0.9, "why": "CMS and blog features for publishing workflows." },
+        { "list": "business-commerce", "score": 0.3, "why": "Plugin system may extend into e-commerce integrations." }
       ]
     }
   criteria: |
-    productivity = runnable automation or one-command multi-step actions. anything that makes life easier through automation or provides resources to the same.
-    monetise = concrete system/course to make money (bots, arbitrage, dropshipping, affiliate). explicit mentions of "free" resources also qualify.
-    networking = explicit community features or community based solutions (forums/events/social netowrking, communication) but "awesome" lists and aggregated content generally don't qualify.
-    ai = models/training/inference/eval or LLM/RAG pipelines and frameworks.
-    blockchain-finance = smart contracts, wallets, swaps, on-chain ops/analytics.
-    learning = course/curriculum with exercises or assessments, has direct links to resources, directly purposed to teach.
-    self-marketing = portfolio/blog for an individual; personal analytics. social networking, tools/projects/resources that help one to promote themselves
-    team-management = onboarding, rituals, approvals, shifts, project/OKR tools, thought leadership, leadership etc.
+    ai-machine-learning = models/training/inference/eval; llm/rag pipelines and frameworks; cv/nlp datasets and tools.
+    productivity-utilities = runnable automation or one-command multi-step actions; cli helpers; utilities that simplify workflows or daily tasks.
+    content-publishing = cms, blogs, static site generators, publishing engines, lms platforms, plugins/extensions that enable content creation/distribution.
+    interesting-to-explore = quirky, niche, or novel repos worth browsing; not directly actionable but thought-provoking or knowledge-rich.
+    learning-resources = course/curriculum with exercises/assessments; repos explicitly built to teach; direct educational resources.
+    valuable-resources = practical references, toolkits, cheatsheets, or aggregated knowledge with long-term use; non-niche utility.
+    communication-community = explicit community features (chat/forums/video/social networking/federated tools); tools built for interaction.
+    growth-monetization = concrete systems/courses to make money (bots, arbitrage, dropshipping, affiliate); repos explicitly tied to growth/marketing experiments; includes "free" monetisation resources.
+    business-commerce = open-source platforms for business ops: e-commerce, payments, billing, crm, erp; repos enabling financial transactions or store-building.
+    project-collaboration = task boards, pm tools, wikis, okrs, coordination platforms; repos designed to help teams work together.
+    automation-workflows = low-code/no-code integration tools; workflow automation engines; etl/data pipelines; self-hosted zapier-like projects.
+    blockchain-finance = smart contracts, wallets, swaps, defi protocols, on-chain ops/analytics; repos tied to blockchain + finance infra.
+    technical-thought-leadership = repos showcasing leadership practices, onboarding frameworks, rituals, okr systems, engineering culture; tools/resources tied to scaling teams or leading effectively.
 summarise:
   one_paragraph: |
     Write ONE paragraph (≤100 words) that explains the project in plain language 
