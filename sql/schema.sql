@@ -131,6 +131,27 @@ CREATE TABLE IF NOT EXISTS repo_topics (
 CREATE INDEX IF NOT EXISTS idx_repo_topics_repo ON repo_topics (repo_id);
 CREATE INDEX IF NOT EXISTS idx_repo_topics_topic ON repo_topics (topic);
 
+CREATE TABLE IF NOT EXISTS list_overrides (
+  list_id               INTEGER PRIMARY KEY REFERENCES list(id) ON DELETE CASCADE,
+  page_id               INTEGER,                 -- optional WP page bind
+  narrative_excerpt     TEXT,                    -- what you want shown above the list
+  display_topics_json   TEXT,                    -- JSON array of canonical topics to show for this list
+  default_sort          TEXT,                    -- e.g. 'stars-desc' | 'last-desc'
+  default_filters_json  TEXT,                    -- e.g. {"lang":"TypeScript","topic":"agents"}
+  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS repo_overrides (
+  repo_id               INTEGER PRIMARY KEY REFERENCES repo(id) ON DELETE CASCADE,
+  post_id               INTEGER,                 -- optional WP page bind
+  summary_override      TEXT,                    -- your curated prose (falls back to repo.summary)
+  install_steps_json    TEXT,                    -- {"steps":[{"kind":"shell","text":"bun install"},...]}
+  display_topics_json   TEXT,                    -- JSON array of canonical topics to show for this repo
+  updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_overrides_post_id ON repo_overrides(post_id);
+CREATE INDEX IF NOT EXISTS idx_list_overrides_page_id ON list_overrides(page_id);
 
 
 CREATE VIRTUAL TABLE IF NOT EXISTS repo_fts USING fts5(
