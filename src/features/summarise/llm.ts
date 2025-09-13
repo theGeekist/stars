@@ -73,7 +73,8 @@ async function selectContentChunks(
 ): Promise<string[]> {
 	const LARGE_README_CHARS = 25_000;
 	if (clean.length >= LARGE_README_CHARS && chunks.length > 6) {
-		const svc = deps?.embed ?? new OllamaService("all-minilm:l6-v2");
+		const svc =
+			deps?.embed ?? new OllamaService(Bun.env.OLLAMA_EMBEDDING_MODEL ?? "");
 		const query =
 			"what is this project, its core purpose, technical approach, and standout capability";
 		const [qv] = await svc.embedTexts([query]);

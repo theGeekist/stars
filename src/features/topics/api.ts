@@ -1,5 +1,7 @@
 // src/features/topics/api.ts
 import type { Database } from "bun:sqlite";
+import fs from "node:fs";
+import path from "node:path";
 import { log } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import { slugify } from "@lib/utils";
@@ -162,14 +164,12 @@ export function topicMetaMany(
 		log.warn("GH_EXPLORE_PATH not set; topicMetaMany will return nulls.");
 		return new Map(topics.map((t) => [slugify(String(t ?? "")), null]));
 	}
-
-	const fs = require("node:fs");
-	const path = require("node:path");
 	const out = new Map<string, TopicMeta | null>();
 
 	for (const raw of topics) {
 		const slug = slugify(String(raw ?? ""));
 		const mdPath = path.resolve(base, "topics", slug, "index.md");
+		console.log({ mdPath, exists: fs.existsSync(mdPath) });
 		if (!fs.existsSync(mdPath)) {
 			out.set(slug, null);
 			continue;
@@ -262,6 +262,7 @@ function frontMatterToMeta(
 	const fm = parseFM(fmText);
 	const aliases = Array.isArray(fm.aliases) ? (fm.aliases as string[]) : [];
 	const related = Array.isArray(fm.related) ? (fm.related as string[]) : [];
+	console.error({ aliases });
 
 	return {
 		name: slug,
