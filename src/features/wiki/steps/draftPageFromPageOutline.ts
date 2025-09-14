@@ -11,7 +11,7 @@ import type {
 	PageContext,
 	PageDraft,
 	PageOutline,
-	PipelineStep,
+	Step,
 } from "../types.ts";
 
 /** JSON Schema for the model output (object-only; service enforces conformance). */
@@ -38,7 +38,7 @@ function draftSystem(languageName = "English") {
 
 export function stepDraftFromPageOutline(
 	genModel?: string,
-): PipelineStep<
+): Step<
 	OutlinesOutput & { commitSha: string; webBaseUrl: string },
 	DraftsOutput
 > {

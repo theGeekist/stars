@@ -4,7 +4,7 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { PipelineStep, WikiOutput, WithRevision } from "../types.ts";
+import type { Step, WikiOutput, WithRevision } from "../types.ts";
 
 const pexec = promisify(execFile);
 
@@ -13,7 +13,7 @@ function deriveWebBase(ownerRepo: string): string {
 	return `https://github.com/${ownerRepo}`;
 }
 
-export function stepResolveRepoSha(): PipelineStep<WikiOutput, WithRevision> {
+export function stepResolveRepoSha(): Step<WikiOutput, WithRevision> {
 	return () => async (doc) => {
 		const { stdout } = await pexec("git", [
 			"-C",

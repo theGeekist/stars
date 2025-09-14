@@ -3,10 +3,10 @@ import type {
 	CrosslinkedOutput,
 	DraftsEnrichedOutput,
 	PageDraft,
-	PipelineStep,
+	Step,
 } from "../types.ts";
 
-export function stepCrosslinkSimple(): PipelineStep<
+export function stepCrosslinkSimple(): Step<
 	DraftsEnrichedOutput,
 	CrosslinkedOutput
 > {

@@ -4,7 +4,7 @@ import type {
 	DraftsOutput,
 	PageContext,
 	PageDraft,
-	PipelineStep,
+	Step,
 } from "../types.ts";
 
 function insertUnderSection(
@@ -86,10 +86,7 @@ function table<T extends object>(
 	return `${head}\n${body}`;
 }
 
-export function stepAutoExtracts(): PipelineStep<
-	DraftsOutput,
-	DraftsEnrichedOutput
-> {
+export function stepAutoExtracts(): Step<DraftsOutput, DraftsEnrichedOutput> {
 	return () => async (doc) => {
 		const ctxById = new Map<string, PageContext>(
 			doc.pagesContext.map((p) => [p.pageId, p]),

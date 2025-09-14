@@ -9,7 +9,7 @@ import type {
 	PageContext,
 	PageOutline,
 	PagesContextOutput,
-	PipelineStep,
+	Step,
 } from "../types.ts";
 
 /* ---------------------------- schema ---------------------------- */
@@ -96,7 +96,7 @@ function outlineUserPrompt(pc: PageContext, _languageName: string) {
 
 export function stepOutlineFromPageContext(
 	genModel?: string,
-): PipelineStep<PagesContextOutput, OutlinesOutput> {
+): Step<PagesContextOutput, OutlinesOutput> {
 	return (log) => async (doc) => {
 		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
 		const outlines: PageOutline[] = [];

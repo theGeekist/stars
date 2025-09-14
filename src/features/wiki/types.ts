@@ -1,7 +1,4 @@
-// Keep your imports as-is
-export type { PipelineStep } from "/Users/jasonnathan/Repos/questioneer/src/core/pipeline";
-
-/* ----------------------- Pre-wiki (your originals) ----------------------- */
+import type { PipelineStep, Logger } from "@jasonnathan/llm-core";
 
 export type RepoInput = {
 	repoUrlOrPath: string; // local path or URL
@@ -134,8 +131,8 @@ export type RetrievePerPageOpts = {
 export type WithRevision = WikiWithRevision;
 
 /* ============================================================================
-   Micro-pipeline types (ADD-ONLY; no breaking changes)
-   ============================================================================ */
+	 Micro-pipeline types (ADD-ONLY; no breaking changes)
+	 ============================================================================ */
 
 /** File relevance (per page) scored by the model. */
 export type PageFileRelevance = {
@@ -201,13 +198,13 @@ export type ComposedSection = {
 };
 
 /* Note: We do NOT export new pipeline-wide outputs here, because
-   the inner pipeline is encapsulated inside stepWritePages and returns
-   your existing DraftsOutput shape (OutlinesOutput & { drafts: PageDraft[] }).
+	 the inner pipeline is encapsulated inside stepWritePages and returns
+	 your existing DraftsOutput shape (OutlinesOutput & { drafts: PageDraft[] }).
 */
 
 /* ============================================================================
-   Selection decisions (inner pipeline; kept public so everything's in one place)
-   ============================================================================ */
+	 Selection decisions (inner pipeline; kept public so everything's in one place)
+	 ============================================================================ */
 
 export type CodeSelectionDecision = {
 	winner: "A" | "B";
@@ -270,3 +267,62 @@ export type PageComposed = PageNarrated & {
 	/** Final page markdown. */
 	markdown: string;
 };
+
+/* ============================================================================
+   LLM response shapes for stepWritePages (schema-driven)
+	 ============================================================================ */
+
+export type ScoreFilesOut = {
+	scores: Array<{ filePath: string; score: number; why?: string }>;
+};
+
+export type HeadingsOut = {
+	lead: string;
+	sections: Array<{ id: string; heading: string }>;
+};
+
+export type PlanSectionOut = {
+	must_cover: string[];
+	code_need_score: number;
+	expected_output?: string;
+	primary_files: string[];
+};
+
+export type SingleCodeOut = {
+	lang?: string;
+	text: string;
+	expected_output_alignment?: number;
+	rationale?: string;
+	sources?: string[];
+};
+
+export type SelectBetweenTwoOut = {
+	winner: "A" | "B";
+	why?: string;
+	winner_alignment?: number;
+};
+
+export type ConsolidateCodeOut = { lang?: string; text: string };
+
+export type ExplainCodeOut = { explanation: string; risks?: string[] };
+
+export type SingleNarrativeOut = {
+	heading: string;
+	paragraphs?: string[];
+	bullets?: string[];
+	include_code?: boolean;
+	sources?: string[];
+};
+
+export type ScoreNarrativesOut = {
+	scores: Array<{ index: number; score: number; why?: string }>;
+};
+
+export type ConsolidateNarrativeOut = {
+	heading: string;
+	paragraphs?: string[];
+	bullets?: string[];
+	include_code?: boolean;
+};
+
+export type Step<I, O> = PipelineStep<I, O, Logger>;

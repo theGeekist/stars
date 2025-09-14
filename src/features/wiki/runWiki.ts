@@ -1,8 +1,7 @@
 // src/features/wiki/runWiki.ts
-
-import { Logger } from "@jasonnathan/llm-core";
-import { pipeline } from "/Users/jasonnathan/Repos/questioneer/src/core/pipeline";
+import { Logger, pipeline } from "@jasonnathan/llm-core";
 import { stepAutoExtracts } from "./steps/autoExtracts";
+import { stepCheckpoint } from "./steps/checkpoint";
 import { stepChunk } from "./steps/chunk";
 import { stepCrosslinkSimple } from "./steps/crosslinkSimple";
 import { stepEmbedAndStore } from "./steps/embedAndStore";
@@ -13,11 +12,12 @@ import { stepRepairWiki } from "./steps/repairWiki";
 import { stepResolveRepo } from "./steps/resolveRepo";
 import { stepResolveRepoSha } from "./steps/resolveRepoSha";
 import { stepRetrieve } from "./steps/retrieve";
-import { stepWritePages } from "./steps/stepWritePages";
 import { stepRetrieveForPages } from "./steps/retrieveForPages";
+import { stepWritePages } from "./steps/stepWritePages";
 import { stepValidateAndPack } from "./steps/validateAndPack";
 import type { FilterOptions, RepoInput } from "./types.ts";
-import { stepCheckpoint } from "./steps/checkpoint";
+
+const logger = new Logger("./run-pipeline.md");
 
 export async function createWikiForRepo(
 	input: RepoInput & {
@@ -29,8 +29,7 @@ export async function createWikiForRepo(
 		useCosineChunker?: boolean;
 	},
 ) {
-	const logger = new Logger("./run-pipeline.md", Bun.env.NTFY_URL);
-	const p = pipeline<RepoInput>(logger)
+	const p = pipeline<Logger, RepoInput>(logger)
 		.addStep(stepResolveRepo(input.dbDir))
 		.addStep(stepReadDocs(input.filter))
 		.addStep(

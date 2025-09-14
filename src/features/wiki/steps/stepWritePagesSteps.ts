@@ -1,20 +1,30 @@
 // src/features/wiki/steps/stepWritePages.ts
 import type { OllamaService } from "@jasonnathan/llm-core";
 import type {
-	PipelineStep,
-	OutlineHeadings,
-	SectionPlan,
 	CodeCandidate,
 	CodeExplanation,
-	SectionCandidate,
-	PageInit,
-	PageScored,
-	PageHeaded,
-	PagePlanned,
+	ConsolidateCodeOut,
+	ConsolidateNarrativeOut,
+	ExplainCodeOut,
+	HeadingsOut,
+	OutlineHeadings,
 	PageCoded,
-	PageExplained,
-	PageNarrated,
 	PageComposed,
+	PageExplained,
+	PageHeaded,
+	PageInit,
+	PageNarrated,
+	PagePlanned,
+	PageScored,
+	Step,
+	PlanSectionOut,
+	ScoreFilesOut,
+	ScoreNarrativesOut,
+	SectionCandidate,
+	SectionPlan,
+	SelectBetweenTwoOut,
+	SingleCodeOut,
+	SingleNarrativeOut,
 } from "../types.js";
 
 /* =========================
@@ -378,14 +388,14 @@ function p6c_user_consolidateNarratives(
 /* =========================
    Helpers
    ========================= */
-function buildLinks(files: string[], base?: string, sha?: string): string {
+function _buildLinks(files: string[], base?: string, sha?: string): string {
 	const f = (files || []).slice(0, MAX_RELEVANT_LINKS);
 	if (base && sha)
 		return f.map((fp) => `- [${fp}](${base}/blob/${sha}/${fp})`).join("\n");
 	return f.map((fp) => `- ${fp}`).join("\n");
 }
 
-function renderSectionMD(
+function _renderSectionMD(
 	heading: string,
 	narrative: SectionCandidate | undefined,
 	code?: { text: string; lang?: string },
@@ -422,7 +432,7 @@ async function ask<T>(
 	system: string,
 	user: string,
 	schema: Record<string, unknown> | undefined,
-	check: (r: T) => T | boolean,
+	check: (r: unknown) => boolean,
 ): Promise<T> {
 	try {
 		return await svc.generatePromptAndSend<T>(
@@ -461,90 +471,96 @@ function guessLang(text: string): string | undefined {
 // ---------------- validators per prompt ----------------
 const checkScoreFiles =
 	(allowed: string[]) =>
-	<T extends { scores?: any }>(r: T) => {
-		const arr = Array.isArray(r?.scores) ? r.scores : [];
+	(r: unknown): r is ScoreFilesOut => {
+		const obj = r as { scores?: unknown };
+		const arr = Array.isArray(obj.scores) ? obj.scores : [];
 		// Accept empty if caller passed no files; else require >=1
 		if ((allowed?.length ?? 0) > 0 && arr.length === 0) return false;
-		for (const s of arr) {
+		for (const s of arr as Array<{ filePath?: unknown; score?: unknown }>) {
 			if (!s || typeof s.filePath !== "string") return false;
 			if (!Number.isFinite(Number(s.score))) return false;
 		}
-		return r;
+		return true;
 	};
-const checkHeadings = <T extends { lead?: any; sections?: any }>(r: T) => {
-	if (!Array.isArray(r?.sections) || r.sections.length === 0) return false;
-	for (const s of r.sections) {
+const checkHeadings = (r: unknown): r is HeadingsOut => {
+	const obj = r as { lead?: unknown; sections?: unknown };
+	if (!Array.isArray(obj.sections) || obj.sections.length === 0) return false;
+	for (const s of obj.sections as Array<{ id?: unknown; heading?: unknown }>) {
 		if (!s || typeof s.id !== "string" || typeof s.heading !== "string")
 			return false;
 	}
-	// lead can be empty; we fix later if needed
-	return r;
+	return true; // lead can be empty; we fix later
 };
-const checkPlanSection = <
-	T extends { must_cover?: any; code_need_score?: any; primary_files?: any },
->(
-	r: T,
-) => {
-	if (!Array.isArray(r?.must_cover) || r.must_cover.length === 0) return false;
-	if (!Number.isFinite(Number(r?.code_need_score))) return false;
-	if (!Array.isArray(r?.primary_files) || r.primary_files.length === 0)
+const checkPlanSection = (r: unknown): r is PlanSectionOut => {
+	const obj = r as {
+		must_cover?: unknown;
+		code_need_score?: unknown;
+		primary_files?: unknown;
+	};
+	if (!Array.isArray(obj.must_cover) || obj.must_cover.length === 0)
 		return false;
-	return r;
-};
-const checkSingleCode = <T extends { text?: any; lang?: any }>(r: T) => {
-	if (typeof r?.text !== "string" || r.text.trim().length < 3) return false;
-	if (!isCodeLike(r.text)) return false;
-	// lang may be missing or "en"—we'll guess later; still OK
-	return r;
-};
-const checkSelectBetweenTwo = <T extends { winner?: any }>(r: T) => {
-	if (r?.winner !== "A" && r?.winner !== "B") return false;
-	return r;
-};
-const checkConsolidateCode = <T extends { text?: any }>(r: T) => {
-	if (typeof r?.text !== "string" || r.text.trim().length < 3) return false;
-	return r;
-};
-const checkExplainCode = <T extends { explanation?: any }>(r: T) => {
-	if (typeof r?.explanation !== "string" || r.explanation.trim().length < 10)
+	if (!Number.isFinite(Number(obj.code_need_score))) return false;
+	if (!Array.isArray(obj.primary_files) || obj.primary_files.length === 0)
 		return false;
-	return r;
+	return true;
 };
-const checkSingleNarrative = <
-	T extends { heading?: any; paragraphs?: any; bullets?: any },
->(
-	r: T,
-) => {
-	if (typeof r?.heading !== "string" || r.heading.trim().length === 0)
+const checkSingleCode = (r: unknown): r is SingleCodeOut => {
+	const obj = r as { text?: unknown; lang?: unknown };
+	if (typeof obj.text !== "string" || obj.text.trim().length < 3) return false;
+	if (!isCodeLike(obj.text)) return false;
+	return true; // lang may be missing or "en"
+};
+const checkSelectBetweenTwo = (r: unknown): r is SelectBetweenTwoOut => {
+	const obj = r as { winner?: unknown };
+	return obj?.winner === "A" || obj?.winner === "B";
+};
+const checkConsolidateCode = (r: unknown): r is ConsolidateCodeOut => {
+	const obj = r as { text?: unknown };
+	return typeof obj.text === "string" && obj.text.trim().length >= 3;
+};
+const checkExplainCode = (r: unknown): r is ExplainCodeOut => {
+	const obj = r as { explanation?: unknown };
+	return (
+		typeof obj.explanation === "string" && obj.explanation.trim().length >= 10
+	);
+};
+const checkSingleNarrative = (r: unknown): r is SingleNarrativeOut => {
+	const obj = r as {
+		heading?: unknown;
+		paragraphs?: unknown;
+		bullets?: unknown;
+	};
+	if (typeof obj.heading !== "string" || obj.heading.trim().length === 0)
 		return false;
 	const hasBody =
-		(Array.isArray(r?.paragraphs) && r.paragraphs.length > 0) ||
-		(Array.isArray(r?.bullets) && r.bullets.length > 0);
-	if (!hasBody) return false;
-	return r;
+		(Array.isArray(obj.paragraphs) && obj.paragraphs.length > 0) ||
+		(Array.isArray(obj.bullets) && obj.bullets.length > 0);
+	return hasBody;
 };
-const checkScoreNarratives = <T extends { scores?: any }>(r: T) => {
-	if (!Array.isArray(r?.scores) || r.scores.length === 0) return false;
-	for (const s of r.scores) {
+const checkScoreNarratives = (r: unknown): r is ScoreNarrativesOut => {
+	const obj = r as { scores?: unknown };
+	if (!Array.isArray(obj.scores) || obj.scores.length === 0) return false;
+	for (const s of obj.scores as Array<{ index?: unknown; score?: unknown }>) {
 		if (
 			!Number.isFinite(Number(s?.index)) ||
 			!Number.isFinite(Number(s?.score))
 		)
 			return false;
 	}
-	return r;
+	return true;
 };
-const checkConsolidateNarrative = <T extends { heading?: any }>(r: T) => {
-	if (typeof r?.heading !== "string" || r.heading.trim().length === 0)
-		return false;
-	return r;
+const checkConsolidateNarrative = (
+	r: unknown,
+): r is ConsolidateNarrativeOut => {
+	const obj = r as { heading?: unknown };
+	return typeof obj.heading === "string" && obj.heading.trim().length > 0;
 };
 
 // ---------------- S1: score files ----------------
 export function s1_scoreFiles(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PageInit, PageScored> {
+): Step<PageInit, PageScored> {
 	return (log) => async (state) => {
 		const { page, pc } = state;
 		const files = pc.files ?? [];
@@ -577,7 +593,7 @@ export function s1_scoreFiles(
 export function s2_headings(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PageScored, PageHeaded> {
+): Step<PageScored, PageHeaded> {
 	return (log) => async (state) => {
 		const { page, pc, preferredFiles } = state;
 
@@ -606,7 +622,7 @@ export function s2_headings(
 export function s3_planSections(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PageHeaded, PagePlanned> {
+): Step<PageHeaded, PagePlanned> {
 	return (log) => async (state) => {
 		const { page, pc, preferredFiles, headings } = state;
 		const plans: SectionPlan[] = [];
@@ -650,7 +666,7 @@ const CLOSE_SCORE_DELTA = 10;
 export function s4_codeGenerateAndSelect(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PagePlanned, PageCoded> {
+): Step<PagePlanned, PageCoded> {
 	return (log) => async (state) => {
 		const { page, pc, plans } = state;
 		const codeBySection = new Map<string, CodeCandidate>();
@@ -774,26 +790,28 @@ export function s4_codeGenerateAndSelect(
 				continue;
 			}
 
+			// Both exist (narrow for TS)
+			if (!A || !B) continue;
 			// Both exist
 			const candA: CodeCandidate = {
 				candidateId: `${page.id}:${plan.sectionId}:CA`,
 				pageId: page.id,
 				sectionId: plan.sectionId,
-				lang: A!.lang,
-				text: A!.text,
-				expected_output_alignment: clamp01(A!.align ?? 0),
-				rationale: A!.rationale,
-				sources: A!.sources ?? [],
+				lang: A.lang,
+				text: A.text,
+				expected_output_alignment: clamp01(A.align ?? 0),
+				rationale: A.rationale,
+				sources: A.sources ?? [],
 			};
 			const candB: CodeCandidate = {
 				candidateId: `${page.id}:${plan.sectionId}:CB`,
 				pageId: page.id,
 				sectionId: plan.sectionId,
-				lang: B!.lang,
-				text: B!.text,
-				expected_output_alignment: clamp01(B!.align ?? 0),
-				rationale: B!.rationale,
-				sources: B!.sources ?? [],
+				lang: B.lang,
+				text: B.text,
+				expected_output_alignment: clamp01(B.align ?? 0),
+				rationale: B.rationale,
+				sources: B.sources ?? [],
 			};
 
 			let pick: "A" | "B" = "A";
@@ -900,7 +918,7 @@ export function s4_codeGenerateAndSelect(
 export function s5_explainCode(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PageCoded, PageExplained> {
+): Step<PageCoded, PageExplained> {
 	return () => async (state) => {
 		const { page, pc, codeBySection } = state;
 		const codeExplById = new Map<string, CodeExplanation>();
@@ -930,7 +948,7 @@ export function s5_explainCode(
 export function s6_narratives(
 	svc: OllamaService,
 	languageName: string,
-): PipelineStep<PageExplained, PageNarrated> {
+): Step<PageExplained, PageNarrated> {
 	return (log) => async (state) => {
 		const { page, pc, plans, codeBySection, codeExplById } = state;
 		const narrativesBySection = new Map<string, SectionCandidate>();
@@ -1040,7 +1058,7 @@ export function s6_narratives(
 }
 
 // ---------------- S7 (compose) stays the same; no LLM call ----------------
-export function s7_composeMarkdown(): PipelineStep<PageNarrated, PageComposed> {
+export function s7_composeMarkdown(): Step<PageNarrated, PageComposed> {
 	return () => async (state) => {
 		const {
 			doc,

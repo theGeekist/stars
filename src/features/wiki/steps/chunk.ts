@@ -5,7 +5,7 @@ import {
 	OllamaService,
 } from "@jasonnathan/llm-core";
 import { getEncoding } from "js-tiktoken";
-import type { ChunkOutput, Doc, PipelineStep, ReadOutput } from "../types.ts";
+import type { ChunkOutput, Doc, Step, ReadOutput } from "../types.ts";
 
 const enc = getEncoding("cl100k_base");
 const tok = (s: string) => {
@@ -44,7 +44,7 @@ function greedyTokenChunks(
 export function stepChunk(
 	useCosine = true,
 	embedModel: string,
-): PipelineStep<ReadOutput, ChunkOutput> {
+): Step<ReadOutput, ChunkOutput> {
 	return (log) => async (doc) => {
 		const out: Doc[] = [];
 

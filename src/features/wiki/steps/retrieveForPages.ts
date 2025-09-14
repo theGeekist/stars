@@ -7,7 +7,7 @@ import { getEncoding } from "js-tiktoken";
 import type {
 	PageContext,
 	PagesContextOutput,
-	PipelineStep,
+	Step,
 	RetrievePerPageOpts,
 	StoreOutput,
 	WikiPage,
@@ -34,7 +34,7 @@ function pageQuery(page: WikiPage): string {
 
 export function stepRetrieveForPages(
 	options: RetrievePerPageOpts,
-): PipelineStep<WithRevision, PagesContextOutput> {
+): Step<WithRevision, PagesContextOutput> {
 	const { k = 24, perFileLimit = 3, budget, embedModel } = options;
 
 	return (log) => async (doc) => {

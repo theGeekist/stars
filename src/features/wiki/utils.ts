@@ -1,4 +1,4 @@
-import { mkdir } from "fs/promises";
+import { mkdir } from "node:fs/promises";
 
 // small file helpers ---------------------------------------------------------
 export async function ensureDir(dir: string) {

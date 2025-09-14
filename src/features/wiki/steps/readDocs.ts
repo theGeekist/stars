@@ -7,7 +7,7 @@ import { getEncoding } from "js-tiktoken";
 import type {
 	Doc,
 	FilterOptions,
-	PipelineStep,
+	Step,
 	ReadOutput,
 	ResolvedRepo,
 } from "../types.ts";
@@ -129,7 +129,7 @@ function sampleLarge(text: string, tokenCap: number): string {
 
 export function stepReadDocs(
 	filter: FilterOptions = {},
-): PipelineStep<ResolvedRepo, ReadOutput> {
+): Step<ResolvedRepo, ReadOutput> {
 	return (log) => async (doc) => {
 		const useIncl = Boolean(
 			filter.includedDirs?.length || filter.includedFiles?.length,

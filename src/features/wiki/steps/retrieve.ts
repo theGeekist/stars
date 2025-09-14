@@ -1,7 +1,7 @@
 // src/features/wiki/steps/retrieve.ts
 import { OllamaService } from "@jasonnathan/llm-core";
 import { getEncoding } from "js-tiktoken";
-import type { PipelineStep, RetrievalOutput, StoreOutput } from "../types";
+import type { Step, RetrievalOutput, StoreOutput } from "../types";
 import { searchStore } from "./embedAndStore";
 
 const enc = getEncoding("cl100k_base");
@@ -25,7 +25,7 @@ export function stepRetrieve(options: {
 	promptReserve?: number; // default 300
 	/** extra margin to cover tokenizer mismatch (e.g., LLaMA vs cl100k) */
 	safetyMarginPct?: number; // default 0.05 (5%)
-}): PipelineStep<StoreOutput, RetrievalOutput> {
+}): Step<StoreOutput, RetrievalOutput> {
 	const {
 		query = "what is this project, its core purpose, technical approach, and standout capability",
 		k = 32,

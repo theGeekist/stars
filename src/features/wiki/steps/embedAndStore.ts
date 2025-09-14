@@ -6,14 +6,14 @@ import { OllamaService } from "@jasonnathan/llm-core";
 import type {
 	ChunkOutput,
 	Doc,
-	PipelineStep,
+	Step,
 	RetrieverHit,
 	StoreOutput,
 } from "../types.ts";
 
 export function stepEmbedAndStore(
 	embedModel: string,
-): PipelineStep<ChunkOutput, StoreOutput> {
+): Step<ChunkOutput, StoreOutput> {
 	return (log) => async (doc) => {
 		const svc = new OllamaService(embedModel);
 		const vecs = await svc.embedTexts(doc.chunks.map((c) => c.text));

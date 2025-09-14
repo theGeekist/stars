@@ -2,9 +2,9 @@
 
 import { readFile } from "node:fs/promises";
 import { OllamaService } from "@jasonnathan/llm-core";
-import type { PipelineStep, StoreDoc, WikiOutput } from "../types";
 import { slugify } from "@lib/utils";
-import { uniq, isNumArray, basename } from "../utils";
+import type { Step, StoreDoc, WikiOutput } from "../types";
+import { basename, isNumArray, uniq } from "../utils";
 
 function existsInStore(files: string[], store: StoreDoc[]) {
 	const set = new Set(store.map((d) => d.meta.filePath));
@@ -277,7 +277,7 @@ export function stepPolishWiki(options: {
 	maxRelated?: number;
 	readmePenalty?: number;
 	maxReadmeGlobal?: number;
-}): PipelineStep<WikiOutput, WikiOutput> {
+}): Step<WikiOutput, WikiOutput> {
 	const {
 		embedModel,
 		maxFilesPerPage = 4,

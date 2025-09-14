@@ -1,11 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PipelineStep } from "../types.ts";
+import type { Step } from "../types.ts";
 
 export function stepCheckpoint<T>(
 	label: string,
 	dir = ".wiki_runs",
-): PipelineStep<T, T> {
+): Step<T, T> {
 	return (log) => async (doc) => {
 		const runId =
 			(doc as any).commitSha || new Date().toISOString().replace(/[:.]/g, "-");

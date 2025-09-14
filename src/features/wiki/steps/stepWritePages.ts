@@ -1,17 +1,17 @@
 // src/features/wiki/steps/stepWritePages.ts
-import { OllamaService, Logger } from "@jasonnathan/llm-core";
+
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { pipeline } from "/Users/jasonnathan/Repos/questioneer/src/core/pipeline";
+import { Logger, OllamaService, pipeline } from "@jasonnathan/llm-core";
 import type {
-	PipelineStep,
-	PagesContextOutput,
 	DraftsOutput,
+	PageComposed,
 	PageDraft,
 	PageInit,
-	PageComposed,
+	PagesContextOutput,
+	Step,
 } from "../types.ts";
-
+import { ensureDir } from "../utils.js";
 import {
 	s1_scoreFiles,
 	s2_headings,
@@ -21,7 +21,6 @@ import {
 	s6_narratives,
 	s7_composeMarkdown,
 } from "./stepWritePagesSteps";
-import { ensureDir } from "../utils.js";
 
 async function saveSnapshot(dir: string, name: string, payload: unknown) {
 	await ensureDir(dir);
@@ -72,7 +71,7 @@ const pickState = {
 
 export function stepWritePages(
 	genModel?: string,
-): PipelineStep<PagesContextOutput, DraftsOutput> {
+): Step<PagesContextOutput, DraftsOutput> {
 	return (log) => async (doc) => {
 		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
 		const drafts: PageDraft[] = [];
@@ -103,7 +102,7 @@ export function stepWritePages(
 			// helper to wrap and save after each step
 			const wrapWithSave = <I, O>(
 				label: keyof typeof pickState,
-				step: PipelineStep<I, O>,
+				step: Step<I, O>,
 			) =>
 				((lg) => async (state: I) => {
 					const out = await step(lg)(state);
@@ -119,10 +118,10 @@ export function stepWritePages(
 						);
 					}
 					return out;
-				}) as PipelineStep<I, O>;
+				}) as Step<I, O>;
 
 			try {
-				const inner = pipeline<PageInit>(innerLogger)
+				const inner = pipeline<Logger, PageInit>(innerLogger)
 					.addStep(wrapWithSave("s1", s1_scoreFiles(svc, doc.languageName)))
 					.addStep(wrapWithSave("s2", s2_headings(svc, doc.languageName)))
 					.addStep(wrapWithSave("s3", s3_planSections(svc, doc.languageName)))

@@ -1,11 +1,7 @@
 // src/features/wiki/steps/validateAndPack.ts
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-	CrosslinkedOutput,
-	PackedOutput,
-	PipelineStep,
-} from "../types.ts";
+import type { CrosslinkedOutput, PackedOutput, Step } from "../types.ts";
 
 function hasTopHeading(md: string): boolean {
 	return /^#\s+.+/m.test(md);
@@ -17,7 +13,7 @@ function fencesBalanced(md: string): boolean {
 
 export function stepValidateAndPack(
 	distDir = "dist/wiki",
-): PipelineStep<CrosslinkedOutput & { commitSha: string }, PackedOutput> {
+): Step<CrosslinkedOutput & { commitSha: string }, PackedOutput> {
 	return (log) => async (doc) => {
 		const ids = new Set<string>();
 		for (const p of doc.wiki.pages) {

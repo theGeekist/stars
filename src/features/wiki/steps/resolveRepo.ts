@@ -3,7 +3,8 @@ import { exec } from "node:child_process";
 import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { PipelineStep, RepoInput, ResolvedRepo } from "../types.ts";
+import type { Logger } from "@jasonnathan/llm-core";
+import type { RepoInput, ResolvedRepo, Step } from "../types.ts";
 
 const sh = promisify(exec);
 
@@ -39,8 +40,9 @@ async function exists(path: string) {
 
 export function stepResolveRepo(
 	rootDir: string,
-): PipelineStep<RepoInput, ResolvedRepo> {
-	return (log) => async (doc) => {
+): Step<RepoInput, ResolvedRepo> {
+	return (ctx) => async (doc) => {
+		const log = ctx as Logger;
 		const dbFile = join(doc.dbDir, `${doc.dbName}.json`);
 		await mkdir(doc.dbDir, { recursive: true });
 

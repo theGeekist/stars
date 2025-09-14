@@ -1,12 +1,6 @@
 // src/features/wiki/steps/generateWiki.ts
-import { OllamaService, Logger } from "@jasonnathan/llm-core";
-import { pipeline } from "/Users/jasonnathan/Repos/questioneer/src/core/pipeline";
-import type {
-	PipelineStep,
-	RetrievalOutput,
-	WikiJSON,
-	WikiOutput,
-} from "../types.ts";
+import { Logger, OllamaService, pipeline } from "@jasonnathan/llm-core";
+import type { RetrievalOutput, WikiJSON, WikiOutput, Step } from "../types.ts";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Original final schema (unchanged)                                          */
@@ -307,7 +301,7 @@ function s1_seedPages(
 	svc: OllamaService,
 	pagesTarget: number,
 	comprehensive: boolean,
-): PipelineStep<RetrievalOutput, S1> {
+): Step<RetrievalOutput, S1> {
 	return (log) => async (doc) => {
 		const system = sys(doc.languageName);
 		const seed = await ask<PagesSeed>(
@@ -329,7 +323,7 @@ function s1_seedPages(
 	};
 }
 
-function s2_attachRelevantFiles(svc: OllamaService): PipelineStep<S1, S2> {
+function s2_attachRelevantFiles(svc: OllamaService): Step<S1, S2> {
 	return (log) => async (state) => {
 		const { _seed } = state;
 		const system = sys(state.languageName);
@@ -370,7 +364,7 @@ function s2_attachRelevantFiles(svc: OllamaService): PipelineStep<S1, S2> {
 function s3_sectionsIfNeeded(
 	svc: OllamaService,
 	comprehensive: boolean,
-): PipelineStep<S2, S3> {
+): Step<S2, S3> {
 	return (log) => async (state) => {
 		if (!comprehensive) return { ...state };
 		const system = sys(state.languageName);
@@ -392,7 +386,7 @@ function s3_sectionsIfNeeded(
 	};
 }
 
-function s4_stitch(): PipelineStep<S3, WikiOutput> {
+function s4_stitch(): Step<S3, WikiOutput> {
 	return (_log) => async (state) => {
 		const normalizedSections = state._sections?.map((s) => {
 			const out: {
@@ -438,12 +432,12 @@ export function stepGenerateWiki(
 	pagesTarget: number,
 	comprehensive: boolean,
 	genModel?: string,
-): PipelineStep<RetrievalOutput, WikiOutput> {
+): Step<RetrievalOutput, WikiOutput> {
 	return (_log) => async (doc) => {
 		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
 		const innerLogger = new Logger("./run-generate-wiki.md", Bun.env.NTFY_URL);
 
-		const inner = pipeline<RetrievalOutput>(innerLogger)
+		const inner = pipeline<Logger, RetrievalOutput>(innerLogger)
 			.addStep(s1_seedPages(svc, pagesTarget, comprehensive))
 			.addStep(s2_attachRelevantFiles(svc))
 			.addStep(s3_sectionsIfNeeded(svc, comprehensive))

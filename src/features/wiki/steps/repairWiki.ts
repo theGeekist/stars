@@ -1,10 +1,10 @@
 // src/pipeline/steps/repairWiki.ts
 
 import { readFile } from "node:fs/promises";
-import type { PipelineStep, StoreDoc, WikiOutput } from "../types";
-import { slugify } from "@lib/utils";
-import { uniq } from "../utils";
 import { gen } from "@lib/ollama";
+import { slugify } from "@lib/utils";
+import type { Step, StoreDoc, WikiOutput } from "../types";
+import { uniq } from "../utils";
 
 /* ────────────── utils ────────────── */
 function looksLikeTOC(title: string) {
@@ -284,7 +284,7 @@ export function stepRepairWiki(options?: {
 	maxFilesPerPage?: number;
 	fillDescriptions?: boolean; // one-liner LLM pass (optional)
 	descModel?: string;
-}): PipelineStep<WikiOutput, WikiOutput> {
+}): Step<WikiOutput, WikiOutput> {
 	const {
 		maxFilesPerPage = 4,
 		fillDescriptions = false,
@@ -330,7 +330,7 @@ export function stepRepairWiki(options?: {
 		// 3) optional single-line descriptions (tiny model hit; safe to skip)
 		if (fillDescriptions) {
 			// Custom check to force a clean single sentence (no JSON, no code)
-			const checkLine = (out: string) => {
+			const _checkLine = (out: string) => {
 				if (typeof out !== "string") return false;
 				const s = out.trim();
 				if (!s) return false;
