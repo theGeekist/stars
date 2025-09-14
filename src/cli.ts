@@ -15,7 +15,7 @@ import { runLists, runRepos, runStars, runUnlisted } from "@src/cli-stars";
 import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
 import ingest from "@src/ingest";
 import { enrichAllRepoTopics } from "@src/topics";
-import { topicsReport } from "@src/topics-report";
+import { type AliasesMode, topicsReport } from "@src/topics-report";
 
 /* ----------------------------- Usage banner ----------------------------- */
 initBootstrap();
@@ -32,9 +32,10 @@ function usage(): void {
 		"gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]",
 		"gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)",
 		"gk-stars topics:enrich [--active] [--ttl <days>]",
-		"gk-stars topics:report [--missing] [--recent] [--json] [--full]",
+		"gk-stars topics:report [--missing] [--recent] [--json] [--full] [--aliases=none|count|preview|full] [--aliasLimit N]",
 		"gk-stars setup  # generate prompts.yaml from your GitHub lists",
 	]);
+
 	log.line("");
 
 	log.subheader("Quick flags");
@@ -119,7 +120,7 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 	ensurePromptsReadyOrExit();
 	const s = parseSimpleArgs(argv);
 	let resume: number | "last" | undefined;
-	let notes: string | undefined;
+	let _notes: string | undefined;
 	let fresh = false;
 	let dry = s.dry;
 	for (let i = 1; i < args.length; i++) {
@@ -133,11 +134,6 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 					: Number.isFinite(Number(v))
 						? Number(v)
 						: undefined;
-			continue;
-		}
-		if (a === "--notes" && args[i + 1]) {
-			i += 1;
-			notes = args[i];
 			continue;
 		}
 		if (a === "--fresh" || a === "--from-scratch") {
@@ -156,7 +152,7 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
-			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${notes ? " notes=..." : ""}`,
+			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}`,
 		);
 		await scoreBatchAll(limit, apply);
 	}
@@ -209,11 +205,40 @@ function handleTopicsEnrich(args: string[]): void {
 }
 
 async function handleTopicsReport(args: string[]): Promise<void> {
-	const showMissing = args.includes("--missing");
-	const showRecent = args.includes("--recent");
-	const json = args.includes("--json");
-	const full = args.includes("--full");
-	await topicsReport({ full, showMissing, showRecent, json });
+	const has = (flag: string) => args.includes(flag);
+	const getArg = (name: string, def?: string) => {
+		const m = args.find((a) => a.startsWith(`${name}=`));
+		return m ? m.split("=")[1] : def;
+	};
+
+	const showMissing = has("--missing");
+	const showRecent = has("--recent");
+	const json = has("--json");
+	const full = has("--full");
+
+	const aliasesRaw = (
+		getArg("--aliases", "preview") ?? "preview"
+	).toLowerCase();
+	const aliasesMode: AliasesMode =
+		aliasesRaw === "none" ||
+		aliasesRaw === "count" ||
+		aliasesRaw === "preview" ||
+		aliasesRaw === "full"
+			? (aliasesRaw as AliasesMode)
+			: "preview";
+
+	const aliasLimitNum = Number(getArg("--aliasLimit", "5"));
+	const aliasLimit =
+		Number.isFinite(aliasLimitNum) && aliasLimitNum > 0 ? aliasLimitNum : 5;
+
+	await topicsReport({
+		full,
+		showMissing,
+		showRecent,
+		json,
+		aliasesMode,
+		aliasLimit,
+	});
 }
 
 async function handleSetup(): Promise<void> {

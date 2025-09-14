@@ -7,3 +7,6 @@ exports
 exports-test
 repolists*
 app.md
+run-generate-wiki.md
+.gitignore
+run-pipeline.md

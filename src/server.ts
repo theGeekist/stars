@@ -1,4 +1,6 @@
 import type { Statement } from "bun:sqlite";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { getDefaultDb } from "@lib/db";
 import { createLogger } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
@@ -10,6 +12,21 @@ let qListBySlug!: Statement<ListDetail, [slug: string]>;
 let qReposForList!: Statement<RepoRow, [list_id: number]>;
 let qSearchFts!: Statement<RepoRow, [q: string]>;
 let qSearchLike!: Statement<RepoRow, [q1: string, q2: string]>;
+let qCountLists!: Statement<{ n: number }, []>;
+let qCountRepos!: Statement<{ n: number }, []>;
+let qCountSummarised!: Statement<{ n: number }, []>;
+let qCountScored!: Statement<{ n: number }, []>;
+let qPerListCounts!: Statement<{ slug: string; name: string; n: number }, []>;
+
+// --- SSE log state ---
+type SseClient = {
+	controller: ReadableStreamDefaultController<Uint8Array>;
+	iv: ReturnType<typeof setInterval>;
+};
+const sseClients = new Set<SseClient>();
+const encoder = new TextEncoder();
+const logHistory: string[] = [];
+const MAX_HISTORY = 1000;
 
 function mapRepoRow(row: RepoRow): ApiRepo {
 	return {
@@ -52,6 +69,21 @@ function prepareQueries(): void {
     ORDER BY popularity DESC
     LIMIT 100
   `);
+
+	qCountLists = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM list`);
+	qCountRepos = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM repo`);
+	qCountSummarised = db.query<{ n: number }, []>(
+		`SELECT COUNT(*) AS n FROM repo WHERE summary IS NOT NULL AND TRIM(summary) <> ''`,
+	);
+	qCountScored = db.query<{ n: number }, []>(
+		`SELECT COUNT(DISTINCT repo_id) AS n FROM repo_list_score`,
+	);
+	qPerListCounts = db.query<{ slug: string; name: string; n: number }, []>(
+		`SELECT l.slug AS slug, l.name AS name, COUNT(lr.repo_id) AS n
+         FROM list l LEFT JOIN list_repo lr ON l.id = lr.list_id
+         GROUP BY l.id
+         ORDER BY l.name`,
+	);
 }
 
 function json(res: unknown, init?: number | ResponseInit): Response {
@@ -100,6 +132,174 @@ function handleSearch(q: string): Response {
 	return json(repos);
 }
 
+/* ------------------------- Dashboard counts (JSON + DB) ------------------------- */
+
+type DashboardCounts = {
+	json: { lists: number; repos: number; unlisted: number };
+	db: {
+		lists: number;
+		repos: number;
+		summarised: number;
+		scored: number;
+		perList: Array<{ slug: string; name: string; repos: number }>;
+	};
+};
+
+function safeParse<T>(path: string, fallback: T): T {
+	try {
+		if (existsSync(path)) {
+			const raw = readFileSync(path, "utf8");
+			return JSON.parse(raw) as T;
+		}
+	} catch {
+		// ignore
+	}
+	return fallback;
+}
+
+function computeJsonCounts(dir: string): {
+	lists: number;
+	repos: number;
+	unlisted: number;
+} {
+	const base = resolve(dir || "./exports");
+	// lists: <dir>/index.json (array of list summaries with count)
+	const listIndex = safeParse<Array<{ count?: number }>>(
+		join(base, "index.json"),
+		[],
+	);
+	const lists = Array.isArray(listIndex) ? listIndex.length : 0;
+	const repos = Array.isArray(listIndex)
+		? listIndex.reduce((acc, it) => acc + (Number(it?.count ?? 0) || 0), 0)
+		: 0;
+	// unlisted: <dir>/unlisted.json (array)
+	const unlistedArr = safeParse<unknown[]>(join(base, "unlisted.json"), []);
+	const unlisted = Array.isArray(unlistedArr) ? unlistedArr.length : 0;
+	return { lists, repos, unlisted };
+}
+
+function computeDbCounts(): DashboardCounts["db"] {
+	const lists = qCountLists.get()?.n ?? 0;
+	const repos = qCountRepos.get()?.n ?? 0;
+	const summarised = qCountSummarised.get()?.n ?? 0;
+	const scored = qCountScored.get()?.n ?? 0;
+	const perList = qPerListCounts
+		.all()
+		.map((r) => ({ slug: r.slug, name: r.name, repos: r.n }));
+	return { lists, repos, summarised, scored, perList };
+}
+
+function handleDashboard(dir?: string): Response {
+	const jsonCounts = computeJsonCounts(dir ?? "./exports");
+	const dbCounts = computeDbCounts();
+	const data: DashboardCounts = { json: jsonCounts, db: dbCounts };
+	return json(data);
+}
+
+/* ------------------------------ Task runners ------------------------------ */
+
+type RunResult =
+	| { ok: true; pid: number; cmd: string[] }
+	| { ok: false; error: string };
+
+function sseBroadcast(line: string): void {
+	logHistory.push(line);
+	if (logHistory.length > MAX_HISTORY)
+		logHistory.splice(0, logHistory.length - MAX_HISTORY);
+	const payload = encoder.encode(`data: ${line}\n\n`);
+	for (const c of sseClients) {
+		try {
+			c.controller.enqueue(payload);
+		} catch {
+			// ignore broken pipes
+		}
+	}
+}
+
+function streamLines(
+	stream: ReadableStream<Uint8Array>,
+	onLine: (l: string) => void,
+): void {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let buf = "";
+	(async () => {
+		try {
+			while (true) {
+				const { value, done } = await reader.read();
+				if (done) break;
+				if (!value) continue;
+				buf += decoder.decode(value, { stream: true });
+				let idx: number = buf.indexOf("\n");
+				while (idx !== -1) {
+					const line = buf.slice(0, idx).replace(/\r$/, "");
+					onLine(line);
+					buf = buf.slice(idx + 1);
+					idx = buf.indexOf("\n");
+				}
+			}
+			if (buf) onLine(buf);
+		} catch (e) {
+			onLine(`[stream-error] ${e instanceof Error ? e.message : String(e)}`);
+		}
+	})();
+}
+
+function startProcess(task: string, args: string[]): RunResult {
+	try {
+		const startedAt = new Date().toISOString();
+		const p = Bun.spawn({ cmd: args, stdout: "pipe", stderr: "pipe" });
+		sseBroadcast(
+			`[start] ${startedAt} pid=${p.pid} task=${task} cmd=${args.join(" ")}`,
+		);
+		if (p.stdout)
+			streamLines(p.stdout, (l) => sseBroadcast(`[${task}|out] ${l}`));
+		if (p.stderr)
+			streamLines(p.stderr, (l) => sseBroadcast(`[${task}|err] ${l}`));
+		p.exited
+			.then((code) => {
+				sseBroadcast(`[end] pid=${p.pid} task=${task} code=${code}`);
+			})
+			.catch((e) => {
+				sseBroadcast(
+					`[end-error] pid=${p.pid} task=${task} err=${e instanceof Error ? e.message : String(e)}`,
+				);
+			});
+		return { ok: true, pid: p.pid, cmd: args };
+	} catch (e) {
+		return { ok: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+function handleRun(path: string, dir?: string): Response {
+	const d = dir ?? undefined;
+	const base = ["bun", "run", "src/cli.ts"];
+	let args: string[] | undefined;
+	switch (path) {
+		case "unlisted":
+			args = d ? [...base, "unlisted", "--dir", d] : [...base, "unlisted"];
+			break;
+		case "lists":
+			args = d ? [...base, "lists", "--dir", d] : [...base, "lists"];
+			break;
+		case "ingest":
+			args = d ? [...base, "ingest", "--dir", d] : [...base, "ingest"];
+			break;
+		case "summarise":
+			args = [...base, "summarise", "--all", "--apply"];
+			break;
+		case "score":
+			args = [...base, "score", "--all", "--apply"];
+			break;
+		case "topics:enrich":
+			args = [...base, "topics:enrich"];
+			break;
+	}
+	if (!args) return json({ error: "Unknown task" }, 400);
+	const res = startProcess(path, args);
+	return json(res, res.ok ? 202 : 500);
+}
+
 Bun.serve({
 	port: 8787,
 	fetch(req) {
@@ -108,11 +308,78 @@ Bun.serve({
 			const { pathname } = url;
 
 			if (pathname === "/health") return handleHealth();
+			if (pathname === "/dashboard") {
+				const dir = url.searchParams.get("dir") ?? undefined;
+				return handleDashboard(dir);
+			}
+			if (pathname === "/logs") {
+				const stream = new ReadableStream<Uint8Array>({
+					start(controller) {
+						const client: SseClient = {
+							controller,
+							iv: setInterval(() => {
+								try {
+									controller.enqueue(encoder.encode(": keepalive\n\n"));
+								} catch {
+									// ignore
+								}
+							}, 15000),
+						};
+						sseClients.add(client);
+						controller.enqueue(encoder.encode(": connected\n\n"));
+						for (const line of logHistory)
+							controller.enqueue(encoder.encode(`data: ${line}\n\n`));
+					},
+					cancel() {
+						// On client close, remove the first client (ours)
+						for (const c of sseClients) {
+							clearInterval(c.iv);
+							sseClients.delete(c);
+							break;
+						}
+					},
+				});
+				return new Response(stream, {
+					headers: {
+						"content-type": "text/event-stream; charset=utf-8",
+						"cache-control": "no-cache",
+						connection: "keep-alive",
+					},
+				});
+			}
 			if (pathname === "/lists") return handleGetLists();
 			if (pathname.startsWith("/list/"))
 				return handleGetListBySlug(pathname.replace("/list/", "").trim());
 			if (pathname === "/search")
 				return handleSearch(url.searchParams.get("q") ?? "");
+			if (pathname.startsWith("/run/")) {
+				if (req.method !== "POST")
+					return json({ error: "Method not allowed" }, 405);
+				const task = pathname.slice("/run/".length);
+				const dir = url.searchParams.get("dir") ?? undefined;
+				return handleRun(task, dir);
+			}
+
+			// Static UI assets from ./public
+			const filePath =
+				pathname === "/" ? "index.html" : pathname.replace(/^\//, "");
+			const abs = resolve("public", filePath);
+			if (existsSync(abs)) {
+				const file = Bun.file(abs);
+				const contentType = filePath.endsWith(".html")
+					? "text/html; charset=utf-8"
+					: filePath.endsWith(".js")
+						? "text/javascript; charset=utf-8"
+						: filePath.endsWith(".css")
+							? "text/css; charset=utf-8"
+							: undefined;
+				return new Response(
+					file,
+					contentType
+						? { headers: { "content-type": contentType } }
+						: undefined,
+				);
+			}
 
 			return notFound();
 		} catch (err) {
