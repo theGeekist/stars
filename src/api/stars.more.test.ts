@@ -29,6 +29,8 @@ async function* gen<T>(arr: T[]) {
 describe("api/stars additional coverage", () => {
 	test("runReposCore prints JSON", async () => {
 		const { logger, payloads } = makeJsonLogger();
+		// Ensure token present so ensureToken() path doesn't exit
+		Bun.env.GITHUB_TOKEN = "x";
 		const deps = {
 			getReposFromList: (_t: string, _name: string) =>
 				Promise.resolve([{ nameWithOwner: "o/r", stars: 1, url: "u" }]),
