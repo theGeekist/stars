@@ -4,104 +4,67 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stars Dashboard</title>
-    <style>
-      :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; color-scheme: light dark; }
-      body { margin: 2rem; line-height: 1.5; height: 100vh; overflow: hidden; }
-      .topbar { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; }
-      @media (max-width: 900px) { .topbar { grid-template-columns: 1fr; } }
-      .top-left { display: grid; gap: .6rem; align-content: start; }
-      .top-right { display: flex; align-items: center; justify-content: flex-end; }
-      h1 { margin: 0 0 1rem; font-size: 1.5rem; }
-      .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-      input[type="text"] { padding: .4rem .6rem; min-width: 20rem; }
-      button { padding: .38rem .7rem; cursor: pointer; border: 1px solid #8884; background: #ffffff10; color: inherit; border-radius: 4px; }
-      .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; margin-top: 1rem; }
-      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
-      .col { min-width: 0; }
-      .group { margin: .6rem 0; }
-      .group-title { font-size: .9rem; opacity: .75; margin: 0 0 .4rem; }
-      .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 2rem; align-items: end; }
-      .stats2x5 { display:grid; grid-template-columns: var(--label-col, 260px) repeat(4, 1fr); column-gap: 2rem; row-gap: .8rem; align-items: end; }
-      .metric { display: grid; grid-template-rows: auto auto; min-height: 2.4rem; }
-      .label { font-size: .9rem; opacity: .75; }
-      .value { font-size: 1.4rem; font-weight: 700; line-height: 1.1; text-align: right; font-variant-numeric: tabular-nums; transition: color .2s ease, transform .2s ease; will-change: color, transform; }
-      .metric.empty { visibility: hidden; }
-      .value.flash-up { color: #16a34a; transform: scale(1.06); }
-      .value.flash-down { color: #f59e0b; transform: scale(1.06); }
-      /* old table styles removed */
-      .muted { opacity: .7; }
-      .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-      .actions button { border-radius: 4px; }
-      .status { margin-left: .5rem; font-size: .9rem; }
-      .log { border: 1px solid #8884; border-radius: .5rem; background: #1112; padding: .6rem; height: 300px; overflow: auto; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-      .pills { display: flex; flex-wrap: wrap; gap: .4rem; }
-      .pill { display: inline-block; border: 1px solid #8884; border-radius: 4px; padding: .25rem .45rem; font-size: .85rem; background: #0001; }
-      .pill .pill-name { opacity: .85; }
-      .pill .pill-count { opacity: .85; font-variant-numeric: tabular-nums; }
-      .logs-bar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin:.4rem 0; }
-      .logs-left { display:flex; align-items:center; gap:.5rem; }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <div class="topbar">
-      <div class="top-left">
-        <h1>Stars Live Dashboard</h1>
-        <div class="row">
-          <label for="dir">Exports directory:</label>
-          <input id="dir" type="text" value="./exports" />
-          <button id="saveDir">Save</button>
-          <span class="muted">(default: ./exports)</span>
+  <body class="font-sans text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900">
+    <div class="mx-8 my-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div class="space-y-2">
+        <h1 class="text-xl font-semibold">Stars Live Dashboard</h1>
+        <div class="flex flex-wrap items-center gap-2">
+          <label for="dir" class="text-slate-600 dark:text-slate-300">Exports directory:</label>
+          <input id="dir" type="text" value="./exports" class="px-2 py-1 min-w-[20rem] border border-slate-300 dark:border-slate-700 rounded bg-transparent" />
+          <button id="saveDir" class="px-3 py-1 border border-slate-400/40 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50">Save</button>
+          <span class="opacity-70 text-sm">(default: ./exports)</span>
         </div>
       </div>
-      <div class="top-right"></div>
+      <div></div>
     </div>
 
-    <div style="margin-top:1rem">
+    <div class="mx-8">
       <strong>Logs</strong>
-      <div class="logs-bar">
-        <div class="logs-left">
-          <button id="clearLog">Clear</button>
-          <span class="muted">Live stream (last 1000 lines)</span>
+      <div class="flex items-center justify-between gap-2 my-2">
+        <div class="flex items-center gap-2">
+          <button id="clearLog" class="px-3 py-1 border border-slate-400/40 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50">Clear</button>
+          <span class="opacity-70 text-sm">Live stream (last 1000 lines)</span>
         </div>
-        <div class="actions">
-          <button data-task="lists" title="lists">Lists</button>
-          <button data-task="unlisted" title="unlisted">Unlisted</button>
-          <button data-task="ingest" title="ingest">Ingest</button>
-          <button data-task="summarise" title="summarise --apply">Summary</button>
-          <button data-task="score" title="score --apply">Score</button>
-          <button data-task="topics:enrich" title="topics:enrich">Topics</button>
-          <span class="status" id="status"></span>
+        <div class="flex flex-wrap gap-2 items-center">
+          <button data-task="lists" title="lists" class="px-3 py-1 border rounded">Lists</button>
+          <button data-task="unlisted" title="unlisted" class="px-3 py-1 border rounded">Unlisted</button>
+          <button data-task="ingest" title="ingest" class="px-3 py-1 border rounded">Ingest</button>
+          <button data-task="summarise" title="summarise --apply" class="px-3 py-1 border rounded">Summary</button>
+          <button data-task="score" title="score --apply" class="px-3 py-1 border rounded">Score</button>
+          <button data-task="topics:enrich" title="topics:enrich" class="px-3 py-1 border rounded">Topics</button>
+          <span class="ml-2 text-sm" id="status"></span>
         </div>
       </div>
-      <pre id="log" class="log" aria-live="polite" aria-atomic="false"></pre>
+      <pre id="log" class="border border-slate-400/40 rounded bg-black/5 dark:bg-white/5 p-2 h-72 overflow-auto whitespace-pre-wrap font-mono"></pre>
     </div>
 
-    <div class="layout">
-      <section class="col col-left">
-        <div class="group">
-          <div class="stats2x5">
-            <div class="group-title">From JSON</div>
-            <div class="metric"><div class="label">Lists</div><div class="value" id="jsonLists">–</div></div>
-            <div class="metric"><div class="label">Repos</div><div class="value" id="jsonRepos">–</div></div>
-            <div class="metric"><div class="label">Unlisted</div><div class="value" id="jsonUnlisted">–</div></div>
-            <div class="metric empty"></div>
-
-            <div class="group-title">From SQLite</div>
-            <div class="metric"><div class="label">Lists</div><div class="value" id="dbLists">–</div></div>
-            <div class="metric"><div class="label">Repos</div><div class="value" id="dbRepos">–</div></div>
-            <div class="metric"><div class="label">Summarised</div><div class="value" id="dbSumm">–</div></div>
-            <div class="metric"><div class="label">Scored</div><div class="value" id="dbScored">–</div></div>
+    <div class="mx-8 mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <section class="min-w-0">
+        <div class="space-y-2">
+          <div class="grid" style="grid-template-columns: 260px repeat(4, minmax(0,1fr)); column-gap: 2rem; row-gap: .5rem; align-items: end;">
+            <div class="text-sm opacity-75">From JSON</div>
+            <div class="grid"><div class="text-sm opacity-75">Lists</div><div class="text-right font-bold text-lg tabular-nums" id="jsonLists">–</div></div>
+            <div class="grid"><div class="text-sm opacity-75">Repos</div><div class="text-right font-bold text-lg tabular-nums" id="jsonRepos">–</div></div>
+            <div class="grid"><div class="text-sm opacity-75">Unlisted</div><div class="text-right font-bold text-lg tabular-nums" id="jsonUnlisted">–</div></div>
+            <div></div>
+            <div class="text-sm opacity-75">From SQLite</div>
+            <div class="grid"><div class="text-sm opacity-75">Lists</div><div class="text-right font-bold text-lg tabular-nums" id="dbLists">–</div></div>
+            <div class="grid"><div class="text-sm opacity-75">Repos</div><div class="text-right font-bold text-lg tabular-nums" id="dbRepos">–</div></div>
+            <div class="grid"><div class="text-sm opacity-75">Summarised</div><div class="text-right font-bold text-lg tabular-nums" id="dbSumm">–</div></div>
+            <div class="grid"><div class="text-sm opacity-75">Scored</div><div class="text-right font-bold text-lg tabular-nums" id="dbScored">–</div></div>
           </div>
         </div>
       </section>
-      <section class="col col-right" style="display:flex;flex-direction:column;gap:.6rem;min-height:0;">
-        <div class="group" style="flex:1 1 auto; min-height:0;">
-          <div class="group-title">Per List (DB)</div>
-          <div id="perListPills" class="pills" aria-live="polite" style="height: 30vh; min-height:120px; overflow:auto;"><span class="muted">Loading…</span></div>
+      <section class="flex flex-col gap-2 min-h-0">
+        <div class="flex-1 min-h-0">
+          <div class="text-sm opacity-75">Per List (DB)</div>
+          <div id="perListPills" class="h-[30vh] min-h-[120px] overflow-auto" aria-live="polite"><span class="opacity-70">Loading…</span></div>
         </div>
       </section>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/main.js"></script>
   </body>
   </html>

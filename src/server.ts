@@ -1,10 +1,13 @@
 import type { Statement } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { initBootstrap } from "@lib/bootstrap";
 import { getDefaultDb } from "@lib/db";
-import { createLogger } from "@lib/logger";
+import { createLogger, getLogTap, setLogTap } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
+import ingest from "@src/api/ingest";
+import { runLists, runUnlisted } from "@src/api/stars";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
 
 let qLists!: Statement<ListRow, []>;
@@ -27,6 +30,19 @@ const sseClients = new Set<SseClient>();
 const encoder = new TextEncoder();
 const logHistory: string[] = [];
 const MAX_HISTORY = 1000;
+
+// Track running child processes for cancel/status
+type RunningProc = {
+	task: string;
+	cmd: string[];
+	proc: { kill: () => void } | ReturnType<typeof Bun.spawn>;
+	startedAt: string;
+};
+const running = new Map<number, RunningProc>();
+let nextLocalPid = 100000; // pseudo PIDs for in-process tasks
+
+// Ensure DB/bootstrap has been initialised
+initBootstrap();
 
 function mapRepoRow(row: RepoRow): ApiRepo {
 	return {
@@ -199,7 +215,7 @@ function handleDashboard(dir?: string): Response {
 /* ------------------------------ Task runners ------------------------------ */
 
 type RunResult =
-	| { ok: true; pid: number; cmd: string[] }
+	| { ok: true; pid: number; cmd: string[]; cancellable: boolean }
 	| { ok: false; error: string };
 
 function sseBroadcast(line: string): void {
@@ -252,6 +268,7 @@ function startProcess(task: string, args: string[]): RunResult {
 		sseBroadcast(
 			`[start] ${startedAt} pid=${p.pid} task=${task} cmd=${args.join(" ")}`,
 		);
+		running.set(p.pid, { task, cmd: args, proc: p, startedAt });
 		if (p.stdout)
 			streamLines(p.stdout, (l) => sseBroadcast(`[${task}|out] ${l}`));
 		if (p.stderr)
@@ -259,13 +276,15 @@ function startProcess(task: string, args: string[]): RunResult {
 		p.exited
 			.then((code) => {
 				sseBroadcast(`[end] pid=${p.pid} task=${task} code=${code}`);
+				running.delete(p.pid);
 			})
 			.catch((e) => {
 				sseBroadcast(
 					`[end-error] pid=${p.pid} task=${task} err=${e instanceof Error ? e.message : String(e)}`,
 				);
+				running.delete(p.pid);
 			});
-		return { ok: true, pid: p.pid, cmd: args };
+		return { ok: true, pid: p.pid, cmd: args, cancellable: true };
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
@@ -277,14 +296,11 @@ function handleRun(path: string, dir?: string): Response {
 	let args: string[] | undefined;
 	switch (path) {
 		case "unlisted":
-			args = d ? [...base, "unlisted", "--dir", d] : [...base, "unlisted"];
-			break;
+			return startInProcess(path, d);
 		case "lists":
-			args = d ? [...base, "lists", "--dir", d] : [...base, "lists"];
-			break;
+			return startInProcess(path, d);
 		case "ingest":
-			args = d ? [...base, "ingest", "--dir", d] : [...base, "ingest"];
-			break;
+			return startInProcess(path, d);
 		case "summarise":
 			args = [...base, "summarise", "--all", "--apply"];
 			break;
@@ -300,6 +316,102 @@ function handleRun(path: string, dir?: string): Response {
 	return json(res, res.ok ? 202 : 500);
 }
 
+function anyInprocRunning(): boolean {
+	for (const r of running.values()) {
+		if (r.cmd && r.cmd[0] === "__inproc__") return true;
+	}
+	return false;
+}
+
+function startInProcess(task: string, dir?: string): Response {
+	if (anyInprocRunning())
+		return json({ error: "Another in-process task is running" }, 409);
+	const startedAt = new Date().toISOString();
+	const pid = nextLocalPid++;
+	const rec: RunningProc = {
+		task,
+		cmd: ["__inproc__", task],
+		proc: {
+			kill: () => {
+				/* no-op for now */
+			},
+		},
+		startedAt,
+	};
+	running.set(pid, rec);
+	sseBroadcast(
+		`[start] ${startedAt} pid=${pid} task=${task} cmd=inproc:${task}`,
+	);
+
+	const prevTap = getLogTap();
+	setLogTap((type, line) => {
+		const kind = type === "error" || type === "err" ? "err" : "out";
+		sseBroadcast(`[${task}|${kind}] ${line}`);
+	});
+
+	(async () => {
+		try {
+			switch (task) {
+				case "lists":
+					await runLists(false, undefined, dir);
+					break;
+				case "unlisted":
+					await runUnlisted(false, undefined, dir);
+					break;
+				case "ingest":
+					await ingest(dir ?? "./exports");
+					break;
+			}
+			sseBroadcast(`[end] pid=${pid} task=${task} code=0`);
+		} catch (e) {
+			sseBroadcast(
+				`[end-error] pid=${pid} task=${task} err=${e instanceof Error ? e.message : String(e)}`,
+			);
+		} finally {
+			running.delete(pid);
+			setLogTap(prevTap);
+		}
+	})();
+
+	return json({ ok: true, pid, cmd: rec.cmd, cancellable: false }, 202);
+}
+
+function handleStatus(): Response {
+	const list = Array.from(running.entries()).map(([pid, r]) => ({
+		pid,
+		task: r.task,
+		cmd: r.cmd,
+		startedAt: r.startedAt,
+		cancellable: !(r.cmd && r.cmd[0] === "__inproc__"),
+	}));
+	return json({ running: list });
+}
+
+function handleCancel(pidStr: string): Response {
+	const pid = Number(pidStr);
+	if (!pid || !Number.isFinite(pid)) return json({ error: "Invalid pid" }, 400);
+	const rec = running.get(pid);
+	if (!rec) return json({ error: "Not running" }, 404);
+	try {
+		// In-process tasks do not support cancel yet
+		if (rec.cmd && rec.cmd[0] === "__inproc__") {
+			return json(
+				{ ok: false, error: "Cancel not supported for in-process tasks" },
+				501,
+			);
+		}
+		// Try SIGTERM first; Bun.spawn returns a process with .kill
+		rec.proc.kill();
+		sseBroadcast(`[cancel] pid=${pid} task=${rec.task}`);
+		return json({ ok: true });
+	} catch (e) {
+		return json(
+			{ ok: false, error: e instanceof Error ? e.message : String(e) },
+			500,
+		);
+	}
+}
+
 Bun.serve({
 	port: 8787,
 	fetch(req) {
@@ -313,9 +425,10 @@ Bun.serve({
 				return handleDashboard(dir);
 			}
 			if (pathname === "/logs") {
+				let client: SseClient | null = null;
 				const stream = new ReadableStream<Uint8Array>({
 					start(controller) {
-						const client: SseClient = {
+						client = {
 							controller,
 							iv: setInterval(() => {
 								try {
@@ -331,11 +444,9 @@ Bun.serve({
 							controller.enqueue(encoder.encode(`data: ${line}\n\n`));
 					},
 					cancel() {
-						// On client close, remove the first client (ours)
-						for (const c of sseClients) {
-							clearInterval(c.iv);
-							sseClients.delete(c);
-							break;
+						if (client && sseClients.has(client)) {
+							clearInterval(client.iv);
+							sseClients.delete(client);
 						}
 					},
 				});
@@ -346,6 +457,14 @@ Bun.serve({
 						connection: "keep-alive",
 					},
 				});
+			}
+
+			if (pathname === "/run/status") return handleStatus();
+			if (pathname.startsWith("/run/cancel/")) {
+				if (req.method !== "POST")
+					return json({ error: "Method not allowed" }, 405);
+				const pid = pathname.slice("/run/cancel/".length);
+				return handleCancel(pid);
 			}
 			if (pathname === "/lists") return handleGetLists();
 			if (pathname.startsWith("/list/"))
