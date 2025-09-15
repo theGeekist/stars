@@ -225,8 +225,20 @@ export function createListsService(
 
 	return {
 		read: {
-			getAll: () => api.getAllLists(Bun.env.GITHUB_TOKEN ?? ""),
-			getAllStream: () => api.getAllListsStream(Bun.env.GITHUB_TOKEN ?? ""),
+			getAll: (signal?: AbortSignal) =>
+				api.getAllLists(
+					Bun.env.GITHUB_TOKEN ?? "",
+					undefined,
+					undefined,
+					signal,
+				),
+			getAllStream: (signal?: AbortSignal) =>
+				api.getAllListsStream(
+					Bun.env.GITHUB_TOKEN ?? "",
+					undefined,
+					undefined,
+					signal,
+				),
 			getListDefs: async () => qListDefs.all(),
 			getReposToScore,
 			currentMembership,

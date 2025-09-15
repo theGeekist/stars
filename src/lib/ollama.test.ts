@@ -16,8 +16,18 @@ function assertDefined<T>(v: T, msg?: string): asserts v is NonNullable<T> {
 class FakeOllama implements OllamaLike {
 	public lastArgs: LastArgs | null = null;
 	constructor(private response: string) {}
-	async generate(args: LastArgs): Promise<{ response: string }> {
-		this.lastArgs = args;
+	// biome-ignore lint/suspicious/noExplicitAny: needed to satisfy interface
+	async generate(request: any): Promise<any> {
+		this.lastArgs = request;
+		if (request.stream === true) {
+			// Simulate an AbortableAsyncIterator<GenerateResponse>
+			return {
+				[Symbol.asyncIterator]: async function* (this: FakeOllama) {
+					yield { response: this.response };
+				}.bind(this),
+				abort: () => {},
+			};
+		}
 		return { response: this.response };
 	}
 }

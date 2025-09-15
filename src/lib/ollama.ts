@@ -1,20 +1,29 @@
 // src/lib/ollama.ts
-import ollama from "ollama";
+import { Ollama } from "ollama";
 
 export type GenOpts = {
-	model?: string; // e.g. "llama3.2:3b"
-	temperature?: number; // default 0.2
-	maxTokens?: number; // maps to num_predict
+	model?: string;
+	temperature?: number;
+	maxTokens?: number;
+	host?: string;
+	headers?: Record<string, string>;
 };
 
-export type OllamaLike = {
-	generate: (args: {
-		model: string;
-		prompt: string;
-		stream: false;
-		options: { temperature?: number; num_predict?: number };
-	}) => Promise<{ response: string }>;
-};
+export type OllamaLike = Pick<Ollama, "generate">;
+
+function createOllamaClient(opts: GenOpts = {}): OllamaLike {
+	const host = opts.host ?? Bun.env.OLLAMA_HOST ?? "http://localhost:11434";
+	const headers =
+		opts.headers ??
+		(Bun.env.OLLAMA_API_KEY
+			? { Authorization: `Bearer ${Bun.env.OLLAMA_API_KEY}` }
+			: undefined);
+
+	return new Ollama({
+		host,
+		headers,
+	});
+}
 
 /**
  * Generate a completion via Ollama.
@@ -23,7 +32,7 @@ export type OllamaLike = {
 export async function gen(
 	prompt: string,
 	opts: GenOpts = {},
-	client: OllamaLike = ollama,
+	client?: OllamaLike,
 ): Promise<string> {
 	const {
 		model = Bun.env.OLLAMA_MODEL ?? "",
@@ -31,7 +40,9 @@ export async function gen(
 		maxTokens,
 	} = opts;
 
-	const res = await client.generate({
+	const ollama = client ?? createOllamaClient(opts);
+
+	const res = await ollama.generate({
 		model,
 		prompt,
 		stream: false,

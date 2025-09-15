@@ -58,19 +58,30 @@ export function createLogger(opts?: { debug?: boolean }) {
 	const level = (opts?.debug ?? !!Bun.env.DEBUG) ? 4 : 3;
 	const c = createConsola({ level, reporters: [reporter] });
 
-	/** Spinner wrapper with automatic succeed/fail messaging */
+	function tap(type: string, line: string) {
+		try {
+			__tap?.(type, line);
+		} catch {
+			// ignore tap errors
+		}
+	}
+
+	/** Spinner wrapper with automatic succeed/fail messaging and tap mirroring */
 	async function withSpinner<T>(
 		text: string,
 		run: (s: Ora) => Promise<T> | T,
 		opts?: { succeedText?: string; failText?: string },
 	): Promise<T> {
 		const s = ora({ text }).start();
+		tap("info", text);
 		try {
 			const out = await run(s);
 			s.succeed(opts?.succeedText ?? text);
+			tap("info", opts?.succeedText ?? text);
 			return out;
 		} catch (e) {
 			s.fail(opts?.failText ?? text);
+			tap("err", opts?.failText ?? text);
 			throw e;
 		}
 	}
@@ -126,7 +137,51 @@ export function createLogger(opts?: { debug?: boolean }) {
 		},
 
 		line: (s = "") => process.stdout.write(`${s}\n`),
-		spinner: (text: string) => ora({ text }).start(),
+		spinner: (text: string): Ora => {
+			const base = ora({ text });
+			const proxy = new Proxy(base as unknown as Record<string, unknown>, {
+				set(target, prop, value) {
+					if (prop === "text" && typeof value === "string") {
+						tap("info", value);
+					}
+					// @ts-expect-error dynamic
+					target[prop] = value;
+					return true;
+				},
+				get(target, prop, receiver) {
+					// intercept a few methods to mirror to tap
+					const val = Reflect.get(target, prop, receiver);
+					if (typeof val === "function") {
+						return (...args: unknown[]) => {
+							if (prop === "succeed" || prop === "fail") {
+								const msg =
+									(args && typeof args[0] === "string"
+										? (args[0] as string)
+										: ((target as { text?: unknown }).text as
+												| string
+												| undefined)) || text;
+								tap(prop === "fail" ? "err" : "info", msg);
+							} else if (prop === "start") {
+								tap(
+									"info",
+									((target as { text?: unknown }).text as string | undefined) ||
+										text,
+								);
+							}
+							const out = (val as (...a: unknown[]) => unknown).apply(
+								target,
+								args as never,
+							);
+							// Ensure chaining keeps proxy instance (esp. for .start())
+							if (prop === "start") return proxy;
+							return out;
+						};
+					}
+					return val;
+				},
+			});
+			return proxy as unknown as Ora;
+		},
 		// new helpers
 		withSpinner,
 		columns,

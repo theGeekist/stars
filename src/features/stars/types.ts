@@ -33,7 +33,7 @@ export type StarsService = {
 		/** Set of GH node IDs for all repos that are currently in any list (local DB). */
 		collectLocallyListedRepoIdsSet: () => Promise<Set<string>>;
 		/** Convenience: RepoInfo[] for stars that are not in any local list (network + local DB). */
-		getUnlistedStars: () => Promise<RepoInfo[]>;
+		getUnlistedStars: (signal?: AbortSignal) => Promise<RepoInfo[]>;
 		/** Optional: fetch a sample from DB, similar to lists’ getReposToScore. */
 		getReposToScore: (sel: BatchSelector) => Promise<RepoRow[]>;
 	};

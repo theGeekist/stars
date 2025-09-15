@@ -101,6 +101,7 @@ export function ingestFromData(
 export async function ingestListedFromGh(
 	db?: Database,
 	log: Logger | TestLoggerLike = realLog,
+	signal?: AbortSignal,
 ): Promise<IngestReturn> {
 	const token = getEnvStringRequired(
 		"GITHUB_TOKEN",
@@ -109,14 +110,25 @@ export async function ingestListedFromGh(
 	const lists: StarList[] = [];
 	const s = log.spinner("Fetching lists...").start();
 	let total = 0;
-	for await (const l of getAllListsStream(token, undefined, {
-		debug: () => {},
-	})) {
-		lists.push(l);
-		total++;
-		s.text = `Loaded list ${total}: ${l.name}`;
+	try {
+		for await (const l of getAllListsStream(
+			token,
+			undefined,
+			{
+				debug: () => {},
+			},
+			signal,
+		)) {
+			if (signal?.aborted) throw new Error("Aborted");
+			lists.push(l);
+			total++;
+			s.text = `Loaded list ${total}: ${l.name}`;
+		}
+		s.succeed(`Fetched ${total} lists`);
+	} catch (e) {
+		s.fail?.("Aborted");
+		throw e;
 	}
-	s.succeed(`Fetched ${total} lists`);
 	const res = ingestFromData(lists, undefined, db, log);
 	return {
 		lists: res.lists,
@@ -129,11 +141,19 @@ export async function ingestListedFromGh(
 export async function ingestUnlistedFromGh(
 	db?: Database,
 	log: Logger | TestLoggerLike = realLog,
+	signal?: AbortSignal,
 ): Promise<IngestReturn> {
 	const svc = createStarsService(starsLib, withDB(db));
 	const s = log.spinner("Computing unlisted stars...").start();
-	const unlisted = await svc.read.getUnlistedStars();
-	s.succeed(`Found ${unlisted.length} unlisted starred repositories`);
+	let unlisted: RepoInfo[] = [];
+	try {
+		if (signal?.aborted) throw new Error("Aborted");
+		unlisted = await svc.read.getUnlistedStars(signal);
+		s.succeed(`Found ${unlisted.length} unlisted starred repositories`);
+	} catch (e) {
+		s.fail?.("Aborted");
+		throw e;
+	}
 	const res = ingestFromData([], unlisted, db, log);
 	return {
 		lists: res.lists,

@@ -161,3 +161,28 @@ export async function summariseRepoOneParagraph(
 	const bullets = await mapChunksToBullets(picked, gen);
 	return reduceBulletsToParagraph(bullets, baseHints, gen);
 }
+
+/**
+ * Summarise repo with separate gen functions for main steps and reduction.
+ * @param meta Repo metadata
+ * @param deps Optional dependencies
+ * @param genMain Used for all steps except reduction
+ * @param genReduce Used for reduceBulletsToParagraph
+ */
+export async function summariseRepoOneParagraphWithCustomGen(
+	meta: Meta,
+	deps: SummariseDeps | undefined,
+	genMain: (p: string, o?: Record<string, unknown>) => Promise<string>,
+	genReduce: (p: string, o?: Record<string, unknown>) => Promise<string>,
+): Promise<string> {
+	const baseHints = buildBaseHints(meta);
+	const { clean, chunks, awesome } = await loadReadme(meta);
+	if (awesome) return summariseAwesomeList(meta.description, meta.topics);
+
+	if (chunks.length === 0)
+		return generateFromMetadata(meta, baseHints, genMain);
+
+	const picked = await selectContentChunks(clean, chunks, deps);
+	const bullets = await mapChunksToBullets(picked, genMain);
+	return reduceBulletsToParagraph(bullets, baseHints, genReduce);
+}

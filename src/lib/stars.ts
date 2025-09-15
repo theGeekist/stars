@@ -169,6 +169,7 @@ export async function getAllStars(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: StarsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<RepoInfo[]> {
 	const cfg = resolveStarsConfig();
 	debugEnv(cfg, reporter);
@@ -179,6 +180,7 @@ export async function getAllStars(
 
 	// eslint-disable-next-line no-constant-condition
 	for (;;) {
+		if (signal?.aborted) throw new Error("Aborted");
 		pageNo++;
 		const page = await fetchStarsPage(token, after, cfg.pageSize, gh, reporter);
 		const before = repos.length;
@@ -206,6 +208,7 @@ export async function* getAllStarsStream(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: StarsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): AsyncGenerator<RepoInfo[], void, void> {
 	const cfg = resolveStarsConfig();
 	debugEnv(cfg, reporter);
@@ -214,6 +217,7 @@ export async function* getAllStarsStream(
 	let pageNo = 0;
 
 	for (;;) {
+		if (signal?.aborted) throw new Error("Aborted");
 		pageNo++;
 		const page = await fetchStarsPage(token, after, cfg.pageSize, gh, reporter);
 		const batch = page.edges.map(mapStarEdgeToRepoInfo);
@@ -230,9 +234,10 @@ export async function collectStarIdsSet(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: StarsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<Set<string>> {
 	const ids = new Set<string>();
-	for await (const batch of getAllStarsStream(token, gh, reporter)) {
+	for await (const batch of getAllStarsStream(token, gh, reporter, signal)) {
 		for (const r of batch) if (r.repoId) ids.add(r.repoId);
 	}
 	return ids;

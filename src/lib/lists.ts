@@ -24,6 +24,7 @@ async function fetchListsEdgesPage(
 	after: string | null,
 	gh: typeof githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<ListsEdgesPage> {
 	const { debug } = reporter;
 	debug(`lists: query page after=${JSON.stringify(after)}`);
@@ -31,6 +32,7 @@ async function fetchListsEdgesPage(
 		token,
 		LISTS_EDGES_PAGE,
 		{ after },
+		{ signal },
 	);
 	const page = data.viewer.lists;
 	debug(
@@ -225,6 +227,7 @@ async function fetchAllItemsAtEdge(
 	gh: typeof githubGraphQL = githubGraphQL,
 	pageSize = 25,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<RepoInfo[]> {
 	const { debug } = reporter;
 	const repos: RepoInfo[] = [];
@@ -243,6 +246,7 @@ async function fetchAllItemsAtEdge(
 
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
+		if (signal?.aborted) throw new Error("Aborted");
 		pageNo++;
 		debug(
 			`items: query page #${pageNo} list="${listNameForLogs}" itemsAfter=${JSON.stringify(
@@ -254,6 +258,7 @@ async function fetchAllItemsAtEdge(
 			token,
 			LIST_ITEMS_AT_EDGE,
 			{ listAfter: listEdgeCursorBefore, itemsAfter, pageSize },
+			{ signal },
 		);
 
 		const listNode: ListNode | undefined = data.viewer.lists.nodes[0];
@@ -293,12 +298,13 @@ export async function getAllLists(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<StarList[]> {
 	const cfg = resolvePagingConfig();
 	const { debug } = reporter;
 	debugEnv("lists", cfg, reporter);
 
-	const metas = await collectListMetas(token, gh, reporter);
+	const metas = await collectListMetas(token, gh, reporter, signal);
 	debug(
 		`lists: collected metas=${metas.length}, concurrency=${cfg.concurrency}`,
 	);
@@ -317,6 +323,7 @@ export async function getAllLists(
 				gh,
 				cfg.pageSize,
 				reporter,
+				signal,
 			);
 			return {
 				listId: m.listId,
@@ -337,6 +344,7 @@ export async function collectListMetas(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<
 	Array<{
 		edgeBefore: string | null;
@@ -361,8 +369,9 @@ export async function collectListMetas(
 	let _pageNo = 0;
 	debug("lists: begin paging metadata");
 	for (;;) {
+		if (signal?.aborted) throw new Error("Aborted");
 		_pageNo++;
-		const data = await fetchListsEdgesPage(token, after, gh, reporter);
+		const data = await fetchListsEdgesPage(token, after, gh, reporter, signal);
 		const page = data.viewer.lists;
 
 		for (const edge of page.edges) {
@@ -385,6 +394,7 @@ export async function* getAllListsStream(
 	token: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): AsyncGenerator<StarList, void, void> {
 	const cfg = resolvePagingConfig();
 
@@ -392,7 +402,14 @@ export async function* getAllListsStream(
 	let previousEdgeCursor: string | null = null;
 
 	for (;;) {
-		const pageData = await fetchListsEdgesPage(token, after, gh, reporter);
+		if (signal?.aborted) throw new Error("Aborted");
+		const pageData = await fetchListsEdgesPage(
+			token,
+			after,
+			gh,
+			reporter,
+			signal,
+		);
 		const edges = pageData.viewer.lists.edges;
 
 		for (const edge of edges) {
@@ -405,6 +422,7 @@ export async function* getAllListsStream(
 				gh,
 				cfg.pageSize,
 				reporter,
+				signal,
 			);
 
 			yield {
@@ -428,6 +446,7 @@ export async function getReposFromList(
 	listName: string,
 	gh: typeof githubGraphQL = githubGraphQL,
 	reporter: ListsReporter = NoopReporter,
+	signal?: AbortSignal,
 ): Promise<RepoInfo[]> {
 	const cfg = resolvePagingConfig();
 	const { debug } = reporter;
@@ -441,6 +460,7 @@ export async function getReposFromList(
 
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
+		if (signal?.aborted) throw new Error("Aborted");
 		pageNo++;
 		debug(
 			`reposByName: query lists page #${pageNo} after=${JSON.stringify(after)}`,
@@ -450,6 +470,7 @@ export async function getReposFromList(
 			token,
 			LISTS_EDGES_PAGE,
 			{ after },
+			{ signal },
 		);
 
 		const { edges, pageInfo } = data.viewer.lists;
@@ -469,6 +490,7 @@ export async function getReposFromList(
 					gh,
 					cfg.pageSize,
 					reporter,
+					signal,
 				);
 			}
 			previousEdgeCursor = edge.cursor;

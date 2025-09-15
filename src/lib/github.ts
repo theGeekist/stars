@@ -40,9 +40,17 @@ export async function githubGraphQL<T>(
 	token: string,
 	query: string,
 	variables?: Record<string, unknown>,
-	fetchImpl?: FetchLike,
+	fetchImplOrOpts?: FetchLike | { signal?: AbortSignal; fetchImpl?: FetchLike },
 ): Promise<T> {
-	const doFetch = fetchImpl ?? fetch;
+	let externalSignal: AbortSignal | undefined;
+	let doFetch: FetchLike | typeof fetch | undefined;
+	if (typeof fetchImplOrOpts === "function") {
+		doFetch = fetchImplOrOpts as FetchLike;
+	} else if (fetchImplOrOpts && typeof fetchImplOrOpts === "object") {
+		externalSignal = (fetchImplOrOpts as { signal?: AbortSignal }).signal;
+		doFetch = (fetchImplOrOpts as { fetchImpl?: FetchLike }).fetchImpl ?? fetch;
+	}
+	doFetch = doFetch ?? fetch;
 	const ua =
 		Bun.env.GQL_USER_AGENT ??
 		"geek-stars/0.1 (+https://github.com/theGeekist/stars)";
@@ -51,7 +59,15 @@ export async function githubGraphQL<T>(
 
 	for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 		const controller = new AbortController();
+		const onExternalAbort = () => controller.abort();
 		const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+		if (externalSignal) {
+			if (externalSignal.aborted) controller.abort();
+			else
+				externalSignal.addEventListener("abort", onExternalAbort, {
+					once: true,
+				});
+		}
 
 		try {
 			DEBUG &&
@@ -76,6 +92,8 @@ export async function githubGraphQL<T>(
 				body,
 			});
 			clearTimeout(timer);
+			if (externalSignal)
+				externalSignal.removeEventListener("abort", onExternalAbort);
 
 			if (shouldRetry(res.status) && attempt < MAX_RETRIES - 1) {
 				const backoff = jitter(Math.min(32000, BASE_DELAY_MS * 2 ** attempt));
@@ -103,6 +121,8 @@ export async function githubGraphQL<T>(
 			return json.data;
 		} catch (err) {
 			clearTimeout(timer);
+			if (externalSignal)
+				externalSignal.removeEventListener("abort", onExternalAbort);
 			if (attempt === MAX_RETRIES - 1)
 				throw err instanceof Error ? err : new Error(String(err));
 		}

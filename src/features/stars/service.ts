@@ -61,13 +61,20 @@ export function createStarsService(
 	}
 
 	// -------------------- Cross-source diff --------------------
-	async function getUnlistedStars(): Promise<RepoInfo[]> {
+	async function getUnlistedStars(signal?: AbortSignal): Promise<RepoInfo[]> {
 		const stars: RepoInfo[] = [];
-		for await (const page of api.getAllStarsStream(token, ghGraphQLParam)) {
+		for await (const page of api.getAllStarsStream(
+			token,
+			ghGraphQLParam,
+			undefined,
+			signal,
+		)) {
+			if (signal?.aborted) throw new Error("Aborted");
 			stars.push(...page);
 		}
 
 		const listed = await collectLocallyListedRepoIdsSet();
+		if (signal?.aborted) throw new Error("Aborted");
 		const out: RepoInfo[] = [];
 		for (const r of stars) {
 			if (!r.repoId) continue;
