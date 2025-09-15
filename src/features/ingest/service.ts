@@ -476,5 +476,48 @@ export function createIngestService(database?: Database) {
 
 			return { lists, reposFromLists, unlisted };
 		},
+
+		/** Ingest from in-memory data (optionally with unlisted first, then lists). */
+		ingestFromData(
+			lists: StarList[],
+			unlisted?: RepoInfo[],
+			reporter?: IngestReporter,
+		): { lists: number; reposFromLists: number; unlisted: number } {
+			prepareStatements(db);
+
+			let unlistedCount = 0;
+			if (unlisted?.length) unlistedCount = ingestUnlistedTx(unlisted);
+
+			const listsPreloaded = (lists ?? []).map((l) => ({
+				meta: {
+					listId: l.listId,
+					name: l.name,
+					description: l.description ?? null,
+					isPrivate: l.isPrivate,
+					count: l.repos.length,
+					file: "",
+				} as IndexEntry,
+				data: l,
+			}));
+
+			let res = { lists: 0, reposFromLists: 0 };
+			if (listsPreloaded.length) {
+				reporter?.start?.(listsPreloaded.length);
+				res = ingestListsTx(listsPreloaded, reporter);
+				reporter?.done?.({
+					lists: res.lists,
+					repos: listsPreloaded.reduce((a, b) => a + b.data.repos.length, 0),
+				});
+			} else {
+				reporter?.start?.(0);
+				reporter?.done?.({ lists: 0, repos: 0 });
+			}
+
+			return {
+				lists: res.lists,
+				reposFromLists: res.reposFromLists,
+				unlisted: unlistedCount,
+			};
+		},
 	};
 }

@@ -3,6 +3,7 @@
 import type { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createDb, initSchema, setDefaultDb, withDB } from "@lib/db";
+import { _testMain } from "@src/cli";
 
 let db: Database;
 
@@ -32,7 +33,7 @@ afterAll(() => {
 
 describe("CLI integration", () => {
 	it("scores repos end-to-end with injected LLM (dry)", async () => {
-		const { scoreBatchAll } = await import("@src/cli-scorer");
+		const { scoreBatchAll } = await import("@src/api/scorer");
 
 		// Seed using the SAME db handle
 		db.query(
@@ -71,7 +72,7 @@ describe("CLI integration", () => {
 	});
 
 	it("summarises repos and saves to DB with apply=true (no network)", async () => {
-		const { summariseOne } = await import("@src/cli-summarise");
+		const { summariseOne } = await import("@src/api/summarise");
 
 		db.query(
 			`INSERT INTO repo (id, name_with_owner, url, description, stars, popularity, freshness, activeness, topics)
@@ -88,5 +89,11 @@ describe("CLI integration", () => {
 			.get(2);
 		expect(row?.summary).toBeTruthy();
 		expect(String(row?.summary)).toContain("curated");
+	});
+});
+
+describe("cli routing smoke coverage", () => {
+	it("help path runs", async () => {
+		await _testMain(["bun", "cli.ts", "help"]);
 	});
 });

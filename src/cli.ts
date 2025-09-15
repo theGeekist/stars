@@ -10,12 +10,11 @@ import {
 	printSetupStatus,
 	showSetupHintIfNotReady,
 } from "@lib/prompts";
-import { scoreBatchAll, scoreOne } from "@src/cli-scorer";
-import { runLists, runRepos, runStars, runUnlisted } from "@src/cli-stars";
-import { summariseBatchAll, summariseOne } from "@src/cli-summarise";
-import ingest from "@src/ingest";
-import { enrichAllRepoTopics } from "@src/topics";
-import { type AliasesMode, topicsReport } from "@src/topics-report";
+import ingest from "@src/api/ingest";
+import { scoreBatchAll, scoreOne } from "@src/api/scorer";
+import { runLists, runRepos, runStars, runUnlisted } from "@src/api/stars";
+import { summariseBatchAll, summariseOne } from "@src/api/summarise";
+import { enrichAllRepoTopics } from "@src/api/topics";
 
 /* ----------------------------- Usage banner ----------------------------- */
 initBootstrap();
@@ -24,15 +23,14 @@ function usage(): void {
 
 	log.subheader("Usage");
 	log.list([
-		"gk-stars lists [--json] [--out <file>] [--dir <folder>]",
+		"gk-stars lists              # saves to EXPORTS_DIR (./exports)",
 		"gk-stars repos --list <name> [--json]",
-		"gk-stars stars [--json] [--out <file>] [--dir <folder>]",
-		"gk-stars unlisted [--json] [--out <file>]",
+		"gk-stars stars              # saves to EXPORTS_DIR (./exports)",
+		"gk-stars unlisted           # saves to EXPORTS_DIR (./exports)",
 		"gk-stars score (--one <owner/repo> | --all [--limit N]) [--dry]",
 		"gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]",
-		"gk-stars ingest [--dir <folder>]    (defaults EXPORTS_DIR or ./exports)",
+		"gk-stars ingest             # reads from EXPORTS_DIR (./exports)",
 		"gk-stars topics:enrich [--active] [--ttl <days>]",
-		"gk-stars topics:report [--missing] [--recent] [--json] [--full] [--aliases=none|count|preview|full] [--aliasLimit N]",
 		"gk-stars setup  # generate prompts.yaml from your GitHub lists",
 	]);
 
@@ -48,19 +46,17 @@ function usage(): void {
 async function handleLists(args: string[]): Promise<void> {
 	let json = false;
 	let out: string | undefined;
-	let dir: string | undefined;
 	for (let i = 1; i < args.length; i++) {
 		const a = args[i];
 		if (a === "--json") json = true;
 		else if (a === "--out" && args[i + 1]) {
 			i += 1;
 			out = args[i];
-		} else if (a === "--dir" && args[i + 1]) {
-			i += 1;
-			dir = args[i];
 		}
 	}
-	await runLists(json, out, dir);
+	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
+	if (json || out) await runLists(json, out, dir);
+	else await runLists(false, undefined, dir);
 }
 
 async function handleRepos(args: string[]): Promise<void> {
@@ -83,37 +79,33 @@ async function handleRepos(args: string[]): Promise<void> {
 async function handleStars(args: string[]): Promise<void> {
 	let json = false;
 	let out: string | undefined;
-	let dir: string | undefined;
 	for (let i = 1; i < args.length; i++) {
 		const a = args[i];
 		if (a === "--json") json = true;
 		else if (a === "--out" && args[i + 1]) {
 			i += 1;
 			out = args[i];
-		} else if (a === "--dir" && args[i + 1]) {
-			i += 1;
-			dir = args[i];
 		}
 	}
-	await runStars(json, out, dir);
+	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
+	if (json || out) await runStars(json, out, dir);
+	else await runStars(false, undefined, dir);
 }
 
 async function handleUnlisted(args: string[]): Promise<void> {
 	let json = false;
 	let out: string | undefined;
-	let dir: string | undefined; // ← add
 	for (let i = 1; i < args.length; i++) {
 		const a = args[i];
 		if (a === "--json") json = true;
 		else if (a === "--out" && args[i + 1]) {
 			i += 1;
 			out = args[i];
-		} else if (a === "--dir" && args[i + 1]) {
-			i += 1;
-			dir = args[i];
-		} // ← add
+		}
 	}
-	await runUnlisted(json, out, dir); // ← pass dir
+	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
+	if (json || out) await runUnlisted(json, out, dir);
+	else await runUnlisted(false, undefined, dir);
 }
 
 async function handleScore(argv: string[], args: string[]): Promise<void> {
@@ -184,12 +176,8 @@ async function handleSummarise(argv: string[], args: string[]): Promise<void> {
 	}
 }
 
-async function handleIngest(args: string[]): Promise<void> {
-	const dirIdx = args.indexOf("--dir");
-	const dir =
-		dirIdx > -1 && args[dirIdx + 1]
-			? args[dirIdx + 1]
-			: (Bun.env.EXPORTS_DIR ?? "./exports");
+async function handleIngest(_args: string[]): Promise<void> {
+	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
 	await ingest(dir);
 }
 
@@ -204,42 +192,7 @@ function handleTopicsEnrich(args: string[]): void {
 	enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
 }
 
-async function handleTopicsReport(args: string[]): Promise<void> {
-	const has = (flag: string) => args.includes(flag);
-	const getArg = (name: string, def?: string) => {
-		const m = args.find((a) => a.startsWith(`${name}=`));
-		return m ? m.split("=")[1] : def;
-	};
-
-	const showMissing = has("--missing");
-	const showRecent = has("--recent");
-	const json = has("--json");
-	const full = has("--full");
-
-	const aliasesRaw = (
-		getArg("--aliases", "preview") ?? "preview"
-	).toLowerCase();
-	const aliasesMode: AliasesMode =
-		aliasesRaw === "none" ||
-		aliasesRaw === "count" ||
-		aliasesRaw === "preview" ||
-		aliasesRaw === "full"
-			? (aliasesRaw as AliasesMode)
-			: "preview";
-
-	const aliasLimitNum = Number(getArg("--aliasLimit", "5"));
-	const aliasLimit =
-		Number.isFinite(aliasLimitNum) && aliasLimitNum > 0 ? aliasLimitNum : 5;
-
-	await topicsReport({
-		full,
-		showMissing,
-		showRecent,
-		json,
-		aliasesMode,
-		aliasLimit,
-	});
-}
+// topics:report command removed
 
 async function handleSetup(): Promise<void> {
 	const token = Bun.env.GITHUB_TOKEN;
@@ -319,8 +272,7 @@ async function main(argv: string[]) {
 		case "topics:enrich":
 			return handleTopicsEnrich(args);
 
-		case "topics:report":
-			return handleTopicsReport(args);
+		// topics:report removed
 
 		case "setup":
 			return handleSetup();
