@@ -16,7 +16,6 @@ import type {
 	PageNarrated,
 	PagePlanned,
 	PageScored,
-	Step,
 	PlanSectionOut,
 	ScoreFilesOut,
 	ScoreNarrativesOut,
@@ -25,6 +24,7 @@ import type {
 	SelectBetweenTwoOut,
 	SingleCodeOut,
 	SingleNarrativeOut,
+	Step,
 } from "../types.js";
 
 /* =========================

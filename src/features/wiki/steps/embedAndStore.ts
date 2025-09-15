@@ -6,8 +6,8 @@ import { OllamaService } from "@jasonnathan/llm-core";
 import type {
 	ChunkOutput,
 	Doc,
-	Step,
 	RetrieverHit,
+	Step,
 	StoreOutput,
 } from "../types.ts";
 

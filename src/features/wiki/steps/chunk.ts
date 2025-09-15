@@ -5,7 +5,7 @@ import {
 	OllamaService,
 } from "@jasonnathan/llm-core";
 import { getEncoding } from "js-tiktoken";
-import type { ChunkOutput, Doc, Step, ReadOutput } from "../types.ts";
+import type { ChunkOutput, Doc, ReadOutput, Step } from "../types.ts";
 
 const enc = getEncoding("cl100k_base");
 const tok = (s: string) => {

@@ -8,7 +8,8 @@ export function stepCheckpoint<T>(
 ): Step<T, T> {
 	return (log) => async (doc) => {
 		const runId =
-			(doc as any).commitSha || new Date().toISOString().replace(/[:.]/g, "-");
+			(doc as Record<string, unknown>).commitSha ||
+			new Date().toISOString().replace(/[:.]/g, "-");
 		const path = join(dir, String(runId), `outer_${label}.json`);
 		await mkdir(join(dir, String(runId)), { recursive: true });
 		await writeFile(path, JSON.stringify(doc, null, 2), "utf8");

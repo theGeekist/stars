@@ -7,9 +7,9 @@ import { getEncoding } from "js-tiktoken";
 import type {
 	Doc,
 	FilterOptions,
-	Step,
 	ReadOutput,
 	ResolvedRepo,
+	Step,
 } from "../types.ts";
 
 const enc = getEncoding("cl100k_base");

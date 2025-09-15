@@ -35,38 +35,56 @@ async function saveSnapshot(dir: string, name: string, payload: unknown) {
 	}
 }
 const pickState = {
-	s1: (st: any) => ({ preferredFiles: st.preferredFiles }),
-	s2: (st: any) => ({ headings: st.headings }),
-	s3: (st: any) => ({ plans: st.plans }),
-	s4: (st: any) => ({
-		codeBySection: Array.from((st.codeBySection ?? new Map()).entries()).map(
-			([sectionId, c]: any) => ({
-				sectionId,
-				lang: c?.lang,
-				text: c?.text,
-				align: c?.expected_output_alignment,
-			}),
-		),
+	s1: (st: unknown) => ({
+		preferredFiles: (st as Record<string, unknown>).preferredFiles,
 	}),
-	s5: (st: any) => ({
-		codeExplById: Array.from((st.codeExplById ?? new Map()).entries()).map(
-			([id, e]: any) => ({
-				id,
-				explanation: e?.explanation,
-				risks: e?.risks ?? [],
-			}),
-		),
-	}),
-	s6: (st: any) => ({
-		narrativesBySection: Array.from(
-			(st.narrativesBySection ?? new Map()).entries(),
-		).map(([sectionId, n]: any) => ({
+	s2: (st: unknown) => ({ headings: (st as Record<string, unknown>).headings }),
+	s3: (st: unknown) => ({ plans: (st as Record<string, unknown>).plans }),
+	s4: (st: unknown) => ({
+		codeBySection: Array.from(
+			(
+				((st as Record<string, unknown>).codeBySection ?? new Map()) as Map<
+					unknown,
+					unknown
+				>
+			).entries(),
+		).map(([sectionId, c]) => ({
 			sectionId,
-			heading: n?.heading,
-			pCount: n?.paragraphs?.length ?? 0,
+			lang: (c as Record<string, unknown>)?.lang,
+			text: (c as Record<string, unknown>)?.text,
+			align: (c as Record<string, unknown>)?.expected_output_alignment,
 		})),
 	}),
-	s7: (st: any) => st.markdown ?? "",
+	s5: (st: unknown) => ({
+		codeExplById: Array.from(
+			(
+				((st as Record<string, unknown>).codeExplById ?? new Map()) as Map<
+					unknown,
+					unknown
+				>
+			).entries(),
+		).map(([id, e]) => ({
+			id,
+			explanation: (e as Record<string, unknown>)?.explanation,
+			risks: (e as Record<string, unknown>)?.risks ?? [],
+		})),
+	}),
+	s6: (st: unknown) => ({
+		narrativesBySection: Array.from(
+			(
+				((st as Record<string, unknown>).narrativesBySection ??
+					new Map()) as Map<unknown, unknown>
+			).entries(),
+		).map(([sectionId, n]) => ({
+			sectionId,
+			heading: (n as Record<string, unknown>)?.heading,
+			pCount:
+				((n as Record<string, unknown>)?.paragraphs as unknown as unknown[])
+					?.length ?? 0,
+		})),
+	}),
+	s7: (st: unknown) =>
+		((st as Record<string, unknown>).markdown as string) ?? "",
 };
 
 export function stepWritePages(
@@ -82,7 +100,8 @@ export function stepWritePages(
 		}[] = [];
 
 		const runId =
-			(doc as any).commitSha || new Date().toISOString().replace(/[:.]/g, "-");
+			(doc as Record<string, unknown>).commitSha ||
+			new Date().toISOString().replace(/[:.]/g, "-");
 		const runRoot = join(".wiki_runs", String(runId));
 		await ensureDir(runRoot);
 
@@ -110,7 +129,9 @@ export function stepWritePages(
 						await saveSnapshot(
 							pageDir,
 							String(label),
-							(pickState as any)[label](out),
+							(pickState as Record<string, (st: unknown) => unknown>)[label](
+								out,
+							),
 						);
 					} catch (e) {
 						log.warn?.(

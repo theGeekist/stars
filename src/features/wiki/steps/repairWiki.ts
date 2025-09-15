@@ -288,7 +288,7 @@ export function stepRepairWiki(options?: {
 	const {
 		maxFilesPerPage = 4,
 		fillDescriptions = false,
-		descModel,
+		descModel: _descModel,
 	} = options ?? {};
 
 	return (log) => async (doc) => {

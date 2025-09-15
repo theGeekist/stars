@@ -7,8 +7,8 @@ import { getEncoding } from "js-tiktoken";
 import type {
 	PageContext,
 	PagesContextOutput,
-	Step,
 	RetrievePerPageOpts,
+	Step,
 	StoreOutput,
 	WikiPage,
 	WithRevision,

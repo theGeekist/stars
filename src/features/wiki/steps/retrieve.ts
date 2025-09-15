@@ -1,7 +1,7 @@
 // src/features/wiki/steps/retrieve.ts
 import { OllamaService } from "@jasonnathan/llm-core";
 import { getEncoding } from "js-tiktoken";
-import type { Step, RetrievalOutput, StoreOutput } from "../types";
+import type { RetrievalOutput, Step, StoreOutput } from "../types";
 import { searchStore } from "./embedAndStore";
 
 const enc = getEncoding("cl100k_base");

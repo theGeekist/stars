@@ -1,4 +1,4 @@
-import type { PipelineStep, Logger } from "@jasonnathan/llm-core";
+import type { Logger, PipelineStep } from "@jasonnathan/llm-core";
 
 export type RepoInput = {
 	repoUrlOrPath: string; // local path or URL

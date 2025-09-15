@@ -1,6 +1,6 @@
 // src/features/wiki/steps/generateWiki.ts
 import { Logger, OllamaService, pipeline } from "@jasonnathan/llm-core";
-import type { RetrievalOutput, WikiJSON, WikiOutput, Step } from "../types.ts";
+import type { RetrievalOutput, Step, WikiJSON, WikiOutput } from "../types.ts";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Original final schema (unchanged)                                          */
@@ -254,7 +254,9 @@ function checkSeed(pagesTarget: number) {
 			if (ids.has(p.id)) return false;
 			ids.add(p.id);
 			if (typeof p.title !== "string" || !p.title.trim()) return false;
-			if (!["high", "medium", "low"].includes(p.importance as any))
+			if (
+				!["high", "medium", "low"].includes(p.importance as unknown as string)
+			)
 				return false;
 		}
 		return r;
@@ -294,7 +296,7 @@ function checkSections(validPageIds: Set<string>) {
 /* Inner steps (composable)                                                   */
 /* ────────────────────────────────────────────────────────────────────────── */
 type S1 = RetrievalOutput & { _seed: PagesSeed };
-type S2 = S1 & { _pagesWithFiles: PagesSeed["pages"] & any[] }; // pages with relevant_files
+type S2 = S1 & { _pagesWithFiles: PagesSeed["pages"] & unknown[] }; // pages with relevant_files
 type S3 = S2 & { _sections?: SectionsOut["sections"] };
 
 function s1_seedPages(
