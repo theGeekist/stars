@@ -29,6 +29,31 @@ Optional helpers:
 
 ---
 
+## Programmatic Usage (Library)
+
+All CLI features are available in code:
+
+```ts
+import { summaries, ranking, starsData, ingest } from "@geekist/stars";
+
+// Summaries with model override & progress
+await summaries.summariseAll({
+  limit: 25,
+  modelConfig: { model: "llama3:8b" },
+  onProgress: (e) => e.phase === "summarising" && console.log(e.index),
+});
+
+// Ranking one repo
+const item = await ranking.rankOne({ selector: "owner/repo", apply: false });
+
+// Ingest
+await ingest.ingestAll({ onProgress: (e) => console.log(e.phase) });
+```
+
+See `MIGRATION.md` for dispatcher and advanced extension details.
+
+---
+
 ## Quick patterns you will use a lot
 
 - **Preview first**
@@ -128,6 +153,13 @@ gk-stars summarise --one facebook/react --dry
 
 # Summarise 100 repos and save
 gk-stars summarise --all --limit 100
+
+# Programmatic (with model override)
+node <<'EOF'
+import { summaries } from '@geekist/stars';
+const res = await summaries.summariseAll({ limit: 5, modelConfig: { model: 'llama3:8b' } });
+console.log(res.stats);
+EOF
 ```
 
 ---
@@ -158,6 +190,13 @@ gk-stars categorise --all --limit 200
 
 # Resume the last run with a note
 gk-stars categorise --all --resume last --notes "tuning thresholds"
+
+# Programmatic
+node <<'EOF'
+import { ranking } from '@geekist/stars';
+const r = await ranking.rankAll({ limit: 20, onProgress: e => process.stdout.write('.') });
+console.log('\n', r.stats);
+EOF
 ```
 
 ---

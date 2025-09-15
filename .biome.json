@@ -10,5 +10,16 @@
 			"recommended": true
 		}
 	},
-	"formatter": { "enabled": true }
+	"formatter": {
+		"enabled": true,
+		"lineWidth": 90
+	},
+	"javascript": {
+		"formatter": {
+			"arrowParentheses": "always",
+			"quoteStyle": "double",
+			"semicolons": "asNeeded",
+			"trailingComma": "es5"
+		}
+	}
 }

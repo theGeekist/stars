@@ -155,6 +155,7 @@ export async function summariseOneCore(
 
 /* --------------------------- Public CLI API --------------------------- */
 /** Public API preserved */
+/** @deprecated Use summariseAll from summarise.public */
 export async function summariseBatchAll(
 	limit: number,
 	apply: boolean,
@@ -166,6 +167,7 @@ export async function summariseBatchAll(
 }
 
 /** Public API preserved */
+/** @deprecated Use summariseRepo from summarise.public */
 export async function summariseOne(
 	selector: string,
 	apply: boolean,

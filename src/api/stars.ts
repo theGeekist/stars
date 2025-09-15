@@ -266,18 +266,22 @@ export async function runUnlistedCore(
 
 /* ------------------------------ Public API ------------------------------ */
 
+/** @deprecated Use fetchLists from stars.public */
 export async function runLists(json: boolean, out?: string, dir?: string) {
 	await runListsCore(json, out, dir, realLog);
 }
 
+/** @deprecated Use fetchReposFromList from stars.public */
 export async function runRepos(listName: string, json: boolean) {
 	await runReposCore(listName, json, realLog);
 }
 
+/** @deprecated Use fetchStars from stars.public */
 export async function runStars(json: boolean, out?: string, dir?: string) {
 	await runStarsCore(json, out, dir, realLog);
 }
 
+/** @deprecated Use fetchUnlistedStars from stars.public */
 export async function runUnlisted(
 	json: boolean,
 	out?: string,

@@ -142,6 +142,80 @@ All inference runs locally via Ollama. The SQLite database remains on disk, full
 
 ## Conclusion
 
+## Programmatic API
+
+In addition to the CLI you can consume the library directly. All batch/single operations use option objects, support progress hooks, and allow per-request model overrides via `modelConfig`.
+
+```ts
+import {
+  summaries,
+  ranking,
+  starsData,
+  ingest,
+  dispatchCommand,
+} from "@geekist/stars";
+
+// Summarise a batch with a temporary model override and progress
+const summariesResult = await summaries.summariseAll({
+  limit: 50,
+  modelConfig: { model: "llama3:8b", host: "http://localhost:11434" },
+  onProgress: (e) => {
+    if (e.phase === "summarising") {
+      // NOTE: index & total may be provided when known
+      console.log(`Summarising ${e.index}/${e.total}`);
+    }
+  },
+});
+
+// Rank a single repository, applying list membership
+const ranked = await ranking.rankOne({
+  selector: "facebook/react",
+  apply: true,
+  modelConfig: { model: "llama3:custom" },
+});
+if (ranked.status === "ok") {
+  console.log(ranked.plannedLists, ranked.changed);
+}
+
+// Fetch lists & stars (pure data, throws ConfigError if token missing)
+const lists = await starsData.fetchLists();
+const stars = await starsData.fetchStars({
+  onProgress: (e) => {
+    if (e.phase === "stars:page") console.log("Fetched another page");
+  },
+});
+
+// Ingest everything (lists + stars) into the DB
+await ingest.ingestAll({ onProgress: (e) => console.log(e.phase) });
+
+// Dynamic invocation via dispatcher
+await dispatchCommand("summaries:all", { args: { limit: 10 } });
+```
+
+### Model Precedence
+
+For summaries & ranking:
+
+1. Explicit `deps` / `llm` objects (if provided)
+2. `modelConfig` (model, host, apiKey)
+3. Environment variables (legacy fallback)
+
+### Progress Phases (Overview)
+
+| Domain    | Phase       |
+| --------- | ----------- |
+| summaries | summarising |
+| ranking   | ranking     |
+| lists     | lists:fetch |
+| stars     | stars:page  |
+| ingest    | ingest:\*   |
+
+### Error Handling
+
+Missing configuration raises `ConfigError`. Ranking JSON parse issues surface as per-item `error` status; batches continue.
+
+See `MIGRATION.md` for a complete phase table and dispatch extension notes.
+
 Geekist Stars shows that local-first tooling can transform a noisy GitHub star collection into a structured, auditable, and navigable corpus. By combining editable prompts, simple metrics, explainable categorisation, and topic enrichment from a local source, the system provides a curated environment that stays under the user’s control.
 
 ## Citation

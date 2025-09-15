@@ -63,25 +63,23 @@ scoring:
     communication-community = explicit community features (chat/forums/video/social networking/federated tools); tools built for interaction.
     growth-monetization = concrete systems/courses to make money (bots, arbitrage, dropshipping, affiliate); repos explicitly tied to growth/marketing experiments; includes "free" monetisation resources.
     business-commerce = open-source platforms for business ops: e-commerce, payments, billing, crm, erp; repos enabling financial transactions or store-building.
-    project-collaboration = task boards, pm tools, wikis, okrs, coordination platforms; repos designed to help teams work together.
+    project-collaboration = task boards, pm tools, wikis, coordination platforms; repos designed to help teams work together.
     automation-workflows = low-code/no-code integration tools; workflow automation engines; etl/data pipelines; self-hosted zapier-like projects.
     blockchain-finance = smart contracts, wallets, swaps, defi protocols, on-chain ops/analytics; repos tied to blockchain + finance infra.
-    technical-thought-leadership = repos showcasing leadership practices, onboarding frameworks, rituals, okr systems, engineering culture; tools/resources tied to scaling teams or leading effectively.
+    technical-thought-leadership = repos showcasing leadership practices, rituals, okr systems, engineering culture; tools/resources tied to scaling teams or leading effectively.
 summarise:
   one_paragraph: |
-    Write ONE paragraph (≤100 words) that explains the project in plain language 
-    for a general audience with no technical background. 
-    Focus on what it does and why it matters. 
-    Keep it clear, simple, and factual. Do not use bullet points, headings, or em dashes.
+    Write ONE paragraph (≤100 words) that explains the project in plain language for a general audience with basic technical background. 
+    Focus on what it does and why it matters. Keep it clear, simple, and factual, but not dry. 
+    Return only the paragraph, no bullet points or em dashes.
 
   map_header: |
-    From the following text, extract 2-3 short bullets (10-18 words each) in plain language. 
-    Summarise what the project does and why it might be useful. 
+    From the following text, extract at least 5 short bullets (10-18 words each) in plain language. 
+    Summarise what the project does and why it might be useful and extract key facts. Keep it clear, simple, and factual but not dry. 
     Return only bullets prefixed with "- ".
 
   reduce: |
-    Write ONE paragraph (≤100 words) in plain language for a general audience. 
-    Explain what the project does and why it might be useful. 
-    Keep it clear, simple, and factual. 
+    Write ONE paragraph (≤100 words) that explains the project in plain language for a general audience with basic technical background.
+    Focus on what it does and why it matters. Keep it clear, simple, and factual, but not dry.
     Return only the paragraph, no bullet points or em dashes.
 

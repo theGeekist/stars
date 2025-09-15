@@ -29,7 +29,7 @@ function buildBaseHints(meta: Meta): string {
 
 async function loadReadme(
 	meta: Meta,
-): Promise<{ clean: string; chunks: string[]; awesome: boolean }> {
+): Promise<{ clean: string; chunks: string[]; awesome: boolean; meta: Meta }> {
 	let awesome = isAwesomeList(
 		meta.nameWithOwner,
 		meta.description,
@@ -63,7 +63,7 @@ async function loadReadme(
 			}
 		}
 	}
-	return { clean, chunks, awesome };
+	return { clean, chunks, awesome, meta };
 }
 
 async function selectContentChunks(
@@ -146,19 +146,49 @@ ${bullets.join("\n")}
 	return enforceWordCap(paragraph, 100);
 }
 
+async function paraphraseAwesomeList(
+	awesomeSummary: string,
+	deps?: SummariseDeps,
+): Promise<string> {
+	const prompt =
+		`Rephrase the following, saying the same thing in a slightly different way, just for variability:
+${awesomeSummary}
+`.trim();
+	return deps?.gen
+		? deps.gen(prompt, { temperature: 0.2 })
+		: realGen(prompt, { temperature: 0.2 });
+}
+
 export async function summariseRepoOneParagraph(
 	meta: Meta,
 	deps?: SummariseDeps,
 ): Promise<string> {
 	const baseHints = buildBaseHints(meta);
 	const { clean, chunks, awesome } = await loadReadme(meta);
-	if (awesome) return summariseAwesomeList(meta.description, meta.topics);
+	if (awesome) {
+		const awesomeSummary = summariseAwesomeList(meta.description, meta.topics);
+		// Fast path: unless caller explicitly injects a generator, skip paraphrase to avoid network.
+		if (!deps?.gen) return awesomeSummary;
+		try {
+			return await paraphraseAwesomeList(awesomeSummary, deps);
+		} catch {
+			return awesomeSummary;
+		}
+	}
 
 	const gen = deps?.gen ?? realGen;
-	if (chunks.length === 0) return generateFromMetadata(meta, baseHints, gen);
+	if (chunks.length === 0) {
+		const results = await generateFromMetadata(meta, baseHints, gen);
+		// console.log("-".repeat(20));
+		// console.log(results);
+		// console.log("-".repeat(20));
+		return results;
+	}
 
 	const picked = await selectContentChunks(clean, chunks, deps);
+	// console.log({ picked });
 	const bullets = await mapChunksToBullets(picked, gen);
+	// console.log({ bullets });
 	return reduceBulletsToParagraph(bullets, baseHints, gen);
 }
 
@@ -177,8 +207,15 @@ export async function summariseRepoOneParagraphWithCustomGen(
 ): Promise<string> {
 	const baseHints = buildBaseHints(meta);
 	const { clean, chunks, awesome } = await loadReadme(meta);
-	if (awesome) return summariseAwesomeList(meta.description, meta.topics);
-
+	if (awesome) {
+		const awesomeSummary = summariseAwesomeList(meta.description, meta.topics);
+		if (!deps?.gen) return awesomeSummary;
+		try {
+			return await paraphraseAwesomeList(awesomeSummary, deps);
+		} catch {
+			return awesomeSummary;
+		}
+	}
 	if (chunks.length === 0)
 		return generateFromMetadata(meta, baseHints, genMain);
 

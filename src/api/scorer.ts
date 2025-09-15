@@ -338,6 +338,7 @@ export async function processRepo(opts: ProcessRepoOptions, logger: Logger) {
 
 /* --------------------------------- Public API -------------------------------- */
 
+/** @deprecated Use rankAll from ranking.public */
 export async function scoreBatchAll(
 	limit: number,
 	apply: boolean,
@@ -347,6 +348,7 @@ export async function scoreBatchAll(
 	await scoreBatchAllCore(limit, apply, llm, database, realLog);
 }
 
+/** @deprecated Use rankOne from ranking.public */
 export async function scoreOne(
 	selector: string,
 	apply: boolean,
