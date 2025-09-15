@@ -21,6 +21,15 @@ const ICON: Record<string, string> = {
 	debug: "·",
 };
 
+// Optional tap to mirror logs elsewhere (e.g. SSE)
+let __tap: undefined | ((type: string, line: string) => void);
+export function setLogTap(tap?: (type: string, line: string) => void) {
+	__tap = tap;
+}
+export function getLogTap() {
+	return __tap;
+}
+
 const reporter: ConsolaReporter = {
 	log(obj: LogObject) {
 		// Build a clean, timestamp-free line
@@ -29,6 +38,12 @@ const reporter: ConsolaReporter = {
 			.filter((v) => v !== undefined)
 			.map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
 		const line = `${icon} ${parts.join(" ")}`;
+		// Mirror to tap (classify errors)
+		try {
+			__tap?.(obj.type === "error" ? "err" : obj.type, line);
+		} catch {
+			// ignore tap errors
+		}
 		const dest = obj.type === "error" ? process.stderr : process.stdout;
 		dest.write(`${line}\n`);
 	},

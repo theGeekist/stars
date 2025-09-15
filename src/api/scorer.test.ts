@@ -26,7 +26,7 @@ describe("cli-scorer", () => {
 	});
 
 	it("scoreOne throws when apply=true and GITHUB_TOKEN missing", async () => {
-		const { scoreOne } = await import("./cli-scorer");
+		const { scoreOne } = await import("./scorer");
 		db.exec(
 			"INSERT INTO repo(id, name_with_owner, url, stars) VALUES (1, 'o/r1', 'u', 10);",
 		);
@@ -58,7 +58,7 @@ describe("cli-scorer", () => {
 	});
 
 	it("scoreBatchAll logs listless CSV when avoidListless blocks (dry run)", async () => {
-		const { scoreBatchAll } = await import("./cli-scorer");
+		const { scoreBatchAll } = await import("./scorer");
 		// Seed one list and one repo with high stars (avoid minStars block)
 		db.exec(`
       INSERT INTO list(id, list_id, name, slug, is_private) VALUES (1, 'L1', 'Alpha', 'alpha', 0);

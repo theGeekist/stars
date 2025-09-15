@@ -1,42 +1,11 @@
-// src/ingest.test.ts
+// src/api/ingest.test.ts
 import { describe, expect, mock, test } from "bun:test";
 import type { IngestReporter } from "@features/ingest/types";
-import {
-	createReporter,
-	ingestCoreWith,
-	type LoggerLike,
-	resolveSourceDir,
-	type SpinnerLike,
-} from "./ingest";
+import { makeLog, makeLogWithLines } from "../__test__/helpers/log";
+import { ingestCoreWith } from "./ingest";
+import { createIngestReporter, resolveSourceDir } from "./utils";
 
-function makeLog(): {
-	log: LoggerLike;
-	succeedCalls: string[];
-	successFn: ReturnType<typeof mock>;
-} {
-	const succeedCalls: string[] = [];
-
-	// wrap mocks so property types stay exact
-	const succeedFn = mock((msg: string) => {
-		succeedCalls.push(msg);
-	});
-	const stopFn = mock(() => {});
-
-	// factory returns a fresh spinner each time (good enough for our tests)
-	const log: LoggerLike = {
-		spinner(_text: string): SpinnerLike {
-			return {
-				text: "",
-				succeed: (msg: string) => succeedFn(msg),
-				stop: () => stopFn(),
-			};
-		},
-		success: (msg: string) => succeedFn(msg),
-		line: (_?: string) => {},
-	};
-
-	return { log, succeedCalls, successFn: succeedFn };
-}
+/* --------------------------------- tests ---------------------------------- */
 
 describe("resolveSourceDir", () => {
 	test("arg > env > default", () => {
@@ -54,7 +23,7 @@ describe("resolveSourceDir", () => {
 describe("createReporter", () => {
 	test("tracks totals and logs final message (computed totals)", () => {
 		const { log, succeedCalls } = makeLog();
-		const { reporter, getTotals } = createReporter(log, "/fixtures");
+		const { reporter, getTotals } = createIngestReporter(log, "/fixtures");
 
 		reporter.start(2);
 		expect(getTotals()).toEqual({ lists: 2, repos: 0 });
@@ -87,7 +56,7 @@ describe("createReporter", () => {
 
 	test("done() honours provided totals", () => {
 		const { log, succeedCalls } = makeLog();
-		const { reporter } = createReporter(log, "/fixtures");
+		const { reporter } = createIngestReporter(log, "/fixtures");
 
 		reporter.start(10);
 		reporter.listDone(
@@ -109,7 +78,7 @@ describe("ingestCore", () => {
 			async (src: string, r: Required<IngestReporter>) => {
 				captured = src;
 				r.start(2);
-				// we don’t need listStart/listDone for this assertion, but call them once to exercise wiring:
+				// exercise wiring with full shapes
 				r.listStart(
 					{ name: "A", isPrivate: false, file: "", listId: "A" },
 					0,
@@ -154,35 +123,6 @@ describe("ingestCore", () => {
 });
 
 describe("ingestCore (unlisted support)", () => {
-	function makeLogWithLines(): {
-		log: LoggerLike;
-		succeedCalls: string[];
-		lineCalls: string[];
-	} {
-		const succeedCalls: string[] = [];
-		const lineCalls: string[] = [];
-
-		const succeedFn = mock((msg: string) => {
-			succeedCalls.push(msg);
-		});
-		const stopFn = mock(() => {});
-
-		const log: LoggerLike = {
-			spinner(_text: string): SpinnerLike {
-				return {
-					text: "",
-					succeed: (msg: string) => succeedFn(msg),
-					stop: () => stopFn(),
-				};
-			},
-			success: (msg: string) => succeedFn(msg),
-			line: (msg?: string) => {
-				if (typeof msg === "string") lineCalls.push(msg);
-			},
-		};
-		return { log, succeedCalls, lineCalls };
-	}
-
 	test("prints extra details line when service returns reposFromLists + unlisted", async () => {
 		const { log, succeedCalls, lineCalls } = makeLogWithLines();
 

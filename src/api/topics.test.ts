@@ -5,43 +5,9 @@ import type {
 	RepoRef,
 	TopicMeta,
 } from "@features/topics/types";
-import {
-	enrichAllRepoTopicsCore,
-	type LoggerLike,
-	resolveEnrichRuntime,
-	type SpinnerController,
-	type SpinnerHandle,
-	type TopicsDeps,
-} from "./topics";
-
-function makeLogger() {
-	const headers: string[] = [];
-	const infos: string[] = [];
-	const successes: string[] = [];
-	const spinnerStarts: string[] = [];
-	const succeedMsgs: string[] = [];
-
-	const handle: SpinnerHandle = {
-		text: "",
-		succeed: (msg: string) => {
-			succeedMsgs.push(msg);
-		},
-		stop: () => {},
-	};
-
-	const log: LoggerLike = {
-		header: (m) => headers.push(m),
-		info: (m) => infos.push(m),
-		success: (m) => successes.push(m),
-		line: (_?: string) => {},
-		spinner: (txt: string): SpinnerController => {
-			spinnerStarts.push(txt);
-			return { start: () => handle };
-		},
-	};
-
-	return { log, headers, infos, successes, spinnerStarts, succeedMsgs };
-}
+import { makeCaptureLog } from "../__test__/helpers/log";
+import { enrichAllRepoTopicsCore, type TopicsDeps } from "./topics";
+import { resolveEnrichRuntime } from "./utils";
 
 describe("resolveEnrichRuntime", () => {
 	test("opts override env; env used when opts missing", () => {
@@ -67,7 +33,7 @@ describe("resolveEnrichRuntime", () => {
 
 describe("enrichAllRepoTopicsCore", () => {
 	test("early exit when no repos", async () => {
-		const { log, infos } = makeLogger();
+		const { log, infos } = makeCaptureLog();
 
 		const deps: TopicsDeps = {
 			// service fns
@@ -106,8 +72,14 @@ describe("enrichAllRepoTopicsCore", () => {
 	});
 
 	test("full flow with env + opts + logging", async () => {
-		const { log, headers, infos, successes, spinnerStarts, succeedMsgs } =
-			makeLogger();
+		const {
+			log,
+			headers,
+			infos,
+			successes,
+			spinnerStarts,
+			spinnerSucceedMsgs,
+		} = makeCaptureLog();
 
 		const rows: RepoMini[] = [
 			{ id: 1, name_with_owner: "o/r1", is_archived: 0 },
@@ -193,12 +165,14 @@ describe("enrichAllRepoTopicsCore", () => {
 		expect(spinnerStarts[1]).toMatch(/Reconciling/);
 		expect(spinnerStarts[2]).toMatch(/Refreshing topic metadata/);
 
-		expect(succeedMsgs).toContain("Fetched topics for 2 repos");
+		expect(spinnerSucceedMsgs).toContain("Fetching topics for 2 repos");
 		expect(
-			succeedMsgs.some((m) => m.includes("Unique topics discovered: 3")),
+			spinnerSucceedMsgs.some((m) => m.includes("Unique topics discovered: 3")),
 		).toBe(true);
 		expect(
-			succeedMsgs.some((m) => m.includes("Refreshed metadata for 2 topics")),
+			spinnerSucceedMsgs.some((m) =>
+				m.includes("Refreshed metadata for 2 topics"),
+			),
 		).toBe(true);
 
 		expect(successes).toContain(
