@@ -15,8 +15,13 @@ export function animateNumber(el, from, to, duration = 500) {
 	if (anims.has(key)) cancelAnimationFrame(anims.get(key));
 	const start = performance.now();
 	const diff = to - from;
-	const flashClass = diff > 0 ? "text-green-600" : "text-amber-500";
-	el.classList.add(flashClass);
+	const container = el.closest("[data-flash-container]") || el;
+	const bgFlashClass = diff > 0 ? "flash-bg-inc" : "flash-bg-dec";
+	// Trigger a subtle background flash on the container
+	container.classList.remove("flash-bg-inc", "flash-bg-dec");
+	// Force reflow to restart animation if same class is applied quickly
+	void container.offsetWidth;
+	container.classList.add(bgFlashClass);
 	function step(now) {
 		const t = Math.min(1, (now - start) / duration);
 		const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -28,7 +33,7 @@ export function animateNumber(el, from, to, duration = 500) {
 		} else {
 			el.textContent = fmt(to);
 			el.dataset.value = String(to);
-			setTimeout(() => el.classList.remove(flashClass), 350);
+			setTimeout(() => container.classList.remove(bgFlashClass), 350);
 			anims.delete(key);
 		}
 	}
@@ -40,6 +45,18 @@ export function updateCardValue(id, newVal) {
 	const el = document.getElementById(id);
 	const prev = Number(el?.dataset?.value || NaN);
 	if (!el) return;
+	if (Number.isNaN(prev)) {
+		el.textContent = fmt(newVal);
+		el.dataset.value = String(newVal);
+	} else {
+		animateNumber(el, prev, newVal);
+	}
+}
+
+// Update a provided element that holds only a number string, with subtle flash
+export function updateNumberEl(el, newVal) {
+	if (!el) return;
+	const prev = Number(el?.dataset?.value || NaN);
 	if (Number.isNaN(prev)) {
 		el.textContent = fmt(newVal);
 		el.dataset.value = String(newVal);

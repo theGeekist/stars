@@ -1,5 +1,5 @@
 import { $ } from "./dom.js";
-import { fetchJSON, updateCardValue, fmt } from "./util.js";
+import { fetchJSON, updateCardValue, updateNumberEl, fmt } from "./util.js";
 
 export async function refreshDashboard(dir) {
 	try {
@@ -12,15 +12,44 @@ export async function refreshDashboard(dir) {
 		updateCardValue("dbSumm", d.db.summarised);
 		updateCardValue("dbScored", d.db.scored);
 		const pills = $("perListPills");
-		pills.innerHTML = "";
+		const existing = new Map(
+			Array.from(pills.children).map((el) => [el.dataset.slug, el]),
+		);
+		const seen = new Set();
 		for (const row of d.db.perList) {
-			const span = document.createElement("span");
-			span.className =
-				"inline-block border border-slate-400/30 rounded px-2 py-1 text-sm bg-black/5 dark:bg-white/5 mr-1 mb-1";
-			span.title = row.slug;
-			span.dataset.slug = row.slug;
-			span.innerHTML = `<span class="opacity-85">${row.name}</span> <span class="opacity-85 tabular-nums">(${fmt(row.repos)})</span>`;
-			pills.append(span);
+			seen.add(row.slug);
+			let pill = existing.get(row.slug);
+			if (!pill) {
+				pill = document.createElement("span");
+				pill.className =
+					"inline-block border border-slate-400/30 rounded px-2 py-1 text-sm bg-black/5 dark:bg-white/5 mr-1 mb-1";
+				pill.title = row.slug;
+				pill.dataset.slug = row.slug;
+				pill.setAttribute("data-flash-container", "");
+				const name = document.createElement("span");
+				name.className = "opacity-85";
+				name.textContent = row.name + " ";
+				const open = document.createElement("span");
+				open.className = "opacity-85 tabular-nums";
+				open.textContent = "(";
+				const count = document.createElement("span");
+				count.className = "opacity-85 tabular-nums";
+				count.setAttribute("data-count", "");
+				count.dataset.value = String(row.repos);
+				count.textContent = fmt(row.repos);
+				const close = document.createElement("span");
+				close.className = "opacity-85 tabular-nums";
+				close.textContent = ")";
+				pill.append(name, open, count, close);
+				pills.append(pill);
+			} else {
+				const count = pill.querySelector("[data-count]");
+				updateNumberEl(count, row.repos);
+			}
+		}
+		// Remove pills that no longer exist
+		for (const [slug, el] of existing) {
+			if (!seen.has(slug)) el.remove();
 		}
 	} catch (e) {
 		console.error(e);

@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stars Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @keyframes bg-flash-inc { from { background-color: rgba(34,197,94,0.18); } to { background-color: transparent; } }
+      @keyframes bg-flash-dec { from { background-color: rgba(245,158,11,0.18); } to { background-color: transparent; } }
+      .flash-bg-inc { animation: bg-flash-inc 700ms ease-out; }
+      .flash-bg-dec { animation: bg-flash-dec 700ms ease-out; }
+
+      /* Subtle running-state for task buttons */
+      .is-running {
+        background-color: rgba(59, 130, 246, 0.12);
+        border-color: rgba(59, 130, 246, 0.6);
+      }
+    </style>
   </head>
   <body class="font-sans text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900">
     <div class="mx-8 my-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -28,8 +40,6 @@
           <span class="opacity-70 text-sm">Live stream (last 1000 lines)</span>
         </div>
         <div class="flex flex-wrap gap-2 items-center">
-          <button data-task="lists" title="lists" class="px-3 py-1 border rounded">Lists</button>
-          <button data-task="unlisted" title="unlisted" class="px-3 py-1 border rounded">Unlisted</button>
           <button data-task="ingest" title="ingest" class="px-3 py-1 border rounded">Ingest</button>
           <button data-task="summarise" title="summarise --apply" class="px-3 py-1 border rounded">Summary</button>
           <button data-task="score" title="score --apply" class="px-3 py-1 border rounded">Score</button>
@@ -43,18 +53,36 @@
     <div class="mx-8 mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
       <section class="min-w-0">
         <div class="space-y-2">
-          <div class="grid" style="grid-template-columns: 260px repeat(4, minmax(0,1fr)); column-gap: 2rem; row-gap: .5rem; align-items: end;">
-            <div class="text-sm opacity-75">From JSON</div>
-            <div class="grid"><div class="text-sm opacity-75">Lists</div><div class="text-right font-bold text-lg tabular-nums" id="jsonLists">–</div></div>
-            <div class="grid"><div class="text-sm opacity-75">Repos</div><div class="text-right font-bold text-lg tabular-nums" id="jsonRepos">–</div></div>
-            <div class="grid"><div class="text-sm opacity-75">Unlisted</div><div class="text-right font-bold text-lg tabular-nums" id="jsonUnlisted">–</div></div>
-            <div></div>
-            <div class="text-sm opacity-75">From SQLite</div>
-            <div class="grid"><div class="text-sm opacity-75">Lists</div><div class="text-right font-bold text-lg tabular-nums" id="dbLists">–</div></div>
-            <div class="grid"><div class="text-sm opacity-75">Repos</div><div class="text-right font-bold text-lg tabular-nums" id="dbRepos">–</div></div>
-            <div class="grid"><div class="text-sm opacity-75">Summarised</div><div class="text-right font-bold text-lg tabular-nums" id="dbSumm">–</div></div>
-            <div class="grid"><div class="text-sm opacity-75">Scored</div><div class="text-right font-bold text-lg tabular-nums" id="dbScored">–</div></div>
-          </div>
+          <table class="min-w-full text-sm">
+            <thead class="opacity-75">
+              <tr>
+                <th class="text-left font-normal w-48">Source</th>
+                <th class="text-left font-normal">Lists</th>
+                <th class="text-left font-normal">Repos</th>
+                <th class="text-left font-normal">Unlisted</th>
+                <th class="text-left font-normal">Summarised</th>
+                <th class="text-left font-normal">Scored</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="opacity-75">From JSON</td>
+                <td class="font-bold text-lg tabular-nums" id="jsonLists" data-flash-container>–</td>
+                <td class="font-bold text-lg tabular-nums" id="jsonRepos" data-flash-container>–</td>
+                <td class="font-bold text-lg tabular-nums" id="jsonUnlisted" data-flash-container>–</td>
+                <td class="opacity-50">—</td>
+                <td class="opacity-50">—</td>
+              </tr>
+              <tr>
+                <td class="opacity-75">From SQLite</td>
+                <td class="font-bold text-lg tabular-nums" id="dbLists" data-flash-container>–</td>
+                <td class="font-bold text-lg tabular-nums" id="dbRepos" data-flash-container>–</td>
+                <td class="opacity-50">—</td>
+                <td class="font-bold text-lg tabular-nums" id="dbSumm" data-flash-container>–</td>
+                <td class="font-bold text-lg tabular-nums" id="dbScored" data-flash-container>–</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
       <section class="flex flex-col gap-2 min-h-0">

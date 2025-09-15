@@ -6,8 +6,7 @@ import { getDefaultDb } from "@lib/db";
 import { createLogger, getLogTap, setLogTap } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
-import ingest from "@src/api/ingest";
-import { runLists, runUnlisted } from "@src/api/stars";
+import { ingestListedFromGh, ingestUnlistedFromGh } from "@src/api/ingest";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
 
 let qLists!: Statement<ListRow, []>;
@@ -29,6 +28,7 @@ type SseClient = {
 const sseClients = new Set<SseClient>();
 const encoder = new TextEncoder();
 const logHistory: string[] = [];
+let lastSseLine = "";
 const MAX_HISTORY = 1000;
 
 // Track running child processes for cancel/status
@@ -36,6 +36,7 @@ type RunningProc = {
 	task: string;
 	cmd: string[];
 	proc: { kill: () => void } | ReturnType<typeof Bun.spawn>;
+	controller?: AbortController;
 	startedAt: string;
 };
 const running = new Map<number, RunningProc>();
@@ -219,6 +220,8 @@ type RunResult =
 	| { ok: false; error: string };
 
 function sseBroadcast(line: string): void {
+	if (line === lastSseLine) return;
+	lastSseLine = line;
 	logHistory.push(line);
 	if (logHistory.length > MAX_HISTORY)
 		logHistory.splice(0, logHistory.length - MAX_HISTORY);
@@ -295,10 +298,6 @@ function handleRun(path: string, dir?: string): Response {
 	const base = ["bun", "run", "src/cli.ts"];
 	let args: string[] | undefined;
 	switch (path) {
-		case "unlisted":
-			return startInProcess(path, d);
-		case "lists":
-			return startInProcess(path, d);
 		case "ingest":
 			return startInProcess(path, d);
 		case "summarise":
@@ -323,11 +322,12 @@ function anyInprocRunning(): boolean {
 	return false;
 }
 
-function startInProcess(task: string, dir?: string): Response {
+function startInProcess(task: string, _dir?: string): Response {
 	if (anyInprocRunning())
 		return json({ error: "Another in-process task is running" }, 409);
 	const startedAt = new Date().toISOString();
 	const pid = nextLocalPid++;
+	const controller = new AbortController();
 	const rec: RunningProc = {
 		task,
 		cmd: ["__inproc__", task],
@@ -336,12 +336,11 @@ function startInProcess(task: string, dir?: string): Response {
 				/* no-op for now */
 			},
 		},
+		controller,
 		startedAt,
 	};
 	running.set(pid, rec);
-	sseBroadcast(
-		`[start] ${startedAt} pid=${pid} task=${task} cmd=inproc:${task}`,
-	);
+	// Do not broadcast synthetic [start] lines for in-process tasks
 
 	const prevTap = getLogTap();
 	setLogTap((type, line) => {
@@ -352,14 +351,11 @@ function startInProcess(task: string, dir?: string): Response {
 	(async () => {
 		try {
 			switch (task) {
-				case "lists":
-					await runLists(false, undefined, dir);
-					break;
-				case "unlisted":
-					await runUnlisted(false, undefined, dir);
-					break;
 				case "ingest":
-					await ingest(dir ?? "./exports");
+					// Replace legacy ingest-from-disk with GH-driven ingestion
+					await ingestListedFromGh(undefined, undefined, controller.signal);
+					if (controller.signal.aborted) throw new Error("Aborted");
+					await ingestUnlistedFromGh(undefined, undefined, controller.signal);
 					break;
 			}
 			sseBroadcast(`[end] pid=${pid} task=${task} code=0`);
@@ -373,7 +369,7 @@ function startInProcess(task: string, dir?: string): Response {
 		}
 	})();
 
-	return json({ ok: true, pid, cmd: rec.cmd, cancellable: false }, 202);
+	return json({ ok: true, pid, cmd: rec.cmd, cancellable: true }, 202);
 }
 
 function handleStatus(): Response {
@@ -382,7 +378,7 @@ function handleStatus(): Response {
 		task: r.task,
 		cmd: r.cmd,
 		startedAt: r.startedAt,
-		cancellable: !(r.cmd && r.cmd[0] === "__inproc__"),
+		cancellable: true,
 	}));
 	return json({ running: list });
 }
@@ -393,12 +389,18 @@ function handleCancel(pidStr: string): Response {
 	const rec = running.get(pid);
 	if (!rec) return json({ error: "Not running" }, 404);
 	try {
-		// In-process tasks do not support cancel yet
+		// Support cancel for in-process tasks via AbortController
 		if (rec.cmd && rec.cmd[0] === "__inproc__") {
-			return json(
-				{ ok: false, error: "Cancel not supported for in-process tasks" },
-				501,
-			);
+			try {
+				(rec.controller as AbortController | undefined)?.abort();
+				sseBroadcast(`[cancel] pid=${pid} task=${rec.task}`);
+				return json({ ok: true });
+			} catch (e) {
+				return json(
+					{ ok: false, error: e instanceof Error ? e.message : String(e) },
+					500,
+				);
+			}
 		}
 		// Try SIGTERM first; Bun.spawn returns a process with .kill
 		rec.proc.kill();
