@@ -10,3 +10,4 @@ app.md
 run-generate-wiki.md
 .gitignore
 run-pipeline.md
+src/features/wiki/database/*
