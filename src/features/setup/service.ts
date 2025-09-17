@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import { log } from "@lib/bootstrap";
 import { getAllLists } from "@lib/lists";
 import { slugify } from "@lib/utils";
@@ -125,9 +125,9 @@ Return JSON.
 
 		const resp = deps?.llm
 			? await deps.llm()
-			: ((await new OllamaService(
-					Bun.env.OLLAMA_MODEL ?? "",
-				).generatePromptAndSend(system, `${examples}\n\n${user}`, {
+			: ((await createOllamaService({
+					model: Bun.env.OLLAMA_MODEL ?? "",
+				}).generatePromptAndSend(system, `${examples}\n\n${user}`, {
 					schema,
 				})) as unknown as {
 					criteria?: Array<{ slug?: string; description?: string }>;
@@ -169,7 +169,7 @@ export async function testOllamaReady(): Promise<{
 	const model = Bun.env.OLLAMA_MODEL ?? "";
 	if (!model) return { ok: false, reason: "OLLAMA_MODEL not set" };
 	try {
-		const svc = new OllamaService(model);
+		const svc = createOllamaService({ model });
 		// Minimal noop call to verify we can reach the model
 		const schema = { type: "object", additionalProperties: true } as const;
 		await svc.generatePromptAndSend("system", "ok", { schema });

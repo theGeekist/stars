@@ -1,11 +1,15 @@
 // src/lib/readme.ts
-
 import type { Database } from "bun:sqlite";
-import { Document, SentenceSplitter, TokenTextSplitter } from "llamaindex";
+import { markdownSplitter } from "@jasonnathan/llm-core/markdown-splitter";
 import { withDB } from "./db";
 import { ghHeaders } from "./github";
 import type { ChunkingOptions, FetchLike, ReadmeRow } from "./types";
-import { linkDensity, stripCatalogue, stripFrontmatter } from "./utils";
+import {
+	cosineDropChunker,
+	linkDensity,
+	stripCatalogue,
+	stripFrontmatter,
+} from "./utils";
 
 // NOTE: No module-level prepared statements; use provided DB or default DB per call.
 
@@ -113,66 +117,51 @@ export function chunkMarkdown(
 		chunkOverlapTokens = 80,
 		mode = "sentence",
 	} = opts;
-	const doc = new Document({ text: md });
-	let chunks: string[];
-	if (mode === "sentence") {
-		const splitter = new SentenceSplitter({
-			chunkSize: chunkSizeTokens,
-			chunkOverlap: chunkOverlapTokens,
-		});
-		chunks = splitter.splitText(doc.getText());
-	} else {
-		const splitter = new TokenTextSplitter({
-			chunkSize: chunkSizeTokens,
-			chunkOverlap: chunkOverlapTokens,
-		});
-		chunks = splitter.splitText(doc.getText());
-	}
-	// Post-process: avoid splitting fenced code/HTML blocks across chunks
-	function mergeUnbalanced(input: string[]): string[] {
-		const out: string[] = [];
-		let buf = "";
-		let fenceParity = 0; // count of ``` toggles mod 2
-		let preOpen = 0;
-		let preClose = 0;
-		let codeOpen = 0;
-		let codeClose = 0;
-		const fenceRe = /(^|\n)```/g;
-		const openPre = /<pre\b[^>]*>/gi;
-		const closePre = /<\/pre>/gi;
-		const openCode = /<code\b[^>]*>/gi;
-		const closeCode = /<\/code>/gi;
-		const balanced = () =>
-			fenceParity % 2 === 0 && preOpen === preClose && codeOpen === codeClose;
-		function scanDelta(s: string) {
-			fenceParity ^= (s.match(fenceRe) || []).length % 2;
-			preOpen += (s.match(openPre) || []).length;
-			preClose += (s.match(closePre) || []).length;
-			codeOpen += (s.match(openCode) || []).length;
-			codeClose += (s.match(closeCode) || []).length;
+	// If not sentence mode just fall back to simple windowing using markdown splitter output concatenation
+	const base = markdownSplitter(md, {
+		minChunkSize: 300,
+		maxChunkSize: 1800,
+		useHeadingsOnly: false,
+	});
+	if (mode !== "sentence") return base;
+
+	// Approx tokens
+	const approx = (s: string) => Math.max(1, Math.ceil(s.length / 4));
+	const out: string[] = [];
+	let cur: string[] = [];
+	let curTok = 0;
+	for (const seg of base) {
+		const t = approx(seg);
+		if (!cur.length) {
+			cur.push(seg);
+			curTok = t;
+			continue;
 		}
-		for (const c of input) {
-			const seg = buf ? `${buf}\n${c}` : c;
-			// snapshot counts
-			const snap = { fenceParity, preOpen, preClose, codeOpen, codeClose };
-			scanDelta(c);
-			if (balanced()) {
-				out.push(seg);
-				buf = "";
-			} else {
-				// revert and accumulate to buffer until we get balance next iteration
-				fenceParity = snap.fenceParity;
-				preOpen = snap.preOpen;
-				preClose = snap.preClose;
-				codeOpen = snap.codeOpen;
-				codeClose = snap.codeClose;
-				buf = seg;
+		if (curTok + t <= chunkSizeTokens) {
+			cur.push(seg);
+			curTok += t;
+			continue;
+		}
+		out.push(cur.join("\n"));
+		// overlap tail
+		if (chunkOverlapTokens > 0 && cur.length > 1) {
+			let tailTok = 0;
+			const tail: string[] = [];
+			for (let i = cur.length - 1; i >= 0; i--) {
+				const st = approx(cur[i]);
+				tailTok += st;
+				tail.unshift(cur[i]);
+				if (tailTok >= chunkOverlapTokens) break;
 			}
+			cur = [...tail, seg];
+			curTok = tailTok + t;
+		} else {
+			cur = [seg];
+			curTok = t;
 		}
-		if (buf) out.push(buf);
-		return out;
 	}
-	return mergeUnbalanced(chunks).filter((s) => s.trim().length > 0);
+	if (cur.length) out.push(cur.join("\n"));
+	return out.filter((s) => s.trim().length > 0);
 }
 
 /** fetch + clean + chunk (cached) */
@@ -278,11 +267,33 @@ export async function prepareReadmeForSummary(
 	);
 	const base = cleanMarkdown(raw);
 	const pruned = isDirectory ? stripCatalogue(base) : base;
-	const chunks = chunkMarkdown(pruned, {
-		chunkSizeTokens: 768,
-		chunkOverlapTokens: 80,
-		mode: "sentence",
-	});
+	// Advanced cosine-based chunking using llm-core (best effort, fallback to naive)
+	let chunks: string[] = [];
+	try {
+		const embedFn = opts.embed; // Provided by caller
+		if (embedFn) {
+			const chunker = cosineDropChunker(embedFn);
+			chunks = await chunker.chunk(pruned, {
+				type: "markdown",
+				breakPercentile: 95,
+				minChunkSize: 300,
+				maxChunkSize: 2000,
+				overlapSize: 1,
+			});
+		}
+	} catch (e) {
+		console.warn(
+			"Cosine chunker failed, falling back to heuristic splitter",
+			e instanceof Error ? e.message : e,
+		);
+	}
+	if (!chunks || chunks.length === 0) {
+		chunks = chunkMarkdown(pruned, {
+			chunkSizeTokens: 768,
+			chunkOverlapTokens: 80,
+			mode: "sentence",
+		});
+	}
 
 	if (isDirectory) {
 		return { mode: "directory" as const, chunks: [] as SelectedChunk[] };

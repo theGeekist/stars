@@ -3,6 +3,8 @@
 Generates and stores **concise summaries** for repositories in the local DB.
 Summaries are used by the **Scoring** step to reduce hallucinations and keep criteria grounded.
 
+> LLM generation relies on external peers: install `@jasonnathan/llm-core` and `ollama` if you plan to call higher-level summarise public APIs. The core service here only selects & saves rows.
+
 - **DB only**: selects repos and persists summaries.
 - **LLM orchestration**: handled outside this service (e.g. via Ollama).
 - **Policy**: only repos without summaries are selected, unless `resummarise` is set.

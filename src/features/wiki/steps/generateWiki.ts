@@ -1,5 +1,10 @@
 // src/features/wiki/steps/generateWiki.ts
-import { Logger, OllamaService, pipeline } from "@jasonnathan/llm-core";
+import {
+	createOllamaService,
+	Logger,
+	type OllamaService,
+	pipeline,
+} from "@jasonnathan/llm-core";
 import type { RetrievalOutput, Step, WikiJSON, WikiOutput } from "../types.ts";
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -436,7 +441,9 @@ export function stepGenerateWiki(
 	genModel?: string,
 ): Step<RetrievalOutput, WikiOutput> {
 	return (_log) => async (doc) => {
-		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
+		const svc = createOllamaService({
+			model: genModel ?? Bun.env.OLLAMA_MODEL ?? "",
+		});
 		const innerLogger = new Logger("./run-generate-wiki.md", Bun.env.NTFY_URL);
 
 		const inner = pipeline<Logger, RetrievalOutput>(innerLogger)

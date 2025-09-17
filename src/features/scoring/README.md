@@ -1,7 +1,9 @@
 # Scoring / Categorise Feature
 
 Evaluates repositories against list criteria, persists per-list scores/rationales, and turns them into an **add / remove / keep / review** plan.
-Backed by SQLite tables: `model_run`, `repo_list_score`, `list_repo`.
+
+> LLM model invocation is provided by external peers (`@jasonnathan/llm-core`, `ollama`) which are not bundled. Install them when using ranking APIs; core DB planning utilities remain usable without.
+> Backed by SQLite tables: `model_run`, `repo_list_score`, `list_repo`.
 
 - **Prereq**: summaries exist (`r.summary` non-empty).
 - **Run-aware**: new runs, resume runs, or dry-run filters.

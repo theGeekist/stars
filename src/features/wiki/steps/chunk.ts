@@ -1,20 +1,9 @@
 // src/features/wiki/steps/chunk.ts
-import {
-	CosineDropChunker,
-	markdownSplitter,
-	OllamaService,
-} from "@jasonnathan/llm-core";
-import { getEncoding } from "js-tiktoken";
+import { createOllamaService, markdownSplitter } from "@jasonnathan/llm-core";
+import { cosineDropChunker } from "@lib/utils.js";
 import type { ChunkOutput, Doc, ReadOutput, Step } from "../types.ts";
 
-const enc = getEncoding("cl100k_base");
-const tok = (s: string) => {
-	try {
-		return enc.encode(s).length;
-	} catch {
-		return Math.max(1, s.length >> 2);
-	}
-};
+const tok = (s: string) => Math.max(1, Math.ceil(s.length / 4));
 
 // --- heuristics --------------------------------------------------------------
 const SMALL_TOKENS = 1024; // single-chunk threshold
@@ -26,17 +15,19 @@ function greedyTokenChunks(
 	maxT = GREEDY_MAX,
 	overlapT = GREEDY_OVER,
 ): string[] {
-	const ids = enc.encode(text);
-	if (ids.length <= maxT) return [text];
-
+	// Approximate by character windows scaled by 4 chars/token heuristic
+	const approxTok = (s: string) => Math.ceil(s.length / 4);
+	if (approxTok(text) <= maxT) return [text];
+	const estChars = (t: number) => t * 4;
+	const windowChars = estChars(maxT);
+	const overlapChars = estChars(overlapT);
 	const chunks: string[] = [];
-	const decoder = enc.decode.bind(enc);
 	let start = 0;
-	while (start < ids.length) {
-		const end = Math.min(ids.length, start + maxT);
-		chunks.push(decoder(ids.slice(start, end)));
-		if (end === ids.length) break;
-		start = Math.max(end - overlapT, start + 1);
+	while (start < text.length) {
+		const end = Math.min(text.length, start + windowChars);
+		chunks.push(text.slice(start, end));
+		if (end === text.length) break;
+		start = Math.max(end - overlapChars, start + 1);
 	}
 	return chunks;
 }
@@ -49,11 +40,10 @@ export function stepChunk(
 		const out: Doc[] = [];
 
 		// prepare cosine splitter only once
-		const svc = useCosine ? new OllamaService(embedModel) : null;
+		const svc = useCosine ? createOllamaService({ model: embedModel }) : null;
 		const embedFn =
 			useCosine && svc ? (texts: string[]) => svc.embedTexts(texts) : undefined;
-		const chunker =
-			useCosine && embedFn ? new CosineDropChunker(embedFn) : null;
+		const chunker = useCosine && embedFn ? cosineDropChunker(embedFn) : null;
 
 		for (const d of doc.rawDocs) {
 			const t = d.meta.tokenCount ?? tok(d.text);

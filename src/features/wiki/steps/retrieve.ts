@@ -1,17 +1,9 @@
 // src/features/wiki/steps/retrieve.ts
-import { OllamaService } from "@jasonnathan/llm-core";
-import { getEncoding } from "js-tiktoken";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import type { RetrievalOutput, Step, StoreOutput } from "../types";
 import { searchStore } from "./embedAndStore";
 
-const enc = getEncoding("cl100k_base");
-const approx = (s: string): number => {
-	try {
-		return enc.encode(s).length;
-	} catch {
-		return Math.max(1, s.length >> 2);
-	}
-};
+const approx = (s: string): number => Math.max(1, Math.ceil(s.length / 4));
 
 type Hit = { text: string; score: number; meta: { filePath: string } };
 
@@ -37,7 +29,7 @@ export function stepRetrieve(options: {
 	} = options;
 
 	return (log) => async (doc) => {
-		const svc = new OllamaService(embedModel);
+		const svc = createOllamaService({ model: embedModel });
 		const [[qv]] = [await svc.embedTexts([query])];
 
 		const rawHits = (await searchStore(doc.storePath, qv, k)) as Hit[];
@@ -118,8 +110,8 @@ export function stepRetrieve(options: {
 				filesUsed = 1;
 			} else {
 				// Extreme edge: trim the top chunk to fit
-				const encoded = enc.encode(single);
-				const trimmed = enc.decode(encoded.slice(0, Math.max(0, maxCtx - 32)));
+				const estChars = (maxCtx - 32) * 4;
+				const trimmed = single.slice(0, Math.max(0, estChars));
 				blocks.push({ filePath: top.meta.filePath, content: trimmed });
 				totalTokens = approx(trimmed);
 				filesUsed = 1;

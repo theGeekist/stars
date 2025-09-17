@@ -1,7 +1,7 @@
 // src/features/wiki/steps/polishWiki.ts
 
 import { readFile } from "node:fs/promises";
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import { slugify } from "@lib/utils";
 import type { Step, StoreDoc, WikiOutput } from "../types";
 import { basename, isNumArray, uniq } from "../utils";
@@ -294,7 +294,7 @@ export function stepPolishWiki(options: {
 			return doc;
 		}
 
-		const svc = new OllamaService(embedModel);
+		const svc = createOllamaService({ model: embedModel });
 		const sig = detectSignals(store);
 
 		// helpers using detected signals (close over `sig`)

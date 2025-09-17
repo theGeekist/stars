@@ -2,7 +2,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Logger, OllamaService, pipeline } from "@jasonnathan/llm-core";
+import { createOllamaService, Logger, pipeline } from "@jasonnathan/llm-core";
 import type {
 	DraftsOutput,
 	PageComposed,
@@ -91,7 +91,9 @@ export function stepWritePages(
 	genModel?: string,
 ): Step<PagesContextOutput, DraftsOutput> {
 	return (log) => async (doc) => {
-		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
+		const svc = createOllamaService({
+			model: genModel ?? Bun.env.OLLAMA_MODEL ?? "",
+		});
 		const drafts: PageDraft[] = [];
 		const legacyOutlines: {
 			pageId: string;

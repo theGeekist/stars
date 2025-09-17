@@ -1,8 +1,7 @@
 // src/llm/scoring.ts
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import { promptsConfig as prompts } from "@lib/prompts";
 import { toNum } from "@lib/utils";
-import type { MaybeOllama } from "./types";
 
 /* ---------- Public types ---------- */
 
@@ -35,23 +34,7 @@ export type ScoringLLM = {
 };
 
 function defaultLLM(): ScoringLLM {
-	const svc = new OllamaService(
-		Bun.env.OLLAMA_MODEL ?? "",
-	) as unknown as MaybeOllama;
-	return {
-		async generatePromptAndSend(system, user, opts) {
-			if (
-				"generatePromptAndSend" in svc &&
-				typeof svc.generatePromptAndSend === "function"
-			) {
-				return svc.generatePromptAndSend(system, user, opts);
-			}
-			if ("send" in svc && typeof svc.send === "function") {
-				return svc.send(system, user, opts);
-			}
-			throw new Error("OllamaService: no compatible send method");
-		},
-	};
+	return createOllamaService({ model: Bun.env.OLLAMA_MODEL ?? "" });
 }
 
 /* ---------- Helpers ---------- */
@@ -207,7 +190,8 @@ export async function scoreRepoAgainstLists(
 		"prompts.scoring.criteria",
 	);
 
-	const guideText = criteria; // injected verbatim
+	const guideText = `Your task is to score the repository against EACH list from 0 to 1, where 1 = perfect fit. Multiple lists may apply. Provide a reason why for repos that meet the criteria.
+Scoring Guide (if the repo does not or barely meets the criteria, score MUST be < 0.5):`;
 	const listsText = listsBlockFromCriteria(lists, criteria);
 
 	const userPrompt = `

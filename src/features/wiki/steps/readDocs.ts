@@ -1,9 +1,8 @@
 // src/features/wiki/steps/readDocs.ts
 
 import { readFile } from "node:fs/promises";
-import { relative, sep } from "node:path";
-import { glob } from "glob";
-import { getEncoding } from "js-tiktoken";
+import { join, sep } from "node:path";
+// Replaced external glob + tokenizer with Bun.Glob and heuristic tokens
 import type {
 	Doc,
 	FilterOptions,
@@ -12,7 +11,8 @@ import type {
 	Step,
 } from "../types.ts";
 
-const enc = getEncoding("cl100k_base");
+// Approximate token counter (avg ~4 chars per token)
+const approxTokens = (s: string) => Math.max(1, Math.ceil(s.length / 4));
 const CODE_EXT = [
 	".py",
 	".js",
@@ -59,13 +59,7 @@ const DEFAULT_IGNORED_DIRS = [
 	"**/logs/**",
 ];
 
-function tok(s: string): number {
-	try {
-		return enc.encode(s).length;
-	} catch {
-		return Math.max(1, s.length >> 2);
-	}
-}
+const tok = approxTokens;
 
 function toPosix(relPath: string): string {
 	// Convert platform-specific separators to POSIX for stable downstream behaviour
@@ -107,24 +101,32 @@ function include(
 
 /** Keep big files but sample them to stay token-safe. */
 function sampleLarge(text: string, tokenCap: number): string {
-	// Simple head + tail sampler with a marker in the middle
 	const T = tok(text);
 	if (T <= tokenCap) return text;
-
-	// Split the budget roughly 70/30 head/tail for code/document signal retention
-	const headBudget = Math.floor(tokenCap * 0.7);
-	const tailBudget = tokenCap - headBudget - 64; // leave a little for the marker
-	if (tailBudget <= 0) {
-		// extreme edge; just trim head
-		const headSlice = enc.decode(enc.encode(text).slice(0, tokenCap));
-		return `${headSlice}\n\n<!-- TRUNCATED -->`;
+	const headTokens = Math.floor(tokenCap * 0.7);
+	const tailTokens = tokenCap - headTokens - 32; // reserve for marker
+	if (tailTokens <= 0) {
+		const headChars = headTokens * 4;
+		return `${text.slice(0, headChars)}\n\n<!-- TRUNCATED -->`;
 	}
+	const headChars = headTokens * 4;
+	const tailChars = tailTokens * 4;
+	const head = text.slice(0, headChars);
+	const tail = text.slice(Math.max(0, text.length - tailChars));
+	return `${head}\n\n<!-- TRUNCATED: middle omitted to respect token cap -->\n\n${tail}`;
+}
 
-	const encAll = enc.encode(text);
-	const headSlice = enc.decode(encAll.slice(0, headBudget));
-	const tailSlice = enc.decode(encAll.slice(encAll.length - tailBudget));
+// Compile ignore patterns into Bun.Glob instances for quick matching
+type BunGlob = InstanceType<typeof Bun.Glob>;
+function compileIgnore(patterns: string[]): Array<{ g: BunGlob; raw: string }> {
+	return patterns.map((p) => ({ g: new Bun.Glob(p), raw: p }));
+}
 
-	return `${headSlice}\n\n<!-- TRUNCATED: middle omitted to respect token cap -->\n\n${tailSlice}`;
+function isIgnored(
+	relPath: string,
+	ignores: Array<{ g: BunGlob; raw: string }>,
+): boolean {
+	return ignores.some(({ g }) => g.match(relPath));
 }
 
 export function stepReadDocs(
@@ -146,29 +148,21 @@ export function stepReadDocs(
 					),
 				);
 
+		const ignoreGlobs = compileIgnore(ignores);
 		for (const isCode of [true, false] as const) {
 			const exts = isCode ? CODE_EXT : DOC_EXT;
-
 			for (const ext of exts) {
-				const files = await glob(
-					`${doc.repoRoot.replace(/[/\\]+$/, "")}/**/*${ext}`,
-					{
-						nodir: true,
-						ignore: ignores,
-					},
-				);
-
-				for (const abs of files) {
-					const relNative = relative(doc.repoRoot, abs);
-					const rel = toPosix(relNative); // POSIX path
+				const g = new Bun.Glob(`**/*${ext}`);
+				for await (const relFile of g.scan({ cwd: doc.repoRoot })) {
+					// relFile is POSIX relative path from cwd (Bun behavior)
+					const rel = toPosix(relFile);
+					if (isIgnored(rel, ignoreGlobs)) continue;
 					if (!include(rel, mode, filter)) continue;
-
+					const abs = join(doc.repoRoot, relFile);
 					const text = await readFile(abs, "utf8").catch(() => "");
 					if (!text) continue;
-
 					const cap = isCode ? MAX_EMBED * 10 : MAX_EMBED;
 					const textFinal = tok(text) > cap ? sampleLarge(text, cap) : text;
-
 					out.push({
 						id: `${rel}#0:${textFinal.length}`,
 						text: textFinal,

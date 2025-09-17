@@ -2,7 +2,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import type {
 	ChunkOutput,
 	Doc,
@@ -15,7 +15,7 @@ export function stepEmbedAndStore(
 	embedModel: string,
 ): Step<ChunkOutput, StoreOutput> {
 	return (log) => async (doc) => {
-		const svc = new OllamaService(embedModel);
+		const svc = createOllamaService({ model: embedModel });
 		const vecs = await svc.embedTexts(doc.chunks.map((c) => c.text));
 		const embedded: Doc[] = doc.chunks.map((c, i) => ({
 			...c,

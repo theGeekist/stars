@@ -3,7 +3,7 @@ import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import type { ScoringLLM } from "@features/scoring/llm";
 import { scoreRepoAgainstLists } from "@features/scoring/llm";
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import type { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import * as listsLib from "@lib/lists";
@@ -15,11 +15,7 @@ import type {
 	ProgressEvent,
 	RankingItemResult,
 } from "./public.types";
-import {
-	buildBatchStats,
-	createScoringLLMFromConfig,
-	getRequiredEnv,
-} from "./public.types";
+import { buildBatchStats, getRequiredEnv } from "./public.types";
 
 /**
  * Options for `rankAll` batch operation.
@@ -93,11 +89,13 @@ export async function rankAll(
 
 	const svc: ScoringLLM = llm
 		? llm
-		: modelConfig
-			? (createScoringLLMFromConfig(modelConfig) as unknown as ScoringLLM)
-			: (new OllamaService(
-					Bun.env.OLLAMA_MODEL ?? "",
-				) as unknown as ScoringLLM);
+		: createOllamaService(
+				modelConfig ?? {
+					model: Bun.env.OLLAMA_MODEL ?? "",
+					endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
+					apiKey: Bun.env.OLLAMA_API_KEY ?? "",
+				},
+			);
 
 	const items: RankingItemResult[] = [];
 	for (let i = 0; i < repos.length; i++) {
@@ -228,11 +226,13 @@ export async function rankOne(
 		if (apply) await listsSvc.apply.ensureListGhIds(token);
 		const svc: ScoringLLM = llm
 			? llm
-			: modelConfig
-				? (createScoringLLMFromConfig(modelConfig) as unknown as ScoringLLM)
-				: (new OllamaService(
-						Bun.env.OLLAMA_MODEL ?? "",
-					) as unknown as ScoringLLM);
+			: createOllamaService(
+					modelConfig ?? {
+						model: Bun.env.OLLAMA_MODEL ?? "",
+						endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
+						apiKey: Bun.env.OLLAMA_API_KEY ?? "",
+					},
+				);
 		const facts = {
 			nameWithOwner: row.name_with_owner,
 			url: row.url,

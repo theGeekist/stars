@@ -10,7 +10,7 @@ import {
 	type ScoringLLM,
 	scoreRepoAgainstLists,
 } from "@features/scoring/llm";
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import * as listsLib from "@lib/lists";
@@ -189,7 +189,11 @@ export async function scoreBatchAllCore(
 
 	const svc =
 		llm ??
-		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
+		createOllamaService({
+			model: Bun.env.OLLAMA_MODEL ?? "",
+			endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
+			apiKey: Bun.env.OLLAMA_API_KEY ?? "",
+		});
 
 	for (let i = 0; i < repos.length; i++) {
 		await processRepo(
@@ -244,7 +248,11 @@ export async function scoreOneCore(
 
 	const svc =
 		llm ??
-		(new OllamaService(Bun.env.OLLAMA_MODEL ?? "") as unknown as ScoringLLM);
+		createOllamaService({
+			model: Bun.env.OLLAMA_MODEL ?? "",
+			endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
+			apiKey: Bun.env.OLLAMA_API_KEY ?? "",
+		});
 
 	await processRepo(
 		{ repo: row, apply, runId, scoring, listsSvc, token, lists, svc },

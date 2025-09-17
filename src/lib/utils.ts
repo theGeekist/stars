@@ -1,3 +1,6 @@
+import type { ChunkOptions, EmbedFunction } from "@jasonnathan/llm-core";
+import { cosineDropChunker as cdc } from "@jasonnathan/llm-core";
+
 export function isObject(x: unknown): x is Record<string, unknown> {
 	return typeof x === "object" && x !== null;
 }
@@ -339,3 +342,10 @@ export function stripFrontmatter(md: string): string {
 	const afterFenceNL = md.indexOf("\n", endFenceIdx + 4);
 	return afterFenceNL === -1 ? "" : md.slice(afterFenceNL + 1);
 }
+
+export const cosineDropChunker = (embedFn: EmbedFunction) => {
+	return {
+		chunk: (text: string, opts?: ChunkOptions) =>
+			cdc({ embed: embedFn }, text, opts),
+	};
+};

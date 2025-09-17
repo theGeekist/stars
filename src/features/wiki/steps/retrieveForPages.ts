@@ -2,8 +2,7 @@
  * stepRetrieveForPages (per-page)
  * Builds a compact, budgeted CONTEXT per wiki page using the existing vector store.
  */
-import { OllamaService } from "@jasonnathan/llm-core";
-import { getEncoding } from "js-tiktoken";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import type {
 	PageContext,
 	PagesContextOutput,
@@ -15,14 +14,7 @@ import type {
 } from "../types.ts";
 import { searchStore } from "./embedAndStore";
 
-const enc = getEncoding("cl100k_base");
-const tok = (s: string) => {
-	try {
-		return enc.encode(s).length;
-	} catch {
-		return Math.max(1, s.length >> 2);
-	}
-};
+const tok = (s: string) => Math.max(1, Math.ceil(s.length / 4));
 
 function pageQuery(page: WikiPage): string {
 	const rf = Array.isArray(page.relevant_files)
@@ -38,7 +30,7 @@ export function stepRetrieveForPages(
 	const { k = 24, perFileLimit = 3, budget, embedModel } = options;
 
 	return (log) => async (doc) => {
-		const svc = new OllamaService(embedModel);
+		const svc = createOllamaService({ model: embedModel });
 
 		const buildFor = async (page: WikiPage): Promise<PageContext> => {
 			const query = pageQuery(page);

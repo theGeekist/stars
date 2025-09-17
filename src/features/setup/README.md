@@ -1,6 +1,7 @@
 # Setup Feature
 
 Generates `prompts.yaml` criteria from your GitHub Lists and validates Ollama readiness.
+If LLM peers (`@jasonnathan/llm-core`, `ollama`) are not installed, generation will fall back to placeholder criteria.
 
 ## Public API
 
@@ -25,4 +26,3 @@ Environment:
 
 - `GITHUB_TOKEN` – required
 - `OLLAMA_MODEL` – recommended for automatic criteria generation
-

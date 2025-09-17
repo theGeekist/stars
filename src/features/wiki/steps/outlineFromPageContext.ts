@@ -3,7 +3,7 @@
  * Small, schema-constrained JSON prompt: produce `lead` + `sections[]` per page
  * from its page-specific CONTEXT. Mirrors generateWiki.ts usage of generatePromptAndSend.
  */
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import type {
 	OutlinesOutput,
 	PageContext,
@@ -98,7 +98,9 @@ export function stepOutlineFromPageContext(
 	genModel?: string,
 ): Step<PagesContextOutput, OutlinesOutput> {
 	return (log) => async (doc) => {
-		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
+		const svc = createOllamaService({
+			model: genModel ?? Bun.env.OLLAMA_MODEL ?? "",
+		});
 		const outlines: PageOutline[] = [];
 
 		for (const pc of doc.pagesContext) {

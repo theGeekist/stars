@@ -4,7 +4,7 @@
  * Mirrors generateWiki.ts by calling OllamaService.generatePromptAndSend with `{ schema }`.
  * Outputs a JSON object `{ markdown }`, then unwraps to PageDraft.
  */
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core";
 import type {
 	DraftsOutput,
 	OutlinesOutput,
@@ -43,7 +43,9 @@ export function stepDraftFromPageOutline(
 	DraftsOutput
 > {
 	return (log) => async (doc) => {
-		const svc = new OllamaService(genModel ?? Bun.env.OLLAMA_MODEL ?? "");
+		const svc = createOllamaService({
+			model: genModel ?? Bun.env.OLLAMA_MODEL ?? "",
+		});
 		const ctxById = new Map<string, PageContext>(
 			doc.pagesContext.map((p) => [p.pageId, p]),
 		);

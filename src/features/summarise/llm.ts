@@ -1,4 +1,4 @@
-import { OllamaService } from "@jasonnathan/llm-core";
+import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import { gen as realGen } from "@lib/ollama";
 import { promptsConfig as prompts } from "@lib/prompts";
 import {
@@ -74,7 +74,12 @@ async function selectContentChunks(
 	const LARGE_README_CHARS = 25_000;
 	if (clean.length >= LARGE_README_CHARS && chunks.length > 6) {
 		const svc =
-			deps?.embed ?? new OllamaService(Bun.env.OLLAMA_EMBEDDING_MODEL ?? "");
+			deps?.embed ??
+			createOllamaService({
+				model: Bun.env.OLLAMA_EMBEDDING_MODEL ?? "",
+				apiKey: Bun.env.OLLAMA_API_KEY ?? "",
+				endpoint: Bun.env.OLLAMA_ENDPOINT ?? "",
+			});
 		const query =
 			"what is this project, its core purpose, technical approach, and standout capability";
 		const [qv] = await svc.embedTexts([query]);
