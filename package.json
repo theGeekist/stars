@@ -15,7 +15,7 @@
 	"author": "J (Jason) <hello@geekist.dev>",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
+			"types": "./dist/types/index.d.ts",
 			"import": "./dist/index.js"
 		}
 	},
@@ -35,7 +35,8 @@
 		"types": "tsc -p tsconfig.json --noEmit",
 		"check": "bun run types && echo '✓ typecheck ok'",
 		"start": "bun run src/cli.ts",
-		"build": "bun build ./src/index.ts --target bun --outdir dist && bun build ./src/cli.ts --target bun --outdir dist && mkdir -p dist/features/setup && cp src/features/setup/.prompts.tmpl.yaml dist/features/setup/.prompts.tmpl.yaml",
+		"build": "bun run scripts/build.ts && bun run build:types",
+		"build:types": "tsc -p tsconfig.types.json",
 		"prepare": "husky",
 		"prepublishOnly": "bun run build",
 		"test": "bun test src/features src/lib",
@@ -56,24 +57,15 @@
 		"prettier": "^3.6.2"
 	},
 	"peerDependencies": {
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.2",
+		"@jasonnathan/llm-core": "1.6.1",
+		"ollama": ">=0.5.17"
 	},
 	"dependencies": {
-		"@jasonnathan/llm-core": "1.6.1",
-		"@llamaindex/readers": "^3.1.20",
-		"cheerio": "^1.1.2",
+		"@jasonnathan/llm-core": "^1.9.1",
 		"consola": "^3.4.2",
-		"glob": "^11.0.3",
-		"hono": "^4.9.7",
-		"js-tiktoken": "^1.0.21",
-		"json2csv": "^6.0.0-alpha.2",
-		"listr2": "^9.0.3",
-		"llamaindex": "^0.11.29",
 		"ollama": "^0.5.17",
-		"ora": "^8.2.0",
-		"yaml": "^2.8.1",
-		"zod": "^4.1.8",
-		"zod-to-json-schema": "^3.24.6"
+		"ora": "^8.2.0"
 	},
 	"lint-staged": {
 		"*.{ts,tsx,js,jsx,cjs,mjs,json}": [
