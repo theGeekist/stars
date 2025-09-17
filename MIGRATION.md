@@ -9,6 +9,21 @@ This release introduces a cleaner, library-focused public API while preserving e
 - Avoid `process.exit` in new code paths.
 - Provide explicit getters for stars and lists data.
 
+## Externalised LLM Dependencies (Post-Migration Optimization)
+
+To drastically reduce published bundle size the LLM stack was moved to **peer dependencies**:
+
+- `@jasonnathan/llm-core`
+- `ollama`
+
+They are not bundled. Install them only if you invoke summaries or ranking:
+
+```bash
+bun add @jasonnathan/llm-core ollama
+```
+
+Calls to LLM-powered APIs without peers present will throw a clear runtime error instructing installation. Non-LLM features (lists export, ingest, topics, stars data) continue to function without them.
+
 ## New Public Entry Points
 
 Imported via the package root:

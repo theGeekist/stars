@@ -25,6 +25,14 @@
 bun install && bun run build && gk-stars setup
 ```
 
+If you plan to use **summaries** or **ranking (categorise)** features you must also install local LLM peer packages (now externalised to keep bundles tiny):
+
+```bash
+bun add @jasonnathan/llm-core
+```
+
+Without those peers only the non-LLM features (lists, stars data export, ingest, topics) are usable.
+
 ## Abstract
 
 Geekist Stars is a Bun and TypeScript toolkit that turns personal GitHub Lists and starred repositories into an auditable corpus with computed health signals, locally generated summaries, explainable categorisation, and enriched topic metadata.
@@ -34,7 +42,7 @@ The system is designed for **reproducibility and privacy**:
 - All LLM work runs locally through Ollama with a user-selected model.
 - All state is stored in SQLite for inspection, analysis, and replay.
 
-The project demonstrates that lightweight signals, concise prompts, and explicit policies are sufficient to keep a large star collection structured and navigable — without cloud dependencies.
+The project demonstrates that lightweight signals, concise prompts, and explicit policies are sufficient to keep a large star collection structured and navigable without cloud dependencies.
 
 > Looking for CLI usage? See [USAGE.md](USAGE.md) for command-by-command examples and flags.
 
@@ -99,7 +107,7 @@ The pipeline consists of four stages that can be run independently.
 
 ### Summarisation
 
-Summaries are generated in a fixed style: 60–90 words, factual, and present-tense. They use both repository text and metadata. The goal is fast recall and triage rather than depth.
+Summaries are generated in a fixed style: 60-90 words, factual, and present-tense. They use both repository text and metadata. The goal is fast recall and triage rather than depth.
 
 ### Categorisation and Policy
 
@@ -153,7 +161,7 @@ import {
   starsData,
   ingest,
   dispatchCommand,
-} from "@geekist/stars";
+} from "@geekist/stars"; // install @jasonnathan/llm-core + ollama for summaries/ranking
 
 // Summarise a batch with a temporary model override and progress
 const summariesResult = await summaries.summariseAll({
@@ -217,6 +225,31 @@ Missing configuration raises `ConfigError`. Ranking JSON parse issues surface as
 See `MIGRATION.md` for a complete phase table and dispatch extension notes.
 
 Geekist Stars shows that local-first tooling can transform a noisy GitHub star collection into a structured, auditable, and navigable corpus. By combining editable prompts, simple metrics, explainable categorisation, and topic enrichment from a local source, the system provides a curated environment that stays under the user’s control.
+
+## Bundle Size & Externals
+
+The heavy LLM stack (`@jasonnathan/llm-core`, `ollama`) is **externalised** so published bundles stay lean:
+
+Recent build (with peers external):
+
+```
+index.js            ~225 KB
+cli.js              ~231 KB
+summarise.public.js ~174 KB
+ranking.public.js   ~183 KB
+setup.public.js     ~175 KB
+stars.public.js     ~174 KB
+```
+
+Add peers only if you need LLM-powered features:
+
+```bash
+bun add @jasonnathan/llm-core ollama
+```
+
+Then set `OLLAMA_MODEL` and run `gk-stars summarise` / `gk-stars categorise` normally.
+
+If the peers are missing and you invoke LLM code, a runtime error will instruct you to install them.
 
 ## Citation
 

@@ -14,7 +14,7 @@ Set these before running the CLI:
   Required for reading your GitHub Stars Lists and applying list updates.
 
 - `OLLAMA_MODEL`
-  Local model name for all LLM work. Example `llama3.1:8b`.
+  Local model name for all LLM work. Example `llama3.1:8b`. (Requires installing peers: `@jasonnathan/llm-core` and `ollama`.)
 
 - `GH_EXPLORE_PATH`
   Local clone of `github/explore` used for topic metadata. Example `/path/to/github/explore`.
@@ -34,7 +34,7 @@ Optional helpers:
 All CLI features are available in code:
 
 ```ts
-import { summaries, ranking, starsData, ingest } from "@geekist/stars";
+import { summaries, ranking, starsData, ingest } from "@geekist/stars"; // install @jasonnathan/llm-core + ollama for summaries/ranking
 
 // Summaries with model override & progress
 await summaries.summariseAll({
@@ -281,7 +281,7 @@ gk-stars categorise --all --limit 200
 
 ## Notes on models and prompts
 
-- All LLM work runs through your local Ollama runtime. Set `OLLAMA_MODEL` to choose the model that fits your machine.
+- All LLM work runs through your local Ollama runtime. Set `OLLAMA_MODEL` to choose the model that fits your machine (after installing `@jasonnathan/llm-core` + `ollama`).
 - `prompts.yaml` is fully editable. Update criteria anytime, then re-run categorisation.
 - Categorisation uses summaries + repo metadata to reduce hallucination and keep criteria grounded.
 
