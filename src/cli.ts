@@ -2,7 +2,7 @@
 // Unified CLI entry with subcommands: lists, stars, unlisted, score, summarise, ingest, topics:enrich, setup
 
 import { initBootstrap, log } from "@lib/bootstrap";
-import { parseSimpleArgs, SIMPLE_USAGE } from "@lib/cli";
+import { parseSimpleArgs } from "@lib/cli";
 import {
 	checkPromptsState,
 	criteriaExamples,
@@ -11,7 +11,7 @@ import {
 	showSetupHintIfNotReady,
 } from "@lib/prompts";
 import ingest from "@src/api/ingest";
-import { scoreBatchAll, scoreOne } from "@src/api/scorer";
+import { CURATION_POLICY, rankAll, rankOne } from "@src/api/ranking.public";
 import { runLists, runRepos, runStars, runUnlisted } from "@src/api/stars";
 import { summariseBatchAll, summariseOne } from "@src/api/summarise";
 import { enrichAllRepoTopics } from "@src/api/topics";
@@ -22,22 +22,54 @@ function usage(): void {
 	log.header("gk-stars");
 
 	log.subheader("Usage");
-	log.list([
-		"gk-stars lists              # saves to EXPORTS_DIR (./exports)",
-		"gk-stars repos --list <name> [--json]",
-		"gk-stars stars              # saves to EXPORTS_DIR (./exports)",
-		"gk-stars unlisted           # saves to EXPORTS_DIR (./exports)",
-		"gk-stars score (--one <owner/repo> | --all [--limit N]) [--dry]",
-		"gk-stars summarise (--one <owner/repo> | --all [--limit N]) [--dry]",
-		"gk-stars ingest             # reads from EXPORTS_DIR (./exports)",
-		"gk-stars topics:enrich [--active] [--ttl <days>]",
-		"gk-stars setup  # generate prompts.yaml from your GitHub lists",
-	]);
-
+	log.line("  gk-stars <command> [options]");
 	log.line("");
 
-	log.subheader("Quick flags");
-	log.line(SIMPLE_USAGE.trim());
+	log.subheader("Commands");
+	log.list([
+		"lists                 Save GitHub lists to EXPORTS_DIR (./exports)",
+		"repos                 Fetch repos from a given list (--list <name> [--json])",
+		"stars                 Save starred repos to EXPORTS_DIR (./exports)",
+		"unlisted              Save unlisted repos to EXPORTS_DIR (./exports)",
+		"score                 Score repositories",
+		"summarise             Summarise repositories",
+		"ingest                Read repos from EXPORTS_DIR (./exports)",
+		"topics:enrich         Enrich repos with topic metadata [--active] [--ttl <days>]",
+		"setup                 Generate prompts.yaml from your GitHub lists",
+	]);
+	log.line("");
+
+	log.subheader("Options for score");
+	log.list([
+		"--one <owner/repo>    Score a single repo",
+		"--all [--limit N]     Score all repos (optionally limited)",
+		"--dry                 Dry run without saving",
+		"--respect-curation    Preserve curated repos when scoring",
+	]);
+	log.line("");
+
+	log.subheader("Options for summarise");
+	log.list([
+		"--one <owner/repo>    Summarise a single repo",
+		"--all [--limit N]     Summarise all repos (optionally limited)",
+		"--dry                 Dry run without saving",
+	]);
+	log.line("");
+
+	log.subheader("Examples");
+	log.list([
+		"gk-stars score --one theGeekist/stars --dry",
+		"gk-stars score --all --limit 50 --respect-curation",
+		"gk-stars summarise --all --dry",
+	]);
+	log.line("");
+
+	log.subheader("Notes");
+	log.list([
+		"Default mode is --all",
+		"Applies changes by default; pass --dry to preview only",
+		"Use --respect-curation to preserve manual list curation",
+	]);
 	log.line("");
 }
 
@@ -115,6 +147,9 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 	let _notes: string | undefined;
 	let fresh = false;
 	let dry = s.dry;
+	let respectCuration = false;
+	let curationThreshold: number | undefined;
+
 	for (let i = 1; i < args.length; i++) {
 		const a = args[i];
 		if (a === "--resume" && args[i + 1]) {
@@ -133,19 +168,38 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 			continue;
 		}
 		if (a === "--dry") dry = true;
+		if (a === "--respect-curation" || a === "--curation") {
+			respectCuration = true;
+			continue;
+		}
+		if (a === "--curation-threshold" && args[i + 1]) {
+			i += 1;
+			curationThreshold = Number(args[i]);
+		}
 	}
+
+	// Build policy based on flags
+	const policy = respectCuration
+		? {
+				...CURATION_POLICY,
+				...(curationThreshold && {
+					curationRemoveThreshold: curationThreshold,
+				}),
+			}
+		: undefined;
+
 	if (s.mode === "one") {
 		if (!s.one) {
 			log.error("--one requires a value");
 			process.exit(1);
 		}
-		await scoreOne(s.one, dry);
+		await rankOne({ selector: s.one, dry, policy });
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
-			`Score --all limit=${limit} dry=${dry}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}`,
+			`Score --all limit=${limit} dry=${dry}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${respectCuration ? " curation=true" : ""}`,
 		);
-		await scoreBatchAll(limit, dry);
+		await rankAll({ limit, dry, policy });
 	}
 }
 

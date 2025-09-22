@@ -37,10 +37,12 @@ describe("scoring planTargets", () => {
 			{ list: "learning", score: 0.2 },
 		];
 		const out = scoring.planTargets(current, scores, {
-			addBySlug: { productivity: 0.7 },
-			defaultAdd: 0.7,
-			remove: 0.3,
-			preserve: new Set(),
+			thresholds: {
+				addBySlug: { productivity: 0.7 },
+				defaultAdd: 0.7,
+				remove: 0.3,
+				preserve: new Set(),
+			},
 		});
 		expect(out.add).toContain("productivity");
 		expect(out.keep).toContain("ai");
@@ -51,9 +53,11 @@ describe("scoring planTargets", () => {
 		const current = ["personal"];
 		const scores: ScoreItem[] = [{ list: "personal", score: 0.0 }];
 		const out = scoring.planTargets(current, scores, {
-			preserve: new Set(["personal"]),
-			defaultAdd: 0.7,
-			remove: 0.3,
+			thresholds: {
+				preserve: new Set(["personal"]),
+				defaultAdd: 0.7,
+				remove: 0.3,
+			},
 		});
 		expect(out.remove).toHaveLength(0);
 		expect(out.planned).toContain("personal");
