@@ -1,6 +1,6 @@
+import { log } from "./bootstrap";
 import { jitter } from "./rand";
 import type { FetchLike } from "./types";
-import { log } from "./bootstrap";
 
 // src/lib/github.ts
 export type GraphQLResponse<T> = { data?: T; errors?: { message: string }[] };

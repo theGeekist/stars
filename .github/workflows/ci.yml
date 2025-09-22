@@ -26,13 +26,11 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Test with coverage
-        run: bun run test:coverage
+      - name: Test (sharded) with coverage
+        run: bun run coverage:ci
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
-          # Omit 'token' for public repos. For private repos:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/lcov.info
           fail_ci_if_error: true

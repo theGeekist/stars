@@ -1,6 +1,6 @@
 {
 	"name": "@geekist/stars",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"type": "module",
 	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
 	"repository": {
@@ -46,8 +46,12 @@
 		"test:main": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*')",
 		"test:cli": "bun test src/cli.handlers.test.ts src/cli.routing.test.ts",
 		"test:lib": "bun test src/lib/*.test.ts",
-		"test:coverage": "bun run test:cli --coverage && bun run test:main --coverage",
-		"coverage": "bun --coverage test src/features src/lib",
+		"test:cli:cov": "bun test src/cli.handlers.test.ts src/cli.routing.test.ts && mv coverage/lcov.info coverage/cli-lcov.info",
+		"test:lib:cov": "bun test src/lib/*.test.ts && mv coverage/lcov.info coverage/lib-lcov.info",
+		"test:main:cov": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*') && mv coverage/lcov.info coverage/main-lcov.info",
+		"coverage:merge": "npx -y lcov-result-merger 'coverage/*-lcov.info' > coverage/lcov.info",
+		"coverage:html": "npx -y genhtml coverage/lcov.info --output-directory coverage/html",
+		"coverage:ci": "bun run test:cli:cov && bun run test:lib:cov && bun run test:main:cov && bun run coverage:merge",
 		"lint": "biome check src",
 		"format": "biome format --write src README.md usage.md src/features/**/README.md .github/workflows/ci.yml"
 	},
