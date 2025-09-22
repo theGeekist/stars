@@ -1,8 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { createListsService } from "@features/lists";
-import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
+import {
+	CURATION_POLICY,
+	createScoringService,
+	DEFAULT_POLICY,
+} from "@features/scoring";
 import type { ScoringLLM } from "@features/scoring/llm";
 import { scoreRepoAgainstLists } from "@features/scoring/llm";
+import type { ApplyPolicy } from "@features/scoring/types";
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import type { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
@@ -32,6 +37,7 @@ export interface RankAllOptions {
 	db?: Database;
 	logger?: typeof realLog;
 	onProgress?: (e: ProgressEvent) => void;
+	policy?: ApplyPolicy; // NEW: curation policy support
 }
 
 /** Options for ranking a single repository by `owner/name`. */
@@ -43,6 +49,7 @@ export interface RankOneOptions {
 	modelConfig?: ModelConfig;
 	db?: Database;
 	logger?: typeof realLog;
+	policy?: ApplyPolicy; // NEW: curation policy support
 }
 
 /**
@@ -53,7 +60,15 @@ export interface RankOneOptions {
 export async function rankAll(
 	options: RankAllOptions = {},
 ): Promise<BatchResult<RankingItemResult>> {
-	const { limit = 50, dry = false, llm, modelConfig, db, onProgress } = options;
+	const {
+		limit = 50,
+		dry = false,
+		llm,
+		modelConfig,
+		db,
+		onProgress,
+		policy,
+	} = options;
 	const apply = !dry;
 	const database = withDB(db);
 	const scoring = createScoringService(database);
@@ -123,7 +138,7 @@ export async function rankAll(
 				repo,
 				currentSlugs,
 				result.scores,
-				DEFAULT_POLICY,
+				policy ?? DEFAULT_POLICY,
 			);
 			let changed = false;
 			let membershipApplied = false;
@@ -186,7 +201,7 @@ export async function rankAll(
 export async function rankOne(
 	options: RankOneOptions,
 ): Promise<RankingItemResult> {
-	const { selector, dry = false, llm, modelConfig, db } = options;
+	const { selector, dry = false, llm, modelConfig, db, policy } = options;
 	const apply = !dry;
 	const database = withDB(db);
 	// Fetch repo
@@ -248,7 +263,7 @@ export async function rankOne(
 			row,
 			currentSlugs,
 			result.scores,
-			DEFAULT_POLICY,
+			policy ?? DEFAULT_POLICY,
 		);
 		if (apply && runId != null && !plan.blocked && plan.changed) {
 			try {
@@ -301,6 +316,9 @@ export async function rankOne(
 		};
 	}
 }
+
+// Export policies for CLI and consumer use
+export { CURATION_POLICY, DEFAULT_POLICY };
 
 /** @deprecated Use rankAll */
 export const scoreBatchAll = rankAll;

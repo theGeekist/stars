@@ -26,6 +26,8 @@ export type ApplyPolicy = {
 	thresholds?: Thresholds;
 	avoidListless?: boolean; // ensure at least one list by falling back to top review
 	minStars?: number; // block apply below this
+	respectManualCuration?: boolean; // honor existing GitHub list membership
+	curationRemoveThreshold?: number; // only remove manually curated lists below this (default: 0.1)
 };
 
 export type PlanMembershipResult = PlanResult & {
@@ -59,7 +61,7 @@ export type ScoringService = {
 	planTargets(
 		current: string[],
 		scores: ScoreItem[],
-		cfg?: Thresholds,
+		policy?: ApplyPolicy,
 	): PlanResult;
 	planMembership(
 		repo: RepoRow,

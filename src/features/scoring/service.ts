@@ -11,7 +11,6 @@ import type {
 	PlanResult,
 	ResumeFlag,
 	ScoringService,
-	Thresholds,
 } from "./types";
 
 const SUMMARY_PRED = "r.summary IS NOT NULL AND length(trim(r.summary)) > 0";
@@ -124,8 +123,43 @@ export function createScoringService(database?: Database): ScoringService {
 	function planTargets(
 		current: string[],
 		scores: ScoreItem[],
-		cfg?: Thresholds,
+		policy?: ApplyPolicy,
 	): PlanResult {
+		// CURATION MODE: preserve manual work + add new high-scoring lists
+		if (policy?.respectManualCuration) {
+			const scoreMap = new Map(scores.map((s) => [s.list, s.score]));
+			const removeThreshold = policy.curationRemoveThreshold ?? 0.1;
+			const addBySlug = policy.thresholds?.addBySlug ?? {};
+			const defaultAdd = policy.thresholds?.defaultAdd ?? 0.7;
+
+			// Keep all current lists unless they score extremely low
+			const reallyBad = current.filter(
+				(slug) => (scoreMap.get(slug) ?? 0) < removeThreshold,
+			);
+			const keep = current.filter((slug) => !reallyBad.includes(slug));
+
+			// Add new lists that score highly and aren't already present
+			const add = scores
+				.filter((s) => {
+					const threshold = addBySlug[s.list] ?? defaultAdd;
+					return s.score >= threshold && !current.includes(s.list);
+				})
+				.map((s) => s.list);
+
+			// No review category in curation mode - either keep or add
+			const review: string[] = [];
+
+			return {
+				planned: [...new Set([...keep, ...add])],
+				add,
+				remove: reallyBad,
+				keep,
+				review,
+			};
+		}
+
+		// EXISTING LOGIC for unlisted/first-run repos (unchanged)
+		const cfg = policy?.thresholds;
 		const addBySlug = cfg?.addBySlug ?? {};
 		const defaultAdd = cfg?.defaultAdd ?? 0.7;
 		const removeTh = cfg?.remove ?? 0.3;
@@ -166,7 +200,7 @@ export function createScoringService(database?: Database): ScoringService {
 		scores: ScoreItem[],
 		policy?: ApplyPolicy,
 	): PlanMembershipResult {
-		const base = planTargets(current, scores, policy?.thresholds);
+		const base = planTargets(current, scores, policy);
 		const preserve = policy?.thresholds?.preserve ?? new Set<string>();
 
 		// Start with base plan

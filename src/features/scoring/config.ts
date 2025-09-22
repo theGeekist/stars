@@ -26,3 +26,9 @@ export const DEFAULT_POLICY: ApplyPolicy = {
 	avoidListless: true,
 	minStars: 50,
 };
+
+export const CURATION_POLICY: ApplyPolicy = {
+	...DEFAULT_POLICY,
+	respectManualCuration: true,
+	curationRemoveThreshold: 0.1, // Only remove if extremely irrelevant
+};
