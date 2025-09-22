@@ -5,10 +5,7 @@
   <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repo- Summaries: `gks summarise --all --limit 500 --resummarise` (force rebuilds)
 - Ranking:   `gks score --all --resume last` (continue the previous batch)tories</p>
 
-  <p>
-    <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
-      <img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&metric=alert_status" />
-    </a>       
+  <p>      
     <a href="https://app.codecov.io/gh/theGeekist/stars">
       <img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" />
     </a>
