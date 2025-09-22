@@ -1,4 +1,11 @@
-import { mkdirSync, cpSync, readdirSync, statSync } from "fs";
+import {
+	mkdirSync,
+	cpSync,
+	readdirSync,
+	statSync,
+	readFileSync,
+	writeFileSync,
+} from "fs";
 import { join, basename } from "path";
 
 async function main() {
@@ -36,6 +43,13 @@ async function main() {
 		"src/features/setup/.prompts.tmpl.yaml",
 		"dist/features/setup/.prompts.tmpl.yaml",
 	);
+
+	// Add shebang to CLI for proper execution
+	const cliPath = "dist/cli.js";
+	const cliContent = readFileSync(cliPath, "utf-8");
+	if (!cliContent.startsWith("#!/usr/bin/env bun")) {
+		writeFileSync(cliPath, `#!/usr/bin/env bun\n${cliContent}`, "utf-8");
+	}
 
 	// Report sizes of emitted JS bundles (ignore non-js artifacts)
 	console.log("✔ Bundles built (size):");

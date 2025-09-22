@@ -1,5 +1,6 @@
 import { jitter } from "./rand";
 import type { FetchLike } from "./types";
+import { log } from "./bootstrap";
 
 // src/lib/github.ts
 export type GraphQLResponse<T> = { data?: T; errors?: { message: string }[] };
@@ -8,7 +9,6 @@ const GITHUB_GQL = "https://api.github.com/graphql";
 const DEFAULT_TIMEOUT_MS = Number(Bun.env.GQL_TIMEOUT_MS ?? 30000);
 const MAX_RETRIES = Number(Bun.env.GQL_MAX_RETRIES ?? 6);
 const BASE_DELAY_MS = Number(Bun.env.GQL_BASE_DELAY_MS ?? 400);
-const DEBUG = !!Bun.env.DEBUG;
 
 export function sleep(ms: number) {
 	return new Promise((r) => setTimeout(r, ms));
@@ -70,14 +70,9 @@ export async function githubGraphQL<T>(
 		}
 
 		try {
-			DEBUG &&
-				console.error(
-					`[gql] POST attempt ${
-						attempt + 1
-					}/${MAX_RETRIES} timeout=${DEFAULT_TIMEOUT_MS}ms vars=${JSON.stringify(
-						variables ?? {},
-					)}`,
-				);
+			log.debug(
+				`GraphQL POST attempt ${attempt + 1}/${MAX_RETRIES} timeout=${DEFAULT_TIMEOUT_MS}ms`,
+			);
 			const res = await doFetch(GITHUB_GQL, {
 				method: "POST",
 				signal: controller.signal,
@@ -97,12 +92,9 @@ export async function githubGraphQL<T>(
 
 			if (shouldRetry(res.status) && attempt < MAX_RETRIES - 1) {
 				const backoff = jitter(Math.min(32000, BASE_DELAY_MS * 2 ** attempt));
-				DEBUG &&
-					console.error(
-						`[gql] attempt ${attempt + 1} status=${
-							res.status
-						} backoff=${backoff}ms`,
-					);
+				log.debug(
+					`GraphQL retry: attempt ${attempt + 1} status=${res.status} backoff=${backoff}ms`,
+				);
 				await sleep(backoff);
 				continue;
 			}
@@ -117,7 +109,7 @@ export async function githubGraphQL<T>(
 				throw new Error(`GitHub GraphQL error: ${msg}`);
 			}
 			if (!json.data) throw new Error("GitHub GraphQL: empty data");
-			DEBUG && console.error("[gql] ok");
+			log.debug("GraphQL request completed successfully");
 			return json.data;
 		} catch (err) {
 			clearTimeout(timer);
@@ -146,10 +138,9 @@ export async function githubREST<T>(
 
 		if (shouldRetry(res.status) && attempt < MAX_RETRIES - 1) {
 			const backoff = jitter(Math.min(32000, BASE_DELAY_MS * 2 ** attempt));
-			DEBUG &&
-				console.error(
-					`[rest] ${path} status=${res.status} backoff=${backoff}ms`,
-				);
+			log.debug(
+				`REST API retry: ${path} status=${res.status} backoff=${backoff}ms`,
+			);
 			await sleep(backoff);
 			continue;
 		}

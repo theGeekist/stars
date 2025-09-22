@@ -1,308 +1,115 @@
-# Usage
+# Stars
 
-Back to main README: [README.md](README.md)
+[![npm version](https://img.shields.io/npm/v/@geekist/stars.sv- Summaries: `gks summarise --all --limit 500 --resummarise` (force rebuilds)
 
-This project ships a single CLI named `gk-stars`. Below is a practical guide to what each command does, why you would run it, and small examples you can copy and paste.
-
-**Enhanced Help System**: Each command now features structured help with clear sections, detailed examples, and comprehensive flag descriptions. Run any command with `--help` for context-aware guidance.
-
----
-
-## Environment
-
-Set these before running the CLI:
-
-- `GITHUB_TOKEN`
-  Required for reading your GitHub Stars Lists and applying list updates.
-
-- `OLLAMA_MODEL`
-  Local model name for all LLM work. Example `llama3.1:8b`. (Requires installing peers: `@jasonnathan/llm-core` and `ollama`.)
-
-- `GH_EXPLORE_PATH`
-  Local clone of `github/explore` used for topic metadata. Example `/path/to/github/explore`.
-
-Optional helpers:
-
-- `EXPORTS_DIR` (default `./exports`)
-  Where `lists --dir` writes JSON exports and where `ingest` reads them from.
-
-- `DEBUG`
-  Set to `true` for verbose logs.
+- Ranking: `gks score --all --resume last` (continue the previous batch)](https://www.npmjs.com/package/@geekist/stars)
+  [![Build Status](https://github.com/theGeekist/stars/actions/workflows/ci.yml/badge.svg)](https://github.com/theGeekist/stars/actions/workflows/ci.yml)
+  [![License](https://img.shields.io/npm/l/@geekist/stars.svg)](https://github.com/theGeekist/stars/blob/main/LICENSE)
 
 ---
 
-## Programmatic Usage (Library)
+## Abstract
 
-All CLI features are available in code:
+Geekist Stars is a local-first, open-source tool to manage your GitHub starred repos and lists.
 
-```ts
-import { summaries, ranking, starsData, ingest } from "@geekist/stars"; // install @jasonnathan/llm-core + ollama for summaries/ranking
+- Sync your stars and lists offline.
+- Summarise repos with local LLMs.
+- Categorise repos into lists using criteria.
+- Enrich and report on topics.
+- Plan and apply list membership changes.
 
-// Summaries with model override & progress
-await summaries.summariseAll({
-  limit: 25,
-  modelConfig: { model: "llama3:8b" },
-  onProgress: (e) => e.phase === "summarising" && console.log(e.index),
-});
+### Models (Mac quick-pick)
 
-// Ranking one repo
-const item = await ranking.rankOne({ selector: "owner/repo", dry: true });
+- **16 GB RAM**: summarise → `llama3.1:8b`; ranking → `qwen2.5:7b` or `llama3.1:8b` (slower)
+- **32 GB+ RAM**: summarise → `qwen2.5:7b`; ranking → `llama3.1:8b` / `qwen2.5:7b`
 
-// Ingest
-await ingest.ingestAll({ onProgress: (e) => console.log(e.phase) });
-```
+Tips:
 
-See `MIGRATION.md` for dispatcher and advanced extension details.
+- Prefer `:Q4_K_M` or similar quant for speed.
+- If you notice thrash, set `OLLAMA_NUM_PARALLEL=1`.
 
----
+## Curation Mode
 
-## Quick patterns you will use a lot
+Geekist Stars helps you curate your GitHub stars by generating summaries and scoring repos against your lists using editable criteria.
 
-- **Preview first**
-  Most commands write by default. Add `--dry` to preview without writing.
+## Motivation
 
-- **One repo vs All repos**
-  Use `--one <owner/repo>` to target a single repository. Use `--all` to batch, optionally with `--limit N`.
+Starred repos are a personal knowledge base, but GitHub’s UI is limited:
 
-- **JSON output**
-  Add `--json` to print machine-readable results.
+- No bulk export/import.
+- No automated categorisation.
+- No summary or rationale for stars.
+- No local audit trail.
 
-- **Streams to disk**
-  `lists --dir <folder>` streams each list to its own JSON file and creates an `index.json`.
+Geekist Stars fills this gap with a **local-first pipeline**.
 
----
+### Why not SaaS stars managers?
 
-## Command reference
+- **Private by default**: no repo content leaves your machine.
+- **Auditable**: every decision (scores, rationales, runs) is in SQLite.
+- **Composable**: build your own reports with `SELECT`, not a black‑box UI.
 
-### `gk-stars lists`
+## Data Model (Summary)
 
-Fetch all your GitHub Stars Lists and their repositories.
+- `repo`: repositories with metadata and summaries.
+- `list`: your GitHub stars lists.
+- `membership`: repo membership in lists.
+- `topic`: topics attached to repos.
+- `model_run`: LLM run metadata.
 
-**Why**
-Export for offline processing or to inspect lists quickly.
+### Signals (glossary)
 
-**Flags**
+- **popularity**: log‑scaled stars & forks (decays with age)
+- **freshness**: last‑commit recency windowed over 180 days
+- **activeness**: commits/issues/PRs velocity normalised per repo size
 
-- `--json` print to stdout as JSON
-- `--out <file>` write a single JSON file
-- `--dir <folder>` stream every list to its own file and write `index.json`
+## Reproducibility
 
-**Examples**
+- Use `model_run` to track LLM invocations.
+- Use `--resume` flags to continue interrupted runs.
+
+### Resuming work
+
+Long runs persist progress per `model_run`.
+
+- Summaries: `gk-stars summarise --all --limit 500 --resummarise` (force rebuilds)
+- Ranking: `gk-stars score --all --resume last` (continue the previous batch)
+
+## Automation (nightly)
+
+Run the orchestrator every night (example: 1 am), then review plans in the morning.
 
 ```bash
-gk-stars lists --json
-gk-stars lists --out lists.json
-gk-stars lists --dir ./exports
+0 1 * * *  bun /path/to/stars/scripts/orchestrator.ts --only=lists,ingest,summarise,score >> /path/to/stars/logs/cron.out 2>&1
 ```
 
----
+## Without peers
 
-### `gk-stars repos`
+Without those peers only the non-LLM features (lists, stars data export, ingest, topics) are usable.
 
-Show repositories for one list by name.
+### What you get
 
-**Flags**
+**At a glance outputs (typical run):**
 
-- `--list <name>` the list name (case-insensitive)
-- `--json` print JSON
+```
+• Summary (60–90 words):
+  react — A declarative UI library focusing on composition and unidirectional data flow…
 
-**Examples**
+• Plan (categorise):
+  + add   react to “Frontend Frameworks” (score 0.92, rationale: virtual DOM, JSX)
+  - remove lodash from “Frontend Frameworks” (score 0.07, rationale: utility library)
+  ~ review htmx (score 0.58, borderline)
 
-```bash
-gk-stars repos --list "AI & Machine Learning"
-gk-stars repos --list "Productivity & Utilities" --json
+• Topics report:
+  142 topics, 97% canonicalised, 38 aliases, 121 related edges
 ```
 
----
+**Peek into the DB** (fully auditable):
 
-### `gk-stars ingest`
-
-Load previously exported lists into the local SQLite database.
-
-**Flags**
-
-- `--dir <folder>` source folder for `index.json` and list files.
-  Defaults to `EXPORTS_DIR` or `./exports`.
-
-**Examples**
-
-```bash
-gk-stars ingest
-gk-stars ingest --dir ./exports
+```sql
+-- Top 10 repos by activeness last 90 days
+SELECT name_with_owner, activeness
+FROM repo
+ORDER BY activeness DESC
+LIMIT 10;
 ```
-
----
-
-### `gk-stars summarise`
-
-Generate a concise summary for each repository using your local Ollama model and store it in `repo.summary`.
-
-**Why**
-Summaries improve downstream categorisation and search. The summariser uses repo metadata and works even when READMEs are sparse.
-
-**Flags**
-
-- `--one <owner/repo>` summarise one repo
-- `--all [--limit N]` summarise many
-- `--dry` preview without saving
-- `--resummarise` force regeneration even if a summary exists
-
-**Examples**
-
-```bash
-# Preview a single repo
-gk-stars summarise --one facebook/react --dry
-
-# Summarise 100 repos and save
-gk-stars summarise --all --limit 100
-
-# Programmatic (with model override)
-node <<'EOF'
-import { summaries } from '@geekist/stars';
-const res = await summaries.summariseAll({ limit: 5, modelConfig: { model: 'llama3:8b' } });
-console.log(res.stats);
-EOF
-```
-
----
-
-### `gk-stars score`
-
-Evaluate repositories against your lists using the editable criteria in `prompts.yaml`. Optionally update list membership on GitHub.
-
-**Why**
-Keep your lists structured. The model rates each repo against each list, proposes add/remove/review actions, and can apply the plan back to GitHub.
-
-**Flags**
-
-- `--one <owner/repo>` or `--all [--limit N]`
-- `--dry` preview only
-- `--resume <id|last>` continue a previous run
-- `--notes <text>` annotate the run
-- `--fresh` or `--from-scratch` ignore previous runs
-- `--respect-curation` preserve manually curated repositories from automatic removal
-
-**Examples**
-
-```bash
-# Dry-run one repo
-gk-stars score --one facebook/react --dry
-
-# Plan for 200 repos and apply to GitHub
-gk-stars score --all --limit 200
-
-# Respect manual curation - protect manually added repos from removal
-gk-stars score --all --limit 100 --respect-curation
-
-# Resume the last run with a note
-gk-stars score --all --resume last --notes "tuning thresholds"
-
-# Programmatic
-node <<'EOF'
-import { ranking } from '@geekist/stars';
-const r = await ranking.rankAll({ limit: 20, onProgress: e => process.stdout.write('.') });
-console.log('\n', r.stats);
-EOF
-```
-
----
-
-### `gk-stars topics:enrich`
-
-Populate and refresh topic metadata for your repos using your local `github/explore` clone. No GitHub API calls are needed.
-
-**Why**
-Attach repo topics, enrich them with canonical names and descriptions, and reconcile aliases/related links.
-
-**Flags**
-
-- `--active` process only non-archived repos
-- `--ttl <days>` refresh metadata if older than this
-
-**Examples**
-
-```bash
-gk-stars topics:enrich
-gk-stars topics:enrich --active --ttl 14
-```
-
----
-
-### `gk-stars topics:report`
-
-Display topic statistics from your database.
-
-**Flags**
-
-- `--missing` show topics without metadata
-- `--recent` show most recently attached topics
-- `--full` do not truncate descriptions or aliases
-- `--json` print JSON
-
-**Examples**
-
-```bash
-gk-stars topics:report
-gk-stars topics:report --full
-gk-stars topics:report --missing --recent
-gk-stars topics:report --json > topics.json
-```
-
----
-
-### `gk-stars setup`
-
-Generate `prompts.yaml` from your current GitHub lists.
-If Ollama is available, the tool proposes first-pass criteria; otherwise it writes placeholders to edit manually.
-
-**Examples**
-
-```bash
-gk-stars setup
-```
-
----
-
-## Suggested first run
-
-```bash
-# 1) Generate prompts from your lists
-gk-stars setup
-
-# 2) Export all lists, then ingest to the DB
-gk-stars lists --dir ./exports
-gk-stars ingest --dir ./exports
-
-# 3) Create summaries using a local model
-gk-stars summarise --all --limit 200
-
-# 4) Score and preview changes
-gk-stars score --all --limit 200 --dry
-
-# 5) Apply when happy
-gk-stars score --all --limit 200
-```
-
----
-
-## Notes on models and prompts
-
-- All LLM work runs through your local Ollama runtime. Set `OLLAMA_MODEL` to choose the model that fits your machine (after installing `@jasonnathan/llm-core` + `ollama`).
-- `prompts.yaml` is fully editable. Update criteria anytime, then re-run categorisation.
-- Categorisation uses summaries + repo metadata to reduce hallucination and keep criteria grounded.
-
----
-
-## Build
-
-```bash
-bun install
-bun run build
-```
-
-Build outputs:
-
-- `dist/cli.js` — CLI entry
-- `dist/index.js` — library entry
-
-The `setup` template is bundled so `gk-stars setup` works after install.

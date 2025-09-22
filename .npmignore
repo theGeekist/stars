@@ -1,0 +1,62 @@
+# Development files
+src/
+scripts/
+*.test.ts
+*.spec.ts
+**/*.test.ts
+**/*.spec.ts
+**/__test__/
+**/.test.
+
+# Build artifacts
+.tsbuildinfo
+tsconfig.json
+tsconfig.types.json
+bunfig.toml
+.biome.json
+.biomeignore
+
+# Development tools
+.husky/
+.vscode/
+.skeletorrc
+.editorconfig
+
+# Testing and coverage
+coverage/
+test/
+tests/
+exports-test/
+
+# Documentation sources
+bunfig.md
+
+# Environment and config
+.env*
+ecosystem.config.cjs
+
+# Logs and temporary files
+logs/
+*.log
+.tmp
+.temp
+
+# Lock files (keep bun.lock for reproducible builds)
+package-lock.json
+yarn.lock
+
+# IDE files
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Only include built dist/ and essential files
+# Everything else is excluded by default

@@ -112,7 +112,7 @@ function listsBlockFromCriteria(
 			const desc = bySlug.get(l.slug);
 			return desc
 				? `- ${l.name} (${l.slug}) - ${desc}`
-				: `- ${l.name} (${l.slug})`;
+				: `- ${l.name} (${l.slug}) - use sane defaults.`;
 		})
 		.join("\n");
 }

@@ -96,7 +96,7 @@ export async function runListsCore(
 				listsReporter,
 			)) {
 				total++;
-				s.text = `Writing list ${total}: ${l.name}`;
+				s.text = `Processed ${total} list${total === 1 ? "" : "s"}: ${l.name}`;
 
 				const file = join(dir, mkListFilename(l.name, deps.slugify));
 				writeFileSync(file, JSON.stringify(l, null, 2));
@@ -110,7 +110,9 @@ export async function runListsCore(
 					file: mkListFilename(l.name, deps.slugify),
 				});
 			}
-			s.succeed(`Fetched ${total} lists`);
+			s.succeed(
+				`Successfully processed ${total} list${total === 1 ? "" : "s"}`,
+			);
 		} catch (e) {
 			s.fail("Failed while streaming lists");
 			throw e;
@@ -121,7 +123,7 @@ export async function runListsCore(
 			writeJsonFile(indexFile, index);
 		});
 
-		logger.success(`Wrote ${total} lists to ${dir}`);
+		logger.success(`Exported ${total} list${total === 1 ? "" : "s"} to ${dir}`);
 		return;
 	}
 
@@ -194,9 +196,9 @@ export async function runStarsCore(
 				writeFileSync(file, JSON.stringify(page, null, 2));
 				index.push({ file: fileName, count: page.length });
 				total += page.length;
-				s.text = `Wrote ${page.length} repos to ${fileName}`;
+				s.text = `Processed page ${pageNo}: ${total} repositories total`;
 			}
-			s.succeed(`Fetched ${total} starred repositories`);
+			s.succeed(`Successfully processed ${total} starred repositories`);
 		} catch (e) {
 			s.fail("Failed while streaming stars");
 			throw e;
@@ -207,7 +209,7 @@ export async function runStarsCore(
 			writeJsonFile(indexFile, { total, pages: index });
 		});
 
-		logger.success(`Wrote ${total} stars to ${dir}`);
+		logger.success(`Exported ${total} starred repositories to ${dir}`);
 		return;
 	}
 
@@ -217,7 +219,7 @@ export async function runStarsCore(
 
 	if (out) {
 		await logger.withSpinner(`Writing ${out}`, () => writeJsonFile(out, stars));
-		logger.success(`Wrote ${stars.length} stars → ${out}`);
+		logger.success(`Exported ${stars.length} starred repositories → ${out}`);
 		return;
 	}
 

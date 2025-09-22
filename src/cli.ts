@@ -19,10 +19,10 @@ import { enrichAllRepoTopics } from "@src/api/topics";
 /* ----------------------------- Usage banner ----------------------------- */
 initBootstrap();
 function usage(): void {
-	log.header("gk-stars");
+	log.header("gks");
 
 	log.subheader("Usage");
-	log.line("  gk-stars <command> [options]");
+	log.line("  gks <command> [options]");
 	log.line("");
 
 	log.subheader("Commands");
@@ -58,9 +58,9 @@ function usage(): void {
 
 	log.subheader("Examples");
 	log.list([
-		"gk-stars score --one theGeekist/stars --dry",
-		"gk-stars score --all --limit 50 --respect-curation",
-		"gk-stars summarise --all --dry",
+		"gks score --one theGeekist/stars --dry",
+		"gks score --all --limit 50 --respect-curation",
+		"gks summarise --all --dry",
 	]);
 	log.line("");
 

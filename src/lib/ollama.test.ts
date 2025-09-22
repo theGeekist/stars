@@ -1,5 +1,5 @@
 // tests/ollama.test.ts
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { gen, type OllamaLike } from "./ollama";
 
 type LastArgs = {
@@ -33,6 +33,16 @@ class FakeOllama implements OllamaLike {
 }
 
 describe("ollama gen", () => {
+	beforeEach(() => {
+		// Clear any module mocks that might be contaminating from other tests
+		mock.restore();
+	});
+
+	afterEach(() => {
+		// Clear any mocks we might have created
+		mock.restore();
+	});
+
 	it("maps options and trims response", async () => {
 		const client = new FakeOllama(" hello world \n");
 		const out = await gen(

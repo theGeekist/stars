@@ -2,7 +2,8 @@
   <img src="logo.jpg" alt="Geekist Stars Logo" width="600" />
   <h1>Geekist Stars</h1>
 
-  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repositories</p>
+  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repo- Summaries: `gks summarise --all --limit 500 --resummarise` (force rebuilds)
+- Ranking:   `gks score --all --resume last` (continue the previous batch)tories</p>
 
   <p>
     <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
@@ -22,7 +23,7 @@
 ## Quickstart
 
 ```bash
-bun install && bun run build && gk-stars setup
+bun install && bun run build && gks setup
 ```
 
 If you plan to use **summaries** or **ranking (categorise)** features you must also install local LLM peer packages (now externalised to keep bundles tiny):
@@ -33,16 +34,46 @@ bun add @jasonnathan/llm-core
 
 Without those peers only the non-LLM features (lists, stars data export, ingest, topics) are usable.
 
+### What you get
+
+**At a glance outputs (typical run):**
+
+```
+• Summary (60–90 words):
+  react — A declarative UI library focusing on composition and unidirectional data flow…
+
+• Plan (categorise):
+  + add   react to “Frontend Frameworks” (score 0.92, rationale: virtual DOM, JSX)
+  - remove lodash from “Frontend Frameworks” (score 0.07, rationale: utility library)
+  ~ review htmx (score 0.58, borderline)
+
+• Topics report:
+  142 topics, 97% canonicalised, 38 aliases, 121 related edges
+```
+
+**Peek into the DB** (fully auditable):
+
+```sql
+-- Top 10 repos by activeness last 90 days
+SELECT name_with_owner, activeness
+FROM repo
+ORDER BY activeness DESC
+LIMIT 10;
+```
+
 ## Abstract
 
 Geekist Stars is a Bun and TypeScript toolkit that turns personal GitHub Lists and starred repositories into an auditable corpus with computed health signals, locally generated summaries, explainable categorisation, and enriched topic metadata.
 
-The system is designed for **reproducibility and privacy**:
+### Models (Mac quick-pick)
 
-- All LLM work runs locally through Ollama with a user-selected model.
-- All state is stored in SQLite for inspection, analysis, and replay.
+- **16 GB RAM**: summarise → `llama3.1:8b`; ranking → `qwen2.5:7b` or `llama3.1:8b` (slower)
+- **32 GB+ RAM**: summarise → `qwen2.5:7b`; ranking → `llama3.1:8b` / `qwen2.5:7b`
 
-The project demonstrates that lightweight signals, concise prompts, and explicit policies are sufficient to keep a large star collection structured and navigable without cloud dependencies.
+Tips:
+
+- Prefer `:Q4_K_M` or similar quant for speed.
+- If you notice thrash, set `OLLAMA_NUM_PARALLEL=1`.
 
 **Curation Mode**: The system now supports preserving manual GitHub list curation while still allowing AI-driven categorisation. Enable with `--respect-curation` to protect manually curated repositories from automatic removal while still suggesting new additions.
 
@@ -62,6 +93,12 @@ Developers often accumulate hundreds or thousands of starred repositories. Over 
 all in a way that is private, reproducible, and easy to extend.
 
 Geekist Stars fills this gap with a **local-first pipeline**.
+
+### Why not SaaS stars managers?
+
+- **Private by default**: no repo content leaves your machine.
+- **Auditable**: every decision (scores, rationales, runs) is in SQLite.
+- **Composable**: build your own reports with `SELECT`, not a black‑box UI.
 
 ## Problem Statement
 
@@ -107,6 +144,12 @@ The pipeline consists of four stages that can be run independently.
 - **Topic graph**: `topic_alias` for normalisation and `topic_related` for edges.
 - **Repo-to-topic**: `repo_topics` derived from metadata and reconciled locally.
 
+### Signals (glossary)
+
+- **popularity**: log‑scaled stars & forks (decays with age)
+- **freshness**: last‑commit recency windowed over 180 days
+- **activeness**: commits/issues/PRs velocity normalised per repo size
+
 ## Methods
 
 ### Summarisation
@@ -132,6 +175,13 @@ This avoids reliance on undocumented or unstable APIs.
 - The database evolves via additive migrations to maintain compatibility.
 - The system can be re-run end-to-end to verify outputs.
 
+### Resuming work
+
+Long runs persist progress per `model_run`.
+
+- Summaries: `gk-stars summarise --all --limit 500 --resummarise` (force rebuilds)
+- Ranking: `gk-stars score --all --resume last` (continue the previous batch)
+
 ## Current Scope and Non-Goals
 
 - Search is basic (SQLite FTS). Richer querying is possible but not included.
@@ -155,6 +205,14 @@ This avoids reliance on undocumented or unstable APIs.
 All inference runs locally via Ollama. The SQLite database remains on disk, fully inspectable and removable. No summaries, scores, or repo data are sent to third parties. Applying list updates to GitHub requires explicit user action.
 
 ## Conclusion
+
+### Automation (nightly)
+
+Run the orchestrator every night (example: 1 am), then review plans in the morning.
+
+```bash
+0 1 * * *  bun /path/to/stars/scripts/orchestrator.ts --only=lists,ingest,summarise,score >> /path/to/stars/logs/cron.out 2>&1
+```
 
 ## Programmatic API
 
@@ -270,7 +328,7 @@ Add peers only if you need LLM-powered features:
 bun add @jasonnathan/llm-core ollama
 ```
 
-Then set `OLLAMA_MODEL` and run `gk-stars summarise` / `gk-stars score` normally.
+Then set `OLLAMA_MODEL` and run `gks summarise` / `gks score` normally.
 
 If the peers are missing and you invoke LLM code, a runtime error will instruct you to install them.
 

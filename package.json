@@ -20,7 +20,7 @@
 		}
 	},
 	"bin": {
-		"gk-stars": "./dist/cli.js"
+		"gks": "./dist/cli.js"
 	},
 	"scripts": {
 		"setup": "bun start setup",
@@ -42,9 +42,10 @@
 		"build:types": "tsc -p tsconfig.types.json",
 		"prepare": "husky",
 		"prepublishOnly": "bun run build",
-		"test": "bun run test:cli && bun run test:main",
-		"test:main": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts')",
+		"test": "bun run test:cli && bun run test:lib && bun run test:main",
+		"test:main": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*')",
 		"test:cli": "bun test src/cli.handlers.test.ts src/cli.routing.test.ts",
+		"test:lib": "bun test src/lib/*.test.ts",
 		"test:coverage": "bun run test:cli --coverage && bun run test:main --coverage",
 		"coverage": "bun --coverage test src/features src/lib",
 		"lint": "biome check src",
