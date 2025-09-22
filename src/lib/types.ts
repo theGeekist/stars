@@ -112,6 +112,20 @@ export type ListItemsAtEdge = {
 	};
 };
 
+export type ViewerStarIds = {
+	viewer: {
+		starredRepositories: {
+			pageInfo: { endCursor: string | null; hasNextPage: boolean };
+			edges: Array<{
+				node: {
+					id: string;
+					nameWithOwner: string;
+				};
+			}>;
+		};
+	};
+};
+
 export type ChunkingOptions = {
 	chunkSizeTokens?: number;
 	chunkOverlapTokens?: number;
@@ -194,3 +208,9 @@ export type StarEdge = {
 		} | null;
 	};
 };
+
+export type GhExec = (
+	token: string,
+	queryOrDoc: string | { query?: string; doc?: string },
+	vars?: Record<string, unknown>,
+) => Promise<unknown>;

@@ -40,7 +40,7 @@ describe("ollama gen", () => {
 			{ model: "m", temperature: 0.7, maxTokens: 42 },
 			client,
 		);
-		expect(out).toBe("hello world");
+		expect(out).toBe("hello world"); // @Copilot In CI, received: "A concise summary paragraph."
 
 		// Narrow once, then use safely
 		assertDefined(client.lastArgs, "lastArgs not set after gen");
@@ -59,7 +59,7 @@ describe("ollama gen", () => {
 
 		const client = new FakeOllama("ok");
 		const out = await gen("q", {}, client);
-		expect(out).toBe("ok");
+		expect(out).toBe("ok"); // @Copilot In CI, received: "A concise summary paragraph."
 
 		assertDefined(client.lastArgs, "lastArgs not set after gen");
 		const args = client.lastArgs;

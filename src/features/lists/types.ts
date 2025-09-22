@@ -1,5 +1,8 @@
 import type { RepoRow, StarList } from "@lib/types";
 
+// Re-export RepoRow for use in other modules
+export type { RepoRow };
+
 export type BatchSelector = { limit?: number; listSlug?: string };
 
 export type ListsReadApi = {
@@ -31,21 +34,21 @@ export type ListsService = {
 
 /** Binds */
 export type BindLimit = [limit: number];
-export type BindSlugLimit = [
-	slug: string,
-	limit: number,
-]; /** Local row-shapes for queries that don’t match full RepoRow */
+export type BindSlugLimit = [slug: string, limit: number];
+
+/** Local row-shapes for queries that don't match full RepoRow */
 export type ListSlugRow = { slug: string };
-export type ListIdRow = { id: number };
+export type ListIdRow = { id: string };
 export type ListListIdRow = { list_id: string | null };
 export type ListDefRow = {
 	slug: string;
 	name: string;
 	description: string | null;
 };
+
 /** Repo row for GH id fetch: allow repo_id to be NULL in DB before we backfill */
 export type RepoIdLookupRow = {
-	id: number;
+	id: string;
 	repo_id: string | null;
 	name_with_owner: string;
 	url: string;
@@ -54,5 +57,77 @@ export type RepoIdLookupRow = {
 	topics: string | null;
 	summary: string | null;
 };
-/** Row placeholder for statements where we don’t read rows (INSERT/UPDATE/DELETE) */
+
+/** Row placeholder for statements where we don't read rows (INSERT/UPDATE/DELETE) */
 export type NoRow = Record<string, never>;
+
+/** Additional row types for database operations */
+export type ListedRepoIdRow = {
+	repo_id: string; // GitHub global ID
+};
+
+export type ListKeyIdRow = {
+	id: string;
+	slug: string;
+	name: string;
+};
+
+/** GraphQL response node types */
+export type ListEdge = {
+	cursor: string;
+	node: ListNode;
+};
+
+export type ListNode = {
+	listId: string;
+	name: string;
+	description?: string | null;
+	isPrivate: boolean;
+};
+
+export type ListNodeWithItems = {
+	name: string;
+	items: {
+		pageInfo: { endCursor: string | null; hasNextPage: boolean };
+		nodes: ItemNode[];
+	};
+};
+
+export type ItemNode = {
+	__typename: "Repository";
+	repoId: string;
+	nameWithOwner?: string;
+	url?: string;
+	description?: string | null;
+	homepageUrl?: string | null;
+	stargazerCount?: number;
+	forkCount?: number;
+	watchers?: { totalCount: number };
+	issues?: { totalCount: number };
+	pullRequests?: { totalCount: number };
+	defaultBranchRef?: {
+		name?: string | null;
+		target?: { committedDate?: string | null } | null;
+	} | null;
+	releases?: {
+		nodes: Array<{
+			tagName?: string | null;
+			publishedAt?: string | null;
+		}>;
+	};
+	repositoryTopics?: { nodes: Array<{ topic: { name: string } }> };
+	primaryLanguage?: { name: string } | null;
+	languages?: {
+		edges: Array<{ size: number; node: { name: string } }>;
+	};
+	licenseInfo?: { spdxId?: string | null } | null;
+	isArchived?: boolean;
+	isDisabled?: boolean;
+	isFork?: boolean;
+	isMirror?: boolean;
+	hasIssuesEnabled?: boolean;
+	pushedAt?: string;
+	updatedAt?: string;
+	createdAt?: string;
+	diskUsage?: number | null;
+};

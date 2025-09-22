@@ -168,3 +168,23 @@ export async function githubREST<T>(
 }
 
 export const gql = String.raw;
+
+// Helper to create GraphQL query runners
+export function makeRunner<T>(
+	query: string,
+	execFn?: (
+		token: string,
+		query: string,
+		vars?: Record<string, unknown>,
+	) => Promise<T>,
+) {
+	return async (
+		token: string,
+		variables?: Record<string, unknown>,
+	): Promise<T> => {
+		if (execFn) {
+			return execFn(token, query, variables);
+		}
+		return githubGraphQL<T>(token, query, variables);
+	};
+}

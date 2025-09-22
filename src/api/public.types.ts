@@ -3,6 +3,16 @@
  * NOTE: These are additive and kept backward compatible; deprecated fields are retained until the next major release.
  */
 
+// Re-export core types from lib
+export type { RepoInfo, StarList } from "@lib/types";
+
+// Import for use in interfaces below
+import type { RepoInfo, StarList } from "@lib/types";
+
+/* -------------------------------------------------------------------------- */
+/*  ERROR HANDLING                                                            */
+/* -------------------------------------------------------------------------- */
+
 /**
  * Thrown instead of exiting the process when required configuration (env vars, tokens) is missing.
  * Wrap public API calls and test via `instanceof ConfigError` to provide user-facing guidance.
@@ -13,6 +23,67 @@ export class ConfigError extends Error {
 		this.name = "ConfigError";
 	}
 }
+
+/* -------------------------------------------------------------------------- */
+/*  LISTS API TYPES                                                           */
+/* -------------------------------------------------------------------------- */
+
+/** Options for selecting repositories to process */
+export interface BatchSelector {
+	/** Maximum number of items to process */
+	limit?: number;
+	/** Filter by specific list slug */
+	listSlug?: string;
+}
+
+/** List definition metadata */
+export interface ListDefinition {
+	slug: string;
+	name: string;
+	description?: string | null;
+}
+
+/** Read-only operations for lists */
+export interface ListsReadApi {
+	/** Get all lists with their repositories */
+	getAll(): Promise<StarList[]>;
+	/** Stream all lists (useful for large datasets) */
+	getAllStream(): AsyncGenerator<StarList, void, void>;
+	/** Get list definitions (metadata only) */
+	getListDefs(): Promise<ListDefinition[]>;
+	/** Get repositories to score based on selector */
+	getReposToScore(selector: BatchSelector): Promise<RepoInfo[]>;
+	/** Get current list membership for a repository */
+	currentMembership(repoId: number): Promise<string[]>;
+	/** Map list slugs to GitHub global IDs */
+	mapSlugsToGhIds(slugs: string[]): Promise<string[]>;
+}
+
+/** Write operations for lists (require GitHub token) */
+export interface ListsApplyApi {
+	/** Update local database with repository list membership */
+	reconcileLocal(repoId: number, slugs: string[]): Promise<void>;
+	/** Update repository lists on GitHub */
+	updateOnGitHub(
+		token: string,
+		repoGlobalId: string,
+		listIds: string[],
+	): Promise<void>;
+	/** Ensure local list slugs are mapped to GitHub global IDs */
+	ensureListGhIds(token: string): Promise<Map<string, string>>;
+	/** Ensure repository has GitHub global ID and return it */
+	ensureRepoGhId(token: string, repoId: number): Promise<string>;
+}
+
+/** Complete lists service interface */
+export interface ListsService {
+	read: ListsReadApi;
+	apply: ListsApplyApi;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  PROGRESS & RESULTS                                                        */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Progress notification emitted by long‑running batch operations.

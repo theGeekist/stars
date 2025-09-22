@@ -8,7 +8,6 @@ import type {
 	BindLimit,
 	BindSlugLimit,
 	ListDefRow,
-	ListIdRow,
 	ListListIdRow,
 	ListSlugRow,
 	ListsService,
@@ -71,7 +70,7 @@ export function createListsService(
     ORDER BY l.name
   `);
 
-	const qListIdBySlug = db.query<ListIdRow, [string]>(
+	const qListIdBySlug = db.query<{ id: number }, [string]>(
 		`SELECT id FROM list WHERE slug = ? LIMIT 1`,
 	);
 
