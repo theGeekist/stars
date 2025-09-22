@@ -21,6 +21,7 @@ const PATH = `${Bun.env.HOME}/.bun/bin:${Bun.env.PATH ?? ""}`;
 const env = { ...Bun.env, PATH };
 
 // Define steps as full commands (no indirection). For bun: bun run src/cli.ts <task>
+// Note: score step uses --respect-curation by default to preserve manual list curation
 type Step = { name: string; cmd: string[] };
 
 const steps: Step[] = [
@@ -30,7 +31,10 @@ const steps: Step[] = [
 	{ name: "git-pull", cmd: ["git", "-C", GH_EXPLORE_DIR, "pull", "--ff-only"] },
 	{ name: "topics-enrich", cmd: ["bun", "run", "src/cli.ts", "topics:enrich"] },
 	{ name: "summarise", cmd: ["bun", "run", "src/cli.ts", "summarise"] },
-	{ name: "score", cmd: ["bun", "run", "src/cli.ts", "score"] },
+	{
+		name: "score",
+		cmd: ["bun", "run", "src/cli.ts", "score", "--respect-curation"],
+	},
 ];
 
 function now() {
