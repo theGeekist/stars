@@ -20,12 +20,12 @@ import { buildBatchStats, getRequiredEnv } from "./public.types";
 /**
  * Options for `rankAll` batch operation.
  * - Provide either a custom `llm` or a lightweight `modelConfig` (not both) to override environment defaults.
- * - When `apply` is true the function persists scores and (if policy allows) applies membership updates to GitHub Lists.
+ * - When `dry` is false (default) the function persists scores and (if policy allows) applies membership updates to GitHub Lists.
  * - `onProgress` receives phase `ranking` with incremental index + total.
  */
 export interface RankAllOptions {
 	limit?: number;
-	apply?: boolean;
+	dry?: boolean;
 	llm?: ScoringLLM;
 	// NOTE: alternative lightweight adapter config when full llm not injected
 	modelConfig?: ModelConfig;
@@ -37,7 +37,7 @@ export interface RankAllOptions {
 /** Options for ranking a single repository by `owner/name`. */
 export interface RankOneOptions {
 	selector: string;
-	apply?: boolean;
+	dry?: boolean;
 	llm?: ScoringLLM;
 	// NOTE: alternative lightweight adapter config when full llm not injected
 	modelConfig?: ModelConfig;
@@ -53,18 +53,12 @@ export interface RankOneOptions {
 export async function rankAll(
 	options: RankAllOptions = {},
 ): Promise<BatchResult<RankingItemResult>> {
-	const {
-		limit = 50,
-		apply = false,
-		llm,
-		modelConfig,
-		db,
-		onProgress,
-	} = options;
+	const { limit = 50, dry = false, llm, modelConfig, db, onProgress } = options;
+	const apply = !dry;
 	const database = withDB(db);
 	const scoring = createScoringService(database);
 	const { runId, filterRunId } = scoring.resolveRunContext({
-		dry: !apply,
+		dry,
 		resume: "last",
 	});
 	// Select repos (mirrors core logic)
@@ -192,7 +186,8 @@ export async function rankAll(
 export async function rankOne(
 	options: RankOneOptions,
 ): Promise<RankingItemResult> {
-	const { selector, apply = false, llm, modelConfig, db } = options;
+	const { selector, dry = false, llm, modelConfig, db } = options;
+	const apply = !dry;
 	const database = withDB(db);
 	// Fetch repo
 	const row = database
@@ -212,7 +207,7 @@ export async function rankOne(
 	}
 	try {
 		const scoring = createScoringService(database);
-		const { runId } = scoring.resolveRunContext({ dry: !apply });
+		const { runId } = scoring.resolveRunContext({ dry });
 		const listsSvc = createListsService(listsLib, database);
 		const listRows = await listsSvc.read.getListDefs();
 		const lists = listRows.map((l) => ({

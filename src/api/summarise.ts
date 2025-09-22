@@ -49,15 +49,15 @@ export async function generateSummaryForRow(
 	return { paragraph, words };
 }
 
-/** Save summary if apply=true; otherwise log dry-run. */
+/** Save summary if dry=false; otherwise log dry-run. */
 export function saveSummaryOrDryRun(
 	svc: ReturnType<typeof createSummariseService>,
 	rowId: number,
 	paragraph: string,
-	apply: boolean,
+	dry: boolean,
 	logger: typeof realLog,
 ) {
-	if (!apply) {
+	if (dry) {
 		logger.info("dry run (not saved)\n");
 		return;
 	}
@@ -77,7 +77,7 @@ export function saveSummaryOrDryRun(
 
 export async function summariseBatchAllCore(
 	limit: number,
-	apply: boolean,
+	dry: boolean,
 	deps: SummariseDeps | undefined,
 	opts: SummariseBatchOpts | undefined,
 	database: Database | undefined,
@@ -105,7 +105,7 @@ export async function summariseBatchAllCore(
 			logger.line("");
 			logger.line(paragraph);
 			logger.line("");
-			saveSummaryOrDryRun(svc, r.id, paragraph, apply, logger);
+			saveSummaryOrDryRun(svc, r.id, paragraph, dry, logger);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			logger.error(`${msg}\n`);
@@ -116,7 +116,7 @@ export async function summariseBatchAllCore(
 
 export async function summariseOneCore(
 	selector: string,
-	apply: boolean,
+	dry: boolean,
 	deps: SummariseDeps | undefined,
 	database: Database | undefined,
 	logger: typeof realLog,
@@ -146,7 +146,7 @@ export async function summariseOneCore(
 		logger.line("");
 		logger.line(paragraph);
 		logger.line("");
-		saveSummaryOrDryRun(svc, row.id, paragraph, apply, logger);
+		saveSummaryOrDryRun(svc, row.id, paragraph, dry, logger);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
 		logger.error(`${msg}\n`);
@@ -158,21 +158,21 @@ export async function summariseOneCore(
 /** @deprecated Use summariseAll from summarise.public */
 export async function summariseBatchAll(
 	limit: number,
-	apply: boolean,
+	dry: boolean,
 	deps?: SummariseDeps,
 	opts?: SummariseBatchOpts,
 	database?: Database,
 ): Promise<void> {
-	await summariseBatchAllCore(limit, apply, deps, opts, database, realLog);
+	await summariseBatchAllCore(limit, dry, deps, opts, database, realLog);
 }
 
 /** Public API preserved */
 /** @deprecated Use summariseRepo from summarise.public */
 export async function summariseOne(
 	selector: string,
-	apply: boolean,
+	dry: boolean,
 	deps?: SummariseDeps,
 	database?: Database,
 ): Promise<void> {
-	await summariseOneCore(selector, apply, deps, database, realLog);
+	await summariseOneCore(selector, dry, deps, database, realLog);
 }

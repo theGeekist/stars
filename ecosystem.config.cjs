@@ -1,9 +1,9 @@
 module.exports = {
 	apps: [
 		{
-			name: "stars-cron",
-			script: "./scripts/stars-cron.zsh",
-			interpreter: "/bin/zsh",
+			name: "stars-orchestrator",
+			script: "./scripts/orchestrator.ts",
+			interpreter: "bun",
 			cwd: __dirname,
 			env: {
 				PATH: process.env.HOME + "/.bun/bin:" + process.env.PATH,
@@ -14,8 +14,8 @@ module.exports = {
 			merge_logs: true,
 			time: true,
 			max_restarts: 1,
-			out_file: "logs/stars-cron.out.log",
-			error_file: "logs/stars-cron.err.log",
+			out_file: "logs/orchestrator.out.log",
+			error_file: "logs/orchestrator.err.log",
 		},
 	],
 };

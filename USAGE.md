@@ -44,7 +44,7 @@ await summaries.summariseAll({
 });
 
 // Ranking one repo
-const item = await ranking.rankOne({ selector: "owner/repo", apply: false });
+const item = await ranking.rankOne({ selector: "owner/repo", dry: true });
 
 // Ingest
 await ingest.ingestAll({ onProgress: (e) => console.log(e.phase) });
@@ -164,7 +164,7 @@ EOF
 
 ---
 
-### `gk-stars categorise` (alias: `score`)
+### `gk-stars score`
 
 Evaluate repositories against your lists using the editable criteria in `prompts.yaml`. Optionally update list membership on GitHub.
 
@@ -183,13 +183,13 @@ Keep your lists structured. The model rates each repo against each list, propose
 
 ```bash
 # Dry-run one repo
-gk-stars categorise --one facebook/react --dry
+gk-stars score --one facebook/react --dry
 
 # Plan for 200 repos and apply to GitHub
-gk-stars categorise --all --limit 200
+gk-stars score --all --limit 200
 
 # Resume the last run with a note
-gk-stars categorise --all --resume last --notes "tuning thresholds"
+gk-stars score --all --resume last --notes "tuning thresholds"
 
 # Programmatic
 node <<'EOF'
@@ -270,11 +270,11 @@ gk-stars ingest --dir ./exports
 # 3) Create summaries using a local model
 gk-stars summarise --all --limit 200
 
-# 4) Categorise and preview changes
-gk-stars categorise --all --limit 200 --dry
+# 4) Score and preview changes
+gk-stars score --all --limit 200 --dry
 
 # 5) Apply when happy
-gk-stars categorise --all --limit 200
+gk-stars score --all --limit 200
 ```
 
 ---

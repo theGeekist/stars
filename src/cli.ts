@@ -134,19 +134,18 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 		}
 		if (a === "--dry") dry = true;
 	}
-	const apply = s.apply || !dry;
 	if (s.mode === "one") {
 		if (!s.one) {
 			log.error("--one requires a value");
 			process.exit(1);
 		}
-		await scoreOne(s.one, apply);
+		await scoreOne(s.one, dry);
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
-			`Score --all limit=${limit} apply=${apply}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}`,
+			`Score --all limit=${limit} dry=${dry}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}`,
 		);
-		await scoreBatchAll(limit, apply);
+		await scoreBatchAll(limit, dry);
 	}
 }
 
@@ -160,19 +159,18 @@ async function handleSummarise(argv: string[], args: string[]): Promise<void> {
 		if (a === "--resummarise" || a === "--resummarize") resummarise = true;
 		if (a === "--dry") dry = true;
 	}
-	const apply = s.apply || !dry;
 	if (s.mode === "one") {
 		if (!s.one) {
 			log.error("--one requires a value");
 			process.exit(1);
 		}
-		await summariseOne(s.one, apply);
+		await summariseOne(s.one, dry);
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
-			`Summarise --all limit=${limit} apply=${apply}${resummarise ? " resummarise=true" : ""}`,
+			`Summarise --all limit=${limit} dry=${dry}${resummarise ? " resummarise=true" : ""}`,
 		);
-		await summariseBatchAll(limit, apply, undefined, { resummarise });
+		await summariseBatchAll(limit, dry, undefined, { resummarise });
 	}
 }
 

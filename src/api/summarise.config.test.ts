@@ -24,7 +24,7 @@ describe("summarise public API modelConfig DI", () => {
 
 		const res = await summariseRepo({
 			selector: "o/s",
-			apply: false,
+			dry: true,
 			modelConfig: {
 				model: "sum-model",
 				host: "http://ollama.sum:11434",

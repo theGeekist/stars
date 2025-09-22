@@ -16,20 +16,34 @@ describe("ranking public API modelConfig DI", () => {
 	it("uses provided modelConfig (model, host, apiKey) instead of env", async () => {
 		// biome-ignore lint/suspicious/noExplicitAny: test harness capture container
 		const calls: any[] = [];
-		mock.module("@lib/ollama", () => ({
-			// biome-ignore lint/suspicious/noExplicitAny: test double signature
-			gen: async (prompt: string, opts: any) => {
-				calls.push({ prompt, opts });
-				// Return minimal JSON-ish text that scoring validator can parse; we mimic underlying service schema return.
-				return JSON.stringify({
-					scores: [{ list: "alpha", score: 0.9, why: "fit" }],
-				});
-			},
+
+		// Mock the external ollama service creation
+		mock.module("@jasonnathan/llm-core/ollama-service", () => ({
+			// biome-ignore lint/suspicious/noExplicitAny: test mock config parameter
+			createOllamaService: (config: any) => ({
+				// biome-ignore lint/suspicious/noExplicitAny: test mock opts parameter
+				async generatePromptAndSend(prompt: string, _opts?: any) {
+					const headers = config.apiKey
+						? { Authorization: `Bearer ${config.apiKey}` }
+						: undefined;
+					calls.push({
+						prompt,
+						opts: {
+							model: config.model,
+							host: config.host || config.endpoint,
+							headers,
+						},
+					});
+					return {
+						scores: [{ list: "alpha", score: 0.9, why: "fit" }],
+					};
+				},
+			}),
 		}));
 
 		const res = await rankOne({
 			selector: "o/r",
-			apply: false,
+			dry: true,
 			modelConfig: {
 				model: "custom-model",
 				host: "http://ollama.test:11434",

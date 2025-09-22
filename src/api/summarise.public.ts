@@ -28,15 +28,13 @@ function createSummariseDepsFromConfig(cfg: ModelConfig): SummariseDeps {
 }
 
 /**
- * Options for batch summarisation.
- * - `apply`: when true write summaries to DB, otherwise dry-run.
- * - `resummarise`: include repos that already have summaries.
- * - `deps` > `modelConfig` > env model precedence.
+ * Options for `summariseAll` batch operation.
+ * - `resummarise: true` will re-summarise repos that already have summaries.
  * - `onProgress` emits phase `summarising` with incremental counters.
  */
 export interface SummariseAllOptions {
 	limit?: number;
-	apply?: boolean;
+	dry?: boolean;
 	resummarise?: boolean;
 	deps?: SummariseDeps;
 	// NOTE: alternative lightweight LLM config when full deps not provided
@@ -49,7 +47,7 @@ export interface SummariseAllOptions {
 /** Options for summarising a single repository. */
 export interface SummariseOneOptions {
 	selector: string;
-	apply?: boolean;
+	dry?: boolean;
 	deps?: SummariseDeps;
 	// NOTE: alternative lightweight LLM config when full deps not provided
 	modelConfig?: ModelConfig;
@@ -67,7 +65,7 @@ export async function summariseAll(
 ): Promise<BatchResult<SummaryItemResult>> {
 	const {
 		limit = 50,
-		apply = false,
+		dry = false,
 		resummarise = false,
 		deps,
 		modelConfig,
@@ -75,6 +73,7 @@ export async function summariseAll(
 		logger = realLog,
 		onProgress,
 	} = options;
+	const _apply = !dry;
 
 	// We replay the logic similarly to summariseBatchAllCore but capture results.
 	// Since the existing core handles selection + logging + saving, we re-query for rows.
@@ -117,13 +116,13 @@ export async function summariseAll(
 				logger,
 			);
 			// Save or dry run
-			saveSummaryOrDryRun(svc, r.id, paragraph, apply, logger);
+			saveSummaryOrDryRun(svc, r.id, paragraph, dry, logger);
 			items.push({
 				repoId: r.id,
 				nameWithOwner: r.name_with_owner,
 				paragraph,
 				words,
-				saved: !!apply,
+				saved: !dry,
 				status: "ok",
 			});
 		} catch (e) {
@@ -145,12 +144,13 @@ export async function summariseRepo(
 ): Promise<SummaryItemResult> {
 	const {
 		selector,
-		apply = false,
+		dry = false,
 		deps,
 		modelConfig,
 		db,
 		logger = realLog,
 	} = options;
+	const _apply = !dry;
 	const database = withDB(db);
 	const row = database
 		.query<import("@lib/types").RepoRow, [string]>(
@@ -184,7 +184,7 @@ export async function summariseRepo(
 			svc,
 			row.id,
 			paragraph,
-			apply,
+			dry,
 			logger,
 		);
 		return {
@@ -192,7 +192,7 @@ export async function summariseRepo(
 			nameWithOwner: row.name_with_owner,
 			paragraph,
 			words,
-			saved: !!apply,
+			saved: !dry,
 			status: "ok",
 		};
 	} catch (e) {

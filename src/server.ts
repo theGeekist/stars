@@ -7,6 +7,10 @@ import { createLogger, getLogTap, setLogTap } from "@lib/logger";
 import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
 import { ingestListedFromGh, ingestUnlistedFromGh } from "@src/api/ingest";
+import { rankAll } from "@src/api/ranking.public";
+import { runLists } from "@src/api/stars";
+import { summariseAll } from "@src/api/summarise.public";
+import { enrichAllRepoTopics } from "@src/api/topics";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
 
 let qLists!: Statement<ListRow, []>;
@@ -215,10 +219,6 @@ function handleDashboard(dir?: string): Response {
 
 /* ------------------------------ Task runners ------------------------------ */
 
-type RunResult =
-	| { ok: true; pid: number; cmd: string[]; cancellable: boolean }
-	| { ok: false; error: string };
-
 function sseBroadcast(line: string): void {
 	if (line === lastSseLine) return;
 	lastSseLine = line;
@@ -235,84 +235,18 @@ function sseBroadcast(line: string): void {
 	}
 }
 
-function streamLines(
-	stream: ReadableStream<Uint8Array>,
-	onLine: (l: string) => void,
-): void {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	let buf = "";
-	(async () => {
-		try {
-			while (true) {
-				const { value, done } = await reader.read();
-				if (done) break;
-				if (!value) continue;
-				buf += decoder.decode(value, { stream: true });
-				let idx: number = buf.indexOf("\n");
-				while (idx !== -1) {
-					const line = buf.slice(0, idx).replace(/\r$/, "");
-					onLine(line);
-					buf = buf.slice(idx + 1);
-					idx = buf.indexOf("\n");
-				}
-			}
-			if (buf) onLine(buf);
-		} catch (e) {
-			onLine(`[stream-error] ${e instanceof Error ? e.message : String(e)}`);
-		}
-	})();
-}
-
-function startProcess(task: string, args: string[]): RunResult {
-	try {
-		const startedAt = new Date().toISOString();
-		const p = Bun.spawn({ cmd: args, stdout: "pipe", stderr: "pipe" });
-		sseBroadcast(
-			`[start] ${startedAt} pid=${p.pid} task=${task} cmd=${args.join(" ")}`,
-		);
-		running.set(p.pid, { task, cmd: args, proc: p, startedAt });
-		if (p.stdout)
-			streamLines(p.stdout, (l) => sseBroadcast(`[${task}|out] ${l}`));
-		if (p.stderr)
-			streamLines(p.stderr, (l) => sseBroadcast(`[${task}|err] ${l}`));
-		p.exited
-			.then((code) => {
-				sseBroadcast(`[end] pid=${p.pid} task=${task} code=${code}`);
-				running.delete(p.pid);
-			})
-			.catch((e) => {
-				sseBroadcast(
-					`[end-error] pid=${p.pid} task=${task} err=${e instanceof Error ? e.message : String(e)}`,
-				);
-				running.delete(p.pid);
-			});
-		return { ok: true, pid: p.pid, cmd: args, cancellable: true };
-	} catch (e) {
-		return { ok: false, error: e instanceof Error ? e.message : String(e) };
-	}
-}
-
 function handleRun(path: string, dir?: string): Response {
 	const d = dir ?? undefined;
-	const base = ["bun", "run", "src/cli.ts"];
-	let args: string[] | undefined;
 	switch (path) {
+		case "lists":
 		case "ingest":
-			return startInProcess(path, d);
 		case "summarise":
-			args = [...base, "summarise", "--all", "--apply"];
-			break;
 		case "score":
-			args = [...base, "score", "--all", "--apply"];
-			break;
 		case "topics:enrich":
-			args = [...base, "topics:enrich"];
-			break;
+			return startInProcess(path, d);
+		default:
+			return json({ error: "Unknown task" }, 400);
 	}
-	if (!args) return json({ error: "Unknown task" }, 400);
-	const res = startProcess(path, args);
-	return json(res, res.ok ? 202 : 500);
 }
 
 function anyInprocRunning(): boolean {
@@ -351,11 +285,41 @@ function startInProcess(task: string, _dir?: string): Response {
 	(async () => {
 		try {
 			switch (task) {
+				case "lists":
+					await runLists(false, undefined, undefined);
+					break;
 				case "ingest":
 					// Replace legacy ingest-from-disk with GH-driven ingestion
 					await ingestListedFromGh(undefined, undefined, controller.signal);
 					if (controller.signal.aborted) throw new Error("Aborted");
 					await ingestUnlistedFromGh(undefined, undefined, controller.signal);
+					break;
+				case "summarise":
+					await summariseAll({
+						dry: false, // Apply mode for server
+						onProgress: (e) => {
+							const progress =
+								e.index !== undefined && e.total !== undefined
+									? `${e.index}/${e.total}`
+									: e.repo || "processing";
+							sseBroadcast(`[${task}|progress] ${e.phase}: ${progress}`);
+						},
+					});
+					break;
+				case "score":
+					await rankAll({
+						dry: false, // Apply mode for server
+						onProgress: (e) => {
+							const progress =
+								e.index !== undefined && e.total !== undefined
+									? `${e.index}/${e.total}`
+									: e.repo || "processing";
+							sseBroadcast(`[${task}|progress] ${e.phase}: ${progress}`);
+						},
+					});
+					break;
+				case "topics:enrich":
+					await enrichAllRepoTopics();
 					break;
 			}
 			sseBroadcast(`[end] pid=${pid} task=${task} code=0`);

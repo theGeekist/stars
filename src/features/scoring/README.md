@@ -249,7 +249,7 @@ for (const repo of batch) {
 
 This feature powers:
 
-- `gk-stars categorise` _(alias: `score`)_
+- `gk-stars score`
   - `--one <owner/repo>` or `--all [--limit N]`
   - `--dry`
   - `--resume <id|last>`

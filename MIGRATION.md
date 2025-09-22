@@ -104,7 +104,7 @@ try {
 ## Summary Results Example
 
 ```ts
-const res = await summaries.summariseAll({ limit: 10, apply: false });
+const res = await summaries.summariseAll({ limit: 10, dry: true });
 console.log(res.stats); // { processed, succeeded, failed, saved }
 for (const item of res.items) {
   if (item.status === "ok") console.log(item.paragraph);
@@ -160,7 +160,7 @@ Each `RankingItemResult` now includes:
 
 - `scores`: list scoring results with optional rationale
 - `plannedLists`: final planned membership
-- `changed`: whether membership was updated (when apply=true)
+- `changed`: whether membership was updated (when dry=false)
 - `blocked` / `blockReason`
 - `fallbackUsed` (policy fallback, if any)
 - `scoresPersisted`: whether scores were stored (separate from membership)

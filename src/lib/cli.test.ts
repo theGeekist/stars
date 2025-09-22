@@ -10,7 +10,6 @@ describe("parseSimpleArgs", () => {
 			mode: "all",
 			one: undefined,
 			limit: undefined,
-			apply: false,
 			dry: false,
 		});
 	});
@@ -20,7 +19,6 @@ describe("parseSimpleArgs", () => {
 		expect(s.mode).toBe("one");
 		expect(s.one).toBe("owner/repo");
 		expect(s.limit).toBeUndefined();
-		expect(s.apply).toBe(false);
 		expect(s.dry).toBe(false);
 	});
 
@@ -36,9 +34,8 @@ describe("parseSimpleArgs", () => {
 		expect(s.limit).toBeUndefined();
 	});
 
-	it("handles --apply and --dry flags", () => {
-		const s = parseSimpleArgs([...base, "--all", "--apply", "--dry"]);
-		expect(s.apply).toBe(true);
+	it("handles --dry flag", () => {
+		const s = parseSimpleArgs([...base, "--all", "--dry"]);
 		expect(s.dry).toBe(true);
 	});
 

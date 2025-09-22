@@ -61,7 +61,7 @@ describe("CLI integration", () => {
 			},
 		} as const;
 
-		await scoreBatchAll(5, false, fakeLLM);
+		await scoreBatchAll(5, true, fakeLLM);
 
 		// Dry-run → no persistence
 		const count =
@@ -71,7 +71,7 @@ describe("CLI integration", () => {
 		expect(count).toBe(0);
 	});
 
-	it("summarises repos and saves to DB with apply=true (no network)", async () => {
+	it("summarises repos and saves to DB with dry=false (no network)", async () => {
 		const { summariseOne } = await import("@src/api/summarise");
 
 		db.query(
@@ -80,7 +80,7 @@ describe("CLI integration", () => {
                'Awesome list of things', 5, 0.1, 0.1, 0.1, '["awesome"]')`,
 		).run();
 
-		await summariseOne("owner/awesome-stuff", true);
+		await summariseOne("owner/awesome-stuff", false);
 
 		const row = db
 			.query<{ summary: string | null }, [number]>(

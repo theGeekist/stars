@@ -18,14 +18,17 @@ describe("ranking public rankAll coverage", () => {
 	it("rankAll returns ok items with scores using modelConfig", async () => {
 		// biome-ignore lint/suspicious/noExplicitAny: test harness capture array
 		const calls: any[] = [];
-		mock.module("@lib/ollama", () => ({
-			gen: async (_prompt: string) => {
-				calls.push(_prompt);
-				return JSON.stringify({ scores: [{ list: "alpha", score: 0.42 }] });
-			},
+		mock.module("@jasonnathan/llm-core/ollama-service", () => ({
+			// biome-ignore lint/suspicious/noExplicitAny: test mock config parameter
+			createOllamaService: (_config: any) => ({
+				async generatePromptAndSend(prompt: string) {
+					calls.push(prompt);
+					return { scores: [{ list: "alpha", score: 0.42 }] };
+				},
+			}),
 		}));
 		const out = await rankAll({
-			apply: false,
+			dry: true,
 			modelConfig: { model: "m1" },
 			db,
 		});
@@ -37,11 +40,16 @@ describe("ranking public rankAll coverage", () => {
 	});
 
 	it("rankAll marks items error when LLM output invalid", async () => {
-		mock.module("@lib/ollama", () => ({
-			gen: async () => "not-json",
+		mock.module("@jasonnathan/llm-core/ollama-service", () => ({
+			// biome-ignore lint/suspicious/noExplicitAny: test mock config parameter
+			createOllamaService: (_config: any) => ({
+				async generatePromptAndSend() {
+					return "not-json";
+				},
+			}),
 		}));
 		const out = await rankAll({
-			apply: false,
+			dry: true,
 			modelConfig: { model: "m2" },
 			db,
 		});

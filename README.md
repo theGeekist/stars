@@ -178,7 +178,7 @@ const summariesResult = await summaries.summariseAll({
 // Rank a single repository, applying list membership
 const ranked = await ranking.rankOne({
   selector: "facebook/react",
-  apply: true,
+  dry: false,
   modelConfig: { model: "llama3:custom" },
 });
 if (ranked.status === "ok") {
@@ -247,7 +247,7 @@ Add peers only if you need LLM-powered features:
 bun add @jasonnathan/llm-core ollama
 ```
 
-Then set `OLLAMA_MODEL` and run `gk-stars summarise` / `gk-stars categorise` normally.
+Then set `OLLAMA_MODEL` and run `gk-stars summarise` / `gk-stars score` normally.
 
 If the peers are missing and you invoke LLM code, a runtime error will instruct you to install them.
 

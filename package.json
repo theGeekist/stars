@@ -1,6 +1,6 @@
 {
 	"name": "@geekist/stars",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"type": "module",
 	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
 	"repository": {
@@ -12,7 +12,7 @@
 		"url": "https://github.com/theGeekist/stars/issues"
 	},
 	"license": "MIT",
-	"author": "J (Jason) <hello@geekist.dev>",
+	"author": "pipewrk <hello@geekist.co>",
 	"exports": {
 		".": {
 			"types": "./dist/types/index.d.ts",
@@ -27,10 +27,11 @@
 		"ingest": "bun start ingest",
 		"score:one": "bun start score --one",
 		"score:batch": "bun start score --all",
+		"score:dry": "bun start score --all --dry",
 		"sum:one": "bun start summarise --one",
 		"sum:batch": "bun start summarise --all",
+		"sum:dry": "bun start summarise --all --dry",
 		"serve": "bun --watch run src/server.ts",
-		"rebuild": "rm -f repolists.db && bun start ingest",
 		"dev": "bun run src/server.ts",
 		"types": "tsc -p tsconfig.json --noEmit",
 		"check": "bun run types && echo '✓ typecheck ok'",

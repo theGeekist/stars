@@ -349,19 +349,21 @@ export async function processRepo(opts: ProcessRepoOptions, logger: Logger) {
 /** @deprecated Use rankAll from ranking.public */
 export async function scoreBatchAll(
 	limit: number,
-	apply: boolean,
+	dry: boolean,
 	llm?: ScoringLLM,
 	database?: Database,
 ): Promise<void> {
+	const apply = !dry;
 	await scoreBatchAllCore(limit, apply, llm, database, realLog);
 }
 
 /** @deprecated Use rankOne from ranking.public */
 export async function scoreOne(
 	selector: string,
-	apply: boolean,
+	dry: boolean,
 	llm?: ScoringLLM,
 	database?: Database,
 ): Promise<void> {
+	const apply = !dry;
 	await scoreOneCore(selector, apply, llm, database, realLog);
 }

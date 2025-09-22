@@ -22,7 +22,7 @@ export function resolvePagingConfig(
 	const {
 		pageSizeVar = "PAGE_SIZE",
 		concurrencyVar = "CONCURRENCY",
-		defaultPageSize = 25,
+		defaultPageSize = 30,
 		minPageSize = 10,
 		maxPageSize = 100,
 		debugVar = "DEBUG",

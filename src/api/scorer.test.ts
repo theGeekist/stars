@@ -25,7 +25,7 @@ describe("cli-scorer", () => {
 		} catch {}
 	});
 
-	it("scoreOne throws when apply=true and GITHUB_TOKEN missing", async () => {
+	it("scoreOne throws when dry=false and GITHUB_TOKEN missing", async () => {
 		const { scoreOne } = await import("./scorer");
 		db.exec(
 			"INSERT INTO repo(id, name_with_owner, url, stars) VALUES (1, 'o/r1', 'u', 10);",
@@ -37,7 +37,7 @@ describe("cli-scorer", () => {
 			.FORCE_TOKEN_MISSING;
 		(Bun.env as Record<string, string | undefined>).FORCE_TOKEN_MISSING = "1";
 		try {
-			await expect(scoreOne("o/r1", true, undefined, db)).rejects.toThrow(
+			await expect(scoreOne("o/r1", false, undefined, db)).rejects.toThrow(
 				/GITHUB_TOKEN/,
 			);
 		} finally {
@@ -74,7 +74,7 @@ describe("cli-scorer", () => {
 			},
 		} as const;
 
-		await scoreBatchAll(5, false, fakeLLM, db);
+		await scoreBatchAll(5, true, fakeLLM, db);
 
 		const csv = join(
 			String((Bun.env as Record<string, string>).LISTLESS_OUT_DIR),

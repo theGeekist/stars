@@ -72,7 +72,7 @@ describe("api/summarise adapters and helpers", () => {
 		} as unknown as ReturnType<
 			typeof import("@features/summarise/service").createSummariseService
 		>;
-		saveSummaryOrDryRun(fakeSvc, 1, "p", false, log);
+		saveSummaryOrDryRun(fakeSvc, 1, "p", true, log);
 		expect(called).toBe(0);
 	});
 });

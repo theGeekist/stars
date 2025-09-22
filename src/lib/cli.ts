@@ -5,15 +5,13 @@ export type SimpleArgs = {
 	mode: "one" | "all";
 	one?: string; // repo selector (e.g., name_with_owner)
 	limit?: number; // cap when cycling all
-	apply: boolean; // legacy: explicit apply flag
-	dry: boolean; // when true, no persistence/side-effects
+	dry: boolean; // when true, no persistence/side-effects (apply = !dry)
 };
 
 export function parseSimpleArgs(argv: string[]): SimpleArgs {
 	let mode: "one" | "all" | undefined;
 	let one: string | undefined;
 	let limit: number | undefined;
-	let apply = false;
 	let dry = false;
 
 	for (let i = 2; i < argv.length; i++) {
@@ -33,7 +31,6 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 			limit = Number(argv[i]);
 			continue;
 		}
-		if (a === "--apply") apply = true;
 		if (a === "--dry") dry = true;
 	}
 
@@ -42,7 +39,7 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 		mode = "all";
 	}
 
-	return { mode, one, limit, apply, dry };
+	return { mode, one, limit, dry };
 }
 
 export const SIMPLE_USAGE = `
@@ -52,5 +49,5 @@ Usage (simplified):
 
 Notes:
   - Default mode is --all
-  - Writes/side-effects happen by default; pass --dry to preview only
+  - Applies changes by default; pass --dry to preview only
 `;
