@@ -80,7 +80,16 @@ describe("CLI integration", () => {
                'Awesome list of things', 5, 0.1, 0.1, 0.1, '["awesome"]')`,
 		).run();
 
-		await summariseOne("owner/awesome-stuff", false);
+		// Mock dependencies to avoid real network calls
+		const fakeDeps = {
+			gen: async () =>
+				'A curated "awesome" list that aggregates noteworthy repositories and resources for Awesome list of things. It focuses on discoverability over implementation, offering links, brief descriptions, and signposts to guides and tools. Best used as a jumping-off point for research and comparing options; the project itself is a catalogue rather than a library.',
+			embed: {
+				embedTexts: async () => [[0.1, 0.2, 0.3]], // dummy embeddings
+			},
+		};
+
+		await summariseOne("owner/awesome-stuff", false, fakeDeps); // dry=false with mocked deps
 
 		const row = db
 			.query<{ summary: string | null }, [number]>(
