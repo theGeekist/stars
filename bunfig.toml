@@ -3,9 +3,9 @@ telemetry = false
 [test]
 # Coverage configuration
 coverage = true
+coverageDir = "./coverage"              # overridden per shard by CLI above  
+coverageReporter = ["text", "lcov"]     # keep text + lcov
 coverageSkipTestFiles = true
-coverageReporter = ["text", "lcov"]
-coverageDir = "coverage"
 
 # Exclude test files, fakes, and mocks from coverage
 # This gives us true production code coverage metrics
