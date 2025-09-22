@@ -29,12 +29,12 @@ function extractDepsFromPyproject(
 	const rows: Array<{ name: string; purpose?: string }> = [];
 	const t = text || "";
 	const inDepsScope =
-		/\[project\.dependencies\]|\[tool\.poetry\.dependencies\]/i.test(t);
+		/(?:\[project\.dependencies\])|(?:\[tool\.poetry\.dependencies\])/i.test(t);
 	const scope = inDepsScope ? t : "";
 	const re = /["']?([a-zA-Z0-9_.-]+)["']?\s*=\s*["']?([^"'\n]+)["']?/g;
 	for (const m of scope.matchAll(re)) rows.push({ name: m[1] });
 	if (rows.length === 0) {
-		const reList = /^\s*-\s*([a-zA-Z0-9_.-]+)\b.*$/gm;
+		const reList = /^\s*-\s*([a-zA-Z0-9_.-]+)\b[^\r\n]*$/gm;
 		for (const m of t.matchAll(reList)) rows.push({ name: m[1] });
 	}
 	return rows.slice(0, 20);
@@ -103,7 +103,7 @@ export function stepAutoExtracts(): Step<DraftsOutput, DraftsEnrichedOutput> {
 			let md = d.markdown ?? ""; // <— guard
 			const ctx = pc.context || "";
 
-			if (/^#\s*(overview|setup|getting started)/i.test(md)) {
+			if (/^#\s*(?:overview|setup|getting started)/i.test(md)) {
 				const deps = extractDepsFromPyproject(ctx);
 				if (deps.length) {
 					const block = `\n**Dependencies**\n\n${table(["Dependency", "Purpose"], deps, (r) => [r.name, r.purpose ?? ""])}\n`;
@@ -123,7 +123,7 @@ export function stepAutoExtracts(): Step<DraftsOutput, DraftsEnrichedOutput> {
 			}
 
 			const cli = extractCliOptions(ctx);
-			if (cli.length && /#\s*(setup|getting started|overview)/i.test(md)) {
+			if (cli.length && /#\s*(?:setup|getting started|overview)/i.test(md)) {
 				const block = `\n**Common command-line options**\n\n${table(["Flag", "Type", "Default", "Description"], cli, (r) => [r.flag, r.type ?? "", r.def ?? "", r.desc ?? ""])}\n`;
 				md = insertUnderSection(md, "Basic Usage", block);
 			}

@@ -450,21 +450,26 @@ async function ask<T>(
 function isCodeLike(text: string): boolean {
 	if (!text || typeof text !== "string") return false;
 	const codeMarkers =
-		/(def |class |import |function\s|\(|\)|=>|;|{|\}|\bvar\b|\bconst\b|\blet\b|#include|package\s|using\s)/;
+		/(?:def )|(?:class )|(?:import )|(?:function\s)|(?:\()|(?:\))|(?:=>)|(?:;)|(?:\{)|(?:\})|(?:\bvar\b)|(?:\bconst\b)|(?:\blet\b)|(?:#include)|(?:package\s)|(?:using\s)/;
 	return codeMarkers.test(text) && (text.includes("\n") || text.includes(";"));
 }
 function guessLang(text: string): string | undefined {
 	const s = (text || "").slice(0, 400).toLowerCase();
-	if (/^\s*import\s+|^\s*def\s+|^\s*class\s+|from\s+.+\s+import\b/.test(s))
+	if (
+		/(?:^\s*import\s+)|(?:^\s*def\s+)|(?:^\s*class\s+)|(?:from\s+[^\s]+\s+import\b)/.test(
+			s,
+		)
+	)
 		return "python";
-	if (/\bconsole\.log\b|^\s*function\b|=>/.test(s)) return "javascript";
-	if (/^\s*package\s+|public\s+class\s+/.test(s)) return "java";
-	if (/^\s*using\s+|namespace\b/.test(s)) return "csharp";
-	if (/#include\b|std::|::/.test(s)) return "cpp";
-	if (/package\s+main|\bfmt\.Println\b/.test(s)) return "go";
-	if (/\bfn\s+[a-z_]|println!/.test(s)) return "rust";
+	if (/(?:\bconsole\.log\b)|(?:^\s*function\b)|(?:=>)/.test(s))
+		return "javascript";
+	if (/(?:^\s*package\s+)|(?:public\s+class\s+)/.test(s)) return "java";
+	if (/(?:^\s*using\s+)|(?:namespace\b)/.test(s)) return "csharp";
+	if (/(?:#include\b)|(?:std::)|(?:::)/.test(s)) return "cpp";
+	if (/(?:package\s+main)|(?:\bfmt\.Println\b)/.test(s)) return "go";
+	if (/(?:\bfn\s+[a-z_])|(?:println!)/.test(s)) return "rust";
 	if (/<[a-z-]+[^>]*>/.test(s)) return "html";
-	if (/\bSELECT\b.*\bFROM\b/.test(s)) return "sql";
+	if (/\bSELECT\b[^;]*\bFROM\b/.test(s)) return "sql";
 	return undefined;
 }
 

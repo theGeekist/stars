@@ -68,7 +68,7 @@ function detectRepoSignals(store: StoreDoc[]): RepoSignals {
 	const docsDirs = uniq(
 		files
 			.filter((f) => /^docs\//i.test(f) || /\/docs\//i.test(f))
-			.map((f) => f.replace(/(^|.*?\/docs\/).*/i, "$1"))
+			.map((f) => f.replace(/(^|[^/]*\/docs\/).*$/i, "$1"))
 			.map((p) => (p.endsWith("/") ? p : `${p}/`)), // ensure trailing slash
 	);
 
@@ -174,8 +174,8 @@ function suggestFilesForPage(
 
 	const setup: RegExp[] = [
 		/(^|\/)README\.md$/i,
-		/(^|\/)docs\/.*install/i,
-		/(^|\/)docs\/.*setup/i,
+		/(^|\/)docs\/[^/]*install/i,
+		/(^|\/)docs\/[^/]*setup/i,
 		/(^|\/)Dockerfile$/i,
 	];
 	if (sig.langs.has("python"))
@@ -199,47 +199,47 @@ function suggestFilesForPage(
 
 	const usage: RegExp[] = [
 		/(^|\/)README\.md$/i,
-		/(^|\/)docs\/.*usage/i,
-		/(^|\/)docs\/.*example/i,
+		/(^|\/)docs\/[^/]*usage/i,
+		/(^|\/)docs\/[^/]*example/i,
 		/(^|\/)bin\/|(^|\/)scripts\//i,
 	];
 
 	const configuration: RegExp[] = [
 		/(^|\/)config\.(js|ts|py|yml|yaml|json)$/i,
-		/(^|\/)docs\/.*config/i,
+		/(^|\/)docs\/[^/]*config/i,
 		/(^|\/)pyproject\.toml$/i,
 		/(^|\/)package\.json$/i,
 	];
 
 	const testing: RegExp[] = [
 		/^tests?\//i,
-		/(^|\/)docs\/.*test/i,
+		/(^|\/)docs\/[^/]*test/i,
 		/(^|\/)pytest\.ini$/i,
 		/(^|\/)jest\.config\.(js|ts)$/i,
 	];
 
 	const architecture: RegExp[] = [
-		/(^|\/)docs\/.*architecture/i,
+		/(^|\/)docs\/[^/]*architecture/i,
 		/(^|\/)integration\.py$/i,
 		/(^|\/)src\/|(^|\/)lib\//i,
 	];
 
 	const dataFlow: RegExp[] = [
-		/(^|\/)docs\/.*(flow|pipeline|design)/i,
+		/(^|\/)docs\/[^/]*(flow|pipeline|design)/i,
 		/(^|\/)handlers\/default_handler\.py$/i,
 	];
 
 	const contributing: RegExp[] = [/(^|\/)CONTRIBUTING\.md$/i];
 
 	const troubleshooting: RegExp[] = [
-		/(^|\/)docs\/.*troubleshooting/i,
-		/(^|\/)docs\/.*faq/i,
+		/(^|\/)docs\/[^/]*troubleshooting/i,
+		/(^|\/)docs\/[^/]*faq/i,
 		/(^|\/)README\.md$/i,
 	];
 
 	const releaseNotes: RegExp[] = [
 		/(^|\/)CHANGELOG\.md$/i,
-		/(^|\/)docs\/.*changelog/i,
+		/(^|\/)docs\/[^/]*changelog/i,
 	];
 
 	// Basic routing (loose & additive)
@@ -350,7 +350,7 @@ export function stepRepairWiki(options?: {
 					const line = await gen(`${system} ${user}`);
 					// light cleanup after a "good" check
 					const cleaned = line
-						.replace(/^\s*["'`]|["'`]\s*$/g, "")
+						.replace(/^(?:\s*["'`])|(?:["'`]\s*)$/g, "")
 						.replace(/\s+/g, " ")
 						.trim();
 					if (cleaned) p.description = cleaned;

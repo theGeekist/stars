@@ -80,10 +80,10 @@ function include(
 
 	if (mode === "include") {
 		const d = new Set(
-			(f.includedDirs ?? []).map((x) => x.replace(/^[./]+|\/+$/g, "")),
+			(f.includedDirs ?? []).map((x) => x.replace(/^(?:[./]+)|(?:\/+)$/g, "")),
 		);
 		const files = f.includedFiles ?? [];
-		const inDir = ps.some((p) => d.has(p.replace(/^[./]+|\/+$/g, "")));
+		const inDir = ps.some((p) => d.has(p.replace(/^(?:[./]+)|(?:\/+)$/g, "")));
 		const inFile = files.some((x) => base === x || base.endsWith(x));
 		if (d.size === 0 && files.length === 0) return true;
 		return inDir || inFile;
@@ -91,10 +91,10 @@ function include(
 
 	// exclude mode
 	const d = new Set(
-		(f.excludedDirs ?? []).map((x) => x.replace(/^[./]+|\/+$/g, "")),
+		(f.excludedDirs ?? []).map((x) => x.replace(/^(?:[./]+)|(?:\/+)$/g, "")),
 	);
 	const fi = new Set(f.excludedFiles ?? []);
-	const inDir = ps.some((p) => d.has(p.replace(/^[./]+|\/+$/g, "")));
+	const inDir = ps.some((p) => d.has(p.replace(/^(?:[./]+)|(?:\/+)$/g, "")));
 	const inFile = fi.has(base);
 	return !(inDir || inFile);
 }
@@ -144,7 +144,7 @@ export function stepReadDocs(
 			? DEFAULT_IGNORED_DIRS.slice()
 			: DEFAULT_IGNORED_DIRS.concat(
 					(filter.excludedDirs ?? []).map(
-						(d) => `**/${d.replace(/^[./]+|\/+$/g, "")}/**`,
+						(d) => `**/${d.replace(/^(?:[./]+)|(?:\/+)$/g, "")}/**`,
 					),
 				);
 

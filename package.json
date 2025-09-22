@@ -1,6 +1,6 @@
 {
 	"name": "@geekist/stars",
-	"version": "0.3.3",
+	"version": "0.3.4",
 	"type": "module",
 	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
 	"repository": {
