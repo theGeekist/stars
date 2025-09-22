@@ -20,8 +20,8 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Test (lcov)
-        run: bun test --coverage --coverage-reporter=text --coverage-reporter=lcov
+      - name: Test with coverage
+        run: bun run test:coverage
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5

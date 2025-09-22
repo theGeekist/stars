@@ -1,0 +1,16 @@
+telemetry = false
+
+[test]
+# Coverage configuration
+coverage = true
+coverageSkipTestFiles = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+
+# Exclude test files, fakes, and mocks from coverage
+# This gives us true production code coverage metrics
+coveragePathIgnorePatterns = [
+  "**/*.test.ts",
+  "**/*.spec.ts", 
+  "src/__test__/**"
+]
