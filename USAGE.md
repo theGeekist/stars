@@ -4,6 +4,8 @@ Back to main README: [README.md](README.md)
 
 This project ships a single CLI named `gk-stars`. Below is a practical guide to what each command does, why you would run it, and small examples you can copy and paste.
 
+**Enhanced Help System**: Each command now features structured help with clear sections, detailed examples, and comprehensive flag descriptions. Run any command with `--help` for context-aware guidance.
+
 ---
 
 ## Environment
@@ -178,6 +180,7 @@ Keep your lists structured. The model rates each repo against each list, propose
 - `--resume <id|last>` continue a previous run
 - `--notes <text>` annotate the run
 - `--fresh` or `--from-scratch` ignore previous runs
+- `--respect-curation` preserve manually curated repositories from automatic removal
 
 **Examples**
 
@@ -187,6 +190,9 @@ gk-stars score --one facebook/react --dry
 
 # Plan for 200 repos and apply to GitHub
 gk-stars score --all --limit 200
+
+# Respect manual curation - protect manually added repos from removal
+gk-stars score --all --limit 100 --respect-curation
 
 # Resume the last run with a note
 gk-stars score --all --resume last --notes "tuning thresholds"

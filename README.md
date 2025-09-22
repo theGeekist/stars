@@ -44,6 +44,10 @@ The system is designed for **reproducibility and privacy**:
 
 The project demonstrates that lightweight signals, concise prompts, and explicit policies are sufficient to keep a large star collection structured and navigable without cloud dependencies.
 
+**Curation Mode**: The system now supports preserving manual GitHub list curation while still allowing AI-driven categorisation. Enable with `--respect-curation` to protect manually curated repositories from automatic removal while still suggesting new additions.
+
+**Enhanced CLI Experience**: The command-line interface now features structured help with clear sections, detailed examples, and comprehensive flag descriptions. Run any command with `--help` for context-aware guidance.
+
 > Looking for CLI usage? See [USAGE.md](USAGE.md) for command-by-command examples and flags.
 
 ## Motivation
@@ -52,7 +56,7 @@ Developers often accumulate hundreds or thousands of starred repositories. Over 
 
 - **List curation**
 - **Concise summaries**
-- **Explainable categorisation**
+- **Explainable categorisation** with curation mode to preserve manual list curation
 - **Topic-level enrichment**
 
 all in a way that is private, reproducible, and easy to extend.
@@ -112,6 +116,8 @@ Summaries are generated in a fixed style: 60-90 words, factual, and present-tens
 ### Categorisation and Policy
 
 Categorisation converts list criteria into structured prompts. Each repo receives a score and rationale per list. A simple explicit policy turns scores into suggested add/remove/review actions. The plan is reported before any changes are applied.
+
+**New: Curation Mode** - When enabled, repositories manually added to GitHub lists are protected from automatic removal, allowing AI-driven additions while preserving human curation decisions. Configure via `--respect-curation` CLI flag or `policy` parameter in the API.
 
 ### Topic Enrichment
 
@@ -184,6 +190,23 @@ const ranked = await ranking.rankOne({
 if (ranked.status === "ok") {
   console.log(ranked.plannedLists, ranked.changed);
 }
+
+// Use curation mode to preserve manual list curation
+const curatedRanking = await ranking.rankAll({
+  limit: 100,
+  dry: false,
+  policy: ranking.CURATION_POLICY, // Respects manual curation
+});
+
+// Custom curation threshold
+const customCuration = await ranking.rankOne({
+  selector: "microsoft/vscode",
+  dry: false,
+  policy: {
+    respectManualCuration: true,
+    curationRemoveThreshold: 0.15, // Only remove if score < 0.15
+  },
+});
 
 // Fetch lists & stars (pure data, throws ConfigError if token missing)
 const lists = await starsData.fetchLists();

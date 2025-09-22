@@ -1,5 +1,40 @@
 # Migration Guide
 
+## v0.3.0 - Enhanced CLI and Curation Features
+
+### New Features
+
+**Curation Policy Support**: Added `--respect-curation` flag to preserve manual GitHub list curation while allowing AI-driven categorisation. When enabled, manually curated repositories are protected from automatic removal.
+
+```bash
+# Protect manually curated repositories from removal
+gk-stars rank --respect-curation
+
+# Or rank a specific list while respecting curation
+gk-stars rank productivity --respect-curation
+```
+
+**Enhanced CLI Help Interface**: Restructured command help with clear sections, detailed examples, and comprehensive flag descriptions. The help system now provides:
+
+- Structured command sections with usage examples
+- Detailed flag descriptions with practical use cases
+- Context-aware guidance for each command
+- Improved formatting for better readability
+
+**Improved Type Safety**: Enhanced TypeScript types throughout the CLI test suite, replacing `any` types with proper function signatures for better development experience.
+
+**Expanded Public API**: Added comprehensive interfaces in `public.types.ts` including `BatchSelector`, `ListsService`, and `ModelConfig` utilities for external consumers.
+
+**Test Infrastructure**: Added `bunfig.toml` configuration with coverage exclusions and segmented test execution for cleaner production metrics.
+
+### Breaking Changes
+
+None. All changes maintain backward compatibility.
+
+### Deprecated Features
+
+- Internal scorer imports (`scoreOne`, `scoreBatchAll`) have been replaced with modern ranking API (`rankOne`, `rankAll`) from `ranking.public`. Old imports still work but are deprecated.
+
 ## Overview
 
 This release introduces a cleaner, library-focused public API while preserving existing CLI-oriented functions (now deprecated). The new APIs:
@@ -52,6 +87,28 @@ import {
 | `scoreBatchAll(limit, apply, llm?, db?)` | `ranking.rankAll({ limit, apply, llm, db, onProgress })` | returns per-repo items with scores, planned lists, change flags |
 | `scoreOne(selector, apply, llm?, db?)`   | `ranking.rankOne({ selector, apply, llm, db })`          | returns single repo result                                      |
 
+**New: Curation Mode Support**
+
+Both `ranking.rankAll` and `ranking.rankOne` now accept a `policy` parameter for curation mode:
+
+```ts
+// Use curation mode to preserve manual GitHub list curation
+await ranking.rankAll({
+  limit: 50,
+  apply: true,
+  policy: ranking.CURATION_POLICY, // or pass custom policy
+});
+
+// Custom curation threshold
+await ranking.rankOne({
+  selector: "owner/repo",
+  policy: {
+    respectManualCuration: true,
+    curationRemoveThreshold: 0.2,
+  },
+});
+```
+
 ### Stars / Lists
 
 | Old                                  | New                                      | Notes                                            |
@@ -86,6 +143,71 @@ Available via root import:
 - `ProgressEvent`
 - `BatchResult<T>` / `BatchStats`
 - `SummaryItemResult`, `RankingItemResult`
+- `ApplyPolicy` - Policy configuration for curation mode
+- `CURATION_POLICY` - Default curation policy (via `ranking` export)
+
+## New Curation Mode
+
+This release introduces **curation mode** for respecting manual GitHub list curation while still allowing AI-driven repository ranking.
+
+### Key Features
+
+- **Preserve Manual Curation**: Repositories manually added to GitHub lists are protected from removal
+- **Configurable Threshold**: Set minimum score threshold for automatic removal (default: 0.1)
+- **CLI Integration**: Use `--respect-curation` flag with score command
+- **API Support**: Pass `policy` parameter to ranking functions
+
+### CLI Usage
+
+```bash
+# Enable curation mode with default settings
+bun start score --respect-curation --apply
+
+# Use custom curation threshold
+bun start score --respect-curation --curation-threshold 0.2 --apply
+
+# Shorthand flag
+bun start score --curation --apply
+```
+
+### Programmatic Usage
+
+```ts
+import { ranking } from "@geekist/stars";
+
+// Use default curation policy
+const results = await ranking.rankAll({
+  limit: 100,
+  apply: true,
+  policy: ranking.CURATION_POLICY,
+});
+
+// Custom curation settings
+const customResults = await ranking.rankOne({
+  selector: "microsoft/vscode",
+  apply: true,
+  policy: {
+    respectManualCuration: true,
+    curationRemoveThreshold: 0.15,
+  },
+});
+```
+
+### How It Works
+
+When curation mode is enabled:
+
+1. **Addition Logic**: Repositories can still be added to lists based on AI scoring
+2. **Removal Protection**: Repositories with scores below the threshold are only removed if they were added automatically (not manually curated)
+3. **Threshold Control**: The `curationRemoveThreshold` (default 0.1) determines the minimum score for automatic removal
+4. **Manual Override**: Manually curated repositories are never automatically removed, regardless of score
+
+### Migration Notes
+
+- Curation mode is **opt-in** - existing behavior unchanged when not using curation flags/policy
+- Default policy available as `ranking.CURATION_POLICY` export
+- CLI flags: `--respect-curation`, `--curation`, `--curation-threshold`
+- All existing APIs continue to work without modification
 
 ## Error Handling Changes
 
