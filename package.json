@@ -1,6 +1,6 @@
 {
 	"name": "@geekist/stars",
-	"version": "0.3.4",
+	"version": "0.3.5",
 	"type": "module",
 	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
 	"repository": {
@@ -64,7 +64,7 @@
 		"@biomejs/biome": "^2.2.4",
 		"@types/bun": "latest",
 		"husky": "^9.1.7",
-		"lint-staged": "^16.1.6",
+		"lint-staged": "^16.2.1",
 		"prettier": "^3.6.2"
 	},
 	"peerDependencies": {
@@ -75,7 +75,7 @@
 	"dependencies": {
 		"@jasonnathan/llm-core": "^1.9.1",
 		"consola": "^3.4.2",
-		"ollama": "^0.5.17",
+		"ollama": "^0.5.18",
 		"ora": "^8.2.0"
 	},
 	"lint-staged": {

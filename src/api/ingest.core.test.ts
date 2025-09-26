@@ -67,8 +67,18 @@ describe("api/ingestCore", () => {
 		initSchema(db);
 
 		const { log, lineCalls } = makeLogWithLines();
-		const res = await ingestCore(db, log, dir);
-		expect(res.lists).toBe(1);
-		expect(lineCalls.some((l) => String(l).includes("Details:"))).toBe(true);
+
+		// Remove GITHUB_TOKEN to skip cleanup during tests
+		const prevGithubToken = Bun.env.GITHUB_TOKEN;
+		delete Bun.env.GITHUB_TOKEN;
+		try {
+			const res = await ingestCore(db, log, dir);
+			expect(res.lists).toBe(1);
+			expect(lineCalls.some((l) => String(l).includes("Details:"))).toBe(true);
+		} finally {
+			if (prevGithubToken) {
+				Bun.env.GITHUB_TOKEN = prevGithubToken;
+			}
+		}
 	});
 });

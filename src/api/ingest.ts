@@ -35,6 +35,27 @@ export async function ingestCore(
 	const service = createIngestService(db);
 	const result = await service.ingestFromExports(source, reporter);
 
+	// Perform cleanup of repositories no longer starred
+	const cleanupSpinner = log
+		.spinner("Cleaning up unstarred repositories...")
+		.start();
+	try {
+		const svc = createStarsService(starsLib, withDB(db));
+		const currentStarIds = await svc.read.collectStarIdsSet();
+		const cleanupResult = service.cleanupRemovedStars(currentStarIds);
+
+		const msg =
+			cleanupResult.removed > 0
+				? `Removed ${cleanupResult.removed} unstarred repositories (preserved ${cleanupResult.preserved} with overrides)`
+				: cleanupResult.checkedCount > 0
+					? `No cleanup needed (checked ${cleanupResult.checkedCount}, preserved ${cleanupResult.preserved} with overrides)`
+					: "No repositories required cleanup";
+		cleanupSpinner.succeed(msg);
+	} catch (e) {
+		cleanupSpinner.succeed("Skipping cleanup (GitHub API unavailable)");
+		// Don't throw - cleanup is best-effort, main ingest succeeded
+	}
+
 	// Details line (concise)
 	log.line(
 		`Details: ${result.reposFromLists} repos via lists, ${result.unlisted} unlisted repos`,
@@ -129,6 +150,29 @@ export async function ingestListedFromGh(
 		s.fail?.("Aborted");
 		throw e;
 	}
+
+	// Perform cleanup of repositories no longer starred
+	const cleanupSpinner = log
+		.spinner("Cleaning up unstarred repositories...")
+		.start();
+	try {
+		if (signal?.aborted) throw new Error("Aborted");
+		const svc = createStarsService(starsLib, withDB(db));
+		const currentStarIds = await svc.read.collectStarIdsSet();
+		const ingestService = createIngestService(withDB(db));
+		const cleanupResult = ingestService.cleanupRemovedStars(currentStarIds);
+
+		const msg =
+			cleanupResult.removed > 0
+				? `Removed ${cleanupResult.removed} unstarred repositories (preserved ${cleanupResult.preserved} with overrides)`
+				: cleanupResult.checkedCount > 0
+					? `No cleanup needed (checked ${cleanupResult.checkedCount}, preserved ${cleanupResult.preserved} with overrides)`
+					: "No repositories required cleanup";
+		cleanupSpinner.succeed(msg);
+	} catch (e) {
+		cleanupSpinner.succeed("Skipping cleanup (GitHub API unavailable)");
+	}
+
 	const res = ingestFromData(lists, undefined, db, log);
 	return {
 		lists: res.lists,
@@ -154,6 +198,28 @@ export async function ingestUnlistedFromGh(
 		s.fail?.("Aborted");
 		throw e;
 	}
+
+	// Perform cleanup of repositories no longer starred
+	const cleanupSpinner = log
+		.spinner("Cleaning up unstarred repositories...")
+		.start();
+	try {
+		if (signal?.aborted) throw new Error("Aborted");
+		const currentStarIds = await svc.read.collectStarIdsSet();
+		const ingestService = createIngestService(withDB(db));
+		const cleanupResult = ingestService.cleanupRemovedStars(currentStarIds);
+
+		const msg =
+			cleanupResult.removed > 0
+				? `Removed ${cleanupResult.removed} unstarred repositories (preserved ${cleanupResult.preserved} with overrides)`
+				: cleanupResult.checkedCount > 0
+					? `No cleanup needed (checked ${cleanupResult.checkedCount}, preserved ${cleanupResult.preserved} with overrides)`
+					: "No repositories required cleanup";
+		cleanupSpinner.succeed(msg);
+	} catch (e) {
+		cleanupSpinner.succeed("Skipping cleanup (GitHub API unavailable)");
+	}
+
 	const res = ingestFromData([], unlisted, db, log);
 	return {
 		lists: res.lists,

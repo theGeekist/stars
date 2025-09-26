@@ -122,6 +122,8 @@ The pipeline consists of four stages that can be run independently.
 1. **Ingest**
    Imports lists and repositories via the GitHub API. Computes simple metrics such as popularity, freshness, and activeness, then normalises topics. Results are stored in SQLite.
 
+   **Automatic Cleanup**: During ingest, repositories that are no longer starred are automatically removed from the local database (unless they have manual overrides via `repo_overrides`). This ensures the local corpus stays synchronized with your current GitHub stars while preserving any repositories you've manually configured to keep.
+
 2. **Summarise**
    Generates a single paragraph per repository using an Ollama model. Inputs include README text (when available), description, languages, topics, and activity metrics. Output is saved to `repo.summary` and indexed for search.
 
@@ -135,6 +137,7 @@ The pipeline consists of four stages that can be run independently.
 
 - **Lists and membership**: `list`, `list_repo`.
 - **Repositories and signals**: `repo` with popularity, freshness, activeness, tags, and `summary`.
+- **Repository overrides**: `repo_overrides` to preserve specific repositories during automatic cleanup.
 - **Text index**: `repo_fts` for search over names, descriptions, README text, and summaries.
 - **Model audit**: `model_run`, `repo_list_score` for reproducibility of categorisation.
 - **Topics**: `topics` with metadata from `github/explore`.

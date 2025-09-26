@@ -1,6 +1,32 @@
 # Changelog
 
-## 0.1.1 (Unreleased)
+## 0.3.5 (2025-09-26)
+
+### Added
+
+- **🆕 Enhanced Ingest Pipeline**: Automatic cleanup of repositories no longer starred
+  - Removes repositories that are no longer in your GitHub stars during ingest
+  - **Safe**: Preserves repositories with `repo_overrides` entries (manual curation protection)
+  - **Automatic**: Runs by default in all ingest operations (`ingest`, `ingest:lists`, `ingest:unlisted`)
+  - **Defensive**: Gracefully handles test environments and missing GitHub tokens
+  - Comprehensive test coverage with 11 new unit tests and integration tests
+
+### Changed
+
+- Ingest operations now include a 3-phase process: Fetch → Upsert → Cleanup
+- Enhanced logging shows cleanup summary: removed vs preserved repositories
+- Test environment detection prevents GitHub API calls during testing
+
+### Internal
+
+- Added `cleanupRemovedStars()` method to ingest service
+- Integrated cleanup with stars service for current GitHub star collection
+- Updated ingest feature documentation with cleanup behavior
+- All 243 tests passing including new cleanup functionality
+
+---
+
+## 0.3.4 (Previous)
 
 ### Added
 

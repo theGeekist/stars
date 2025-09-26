@@ -7,6 +7,40 @@ Normalises repo records, computes lightweight health signals, reconciles duplica
 - **Deterministic merge policy**: prefers `repo_id` rows; moves list links when merging by name.
 - **Signals**: popularity, freshness, activeness, plus derived `tags`.
 - **Order matters**: **UNLISTED FIRST**, then **LISTS** (lists win on conflicts).
+- **🆕 Automatic Cleanup**: removes repositories no longer starred while preserving manual overrides.
+
+## 🆕 Enhanced Cleanup Feature
+
+The ingest pipeline now automatically **removes repositories that are no longer starred** on GitHub while preserving those with manual customizations:
+
+### Safety Guarantees
+
+- **Manual Curation Protected**: Repositories with entries in `repo_overrides` are never removed
+- **Source Filtering**: Only affects repositories with GitHub `repo_id` (ignores manual entries)
+- **Atomic Operations**: Database transactions ensure data consistency
+- **Graceful Degradation**: Continues ingest even if cleanup fails
+
+### When Cleanup Runs
+
+Cleanup is automatically performed during:
+
+- `ingest` (main ingest from exports + cleanup)
+- `ingest:lists` (GitHub lists + cleanup)
+- `ingest:unlisted` (unlisted repositories + cleanup)
+
+### Implementation
+
+```ts
+const service = createIngestService();
+const result = service.cleanupRemovedStars(currentStarIds);
+// Returns: { removed: number, preserved: number, checkedCount: number }
+```
+
+The cleanup compares your current GitHub stars with the local database and removes repositories that are:
+
+1. No longer starred on GitHub
+2. Have a valid `repo_id` (GitHub-sourced)
+3. Do **not** have entries in `repo_overrides` (manual curation)
 
 ---
 
@@ -37,6 +71,11 @@ createIngestService(database?).ingestFromExports(
   dir: string,
   reporter?: IngestReporter
 ): Promise<{ lists: number; reposFromLists: number; unlisted: number }>;
+
+// 🆕 New cleanup functionality
+createIngestService(database?).cleanupRemovedStars(
+  currentStarIds: Set<string>
+): { removed: number; preserved: number; checkedCount: number };
 ```
 
 **Behaviour**
@@ -45,7 +84,16 @@ createIngestService(database?).ingestFromExports(
 - Reads `dir/index.json` and each listed file (`meta.file`) **after**.
 - Validates shapes strictly; throws with explicit messages if anything is off.
 - Upserts lists and repos; links list↔repo; computes signals and tags.
+- **🆕 Automatic cleanup** now runs in main ingest flow when GitHub token available.
 - Returns counts: number of lists ingested, total repos added/updated from lists, and number of unlisted repos processed.
+
+**Cleanup Policy**
+
+- **Removes**: repositories with `repo_id` that are no longer in your current GitHub stars
+- **Preserves**: repositories with entries in `repo_overrides` table (manual curation protection)
+- **Ignores**: repositories with `repo_id = NULL` (manual entries)
+- **Safe**: removes list relationships before repository deletion
+- **Automatic**: runs by default during all ingest operations (`ingest`, `ingest:lists`, `ingest:unlisted`)
 
 ---
 

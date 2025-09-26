@@ -38,7 +38,10 @@ describe("CLI more routes", () => {
 		setDefaultDb(db);
 		initSchema(db);
 		const prev = Bun.env.EXPORTS_DIR;
+		const prevGithubToken = Bun.env.GITHUB_TOKEN;
 		Bun.env.EXPORTS_DIR = dir;
+		// Remove GITHUB_TOKEN to skip cleanup during tests
+		delete Bun.env.GITHUB_TOKEN;
 		try {
 			await _testMain(["bun", "cli.ts", "ingest"]);
 			const n =
@@ -47,6 +50,9 @@ describe("CLI more routes", () => {
 			expect(n).toBe(1);
 		} finally {
 			Bun.env.EXPORTS_DIR = prev;
+			if (prevGithubToken) {
+				Bun.env.GITHUB_TOKEN = prevGithubToken;
+			}
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});

@@ -519,5 +519,59 @@ export function createIngestService(database?: Database) {
 				unlisted: unlistedCount,
 			};
 		},
+
+		/** Clean up repositories that are no longer starred (preserves those with overrides). */
+		cleanupRemovedStars(currentStarIds: Set<string>): {
+			removed: number;
+			preserved: number;
+			checkedCount: number;
+		} {
+			prepareStatements(db);
+
+			// Get all repos that might need cleanup (have repo_id and could be from stars)
+			const existingRepos = db
+				.prepare<{ id: number; repo_id: string }, []>(
+					`SELECT id, repo_id FROM repo WHERE repo_id IS NOT NULL`,
+				)
+				.all();
+
+			const reposToCheck = existingRepos.filter(
+				(repo) => !currentStarIds.has(repo.repo_id),
+			);
+
+			let removed = 0;
+			let preserved = 0;
+
+			for (const repo of reposToCheck) {
+				// Check if repo has overrides
+				const hasOverrides = db
+					.prepare<{ count: number }, [number]>(
+						`SELECT COUNT(*) as count FROM repo_overrides WHERE repo_id = ?`,
+					)
+					.get(repo.id);
+
+				if (hasOverrides && hasOverrides.count > 0) {
+					preserved++;
+					continue;
+				}
+
+				// Safe to remove - remove from lists first, then repo
+				db.prepare<unknown, [number]>(
+					`DELETE FROM list_repo WHERE repo_id = ?`,
+				).run(repo.id);
+
+				db.prepare<unknown, [number]>(`DELETE FROM repo WHERE id = ?`).run(
+					repo.id,
+				);
+
+				removed++;
+			}
+
+			return {
+				removed,
+				preserved,
+				checkedCount: reposToCheck.length,
+			};
+		},
 	};
 }
