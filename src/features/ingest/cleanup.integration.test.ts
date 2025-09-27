@@ -1,10 +1,10 @@
 // Test that the new export-based cleanup works in ingestFromExports
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createDb, initSchema } from "@lib/db";
+import { join } from "node:path";
 import { createIngestService } from "@features/ingest/service";
+import { createDb, initSchema } from "@lib/db";
 
 describe("export-based cleanup integration", () => {
 	test("ingestFromExports automatically cleans up repos not in export files", async () => {

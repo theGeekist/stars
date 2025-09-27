@@ -3,11 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
 import { createIngestService } from "./service";
 
-function createTestRepo(
+function _createTestRepo(
 	id: number,
 	repoId: string,
 	name: string,
-	source = "stars",
+	_source = "stars",
 ) {
 	return {
 		id,
