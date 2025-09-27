@@ -388,6 +388,88 @@ async function preloadLists(
 
 /* ---------------------------------- Service -------------------------------- */
 
+/**
+ * Load data from export directory files
+ * Returns structured data ready for ingest processing
+ */
+async function loadFromExports(
+	dir: string,
+	reporter?: IngestReporter,
+): Promise<{
+	lists: StarList[];
+	unlisted: RepoInfo[];
+	currentExportRepos: Set<string>;
+}> {
+	const currentExportRepos = new Set<string>();
+
+	// Load unlisted repos
+	const unlistedArr = await readUnlisted(dir);
+	const unlisted = unlistedArr ?? [];
+
+	// Collect unlisted repo names
+	for (const repo of unlisted) {
+		currentExportRepos.add(repo.nameWithOwner);
+	}
+
+	// Load lists
+	const index = await readIndex(dir);
+	const lists: StarList[] = [];
+
+	if (index?.length) {
+		reporter?.start?.(index.length);
+		const { listsPreloaded } = await preloadLists(dir, index, reporter);
+
+		// Convert preloaded lists to StarList format and collect repo names
+		for (const { meta, data } of listsPreloaded) {
+			// Ensure list has required properties
+			const list: StarList = {
+				...data,
+				listId: requireListId(meta, data),
+				name: meta.name,
+				description: meta.description,
+				isPrivate: meta.isPrivate,
+			};
+			lists.push(list);
+
+			// Collect repo names from this list
+			for (const repo of data.repos) {
+				currentExportRepos.add(repo.nameWithOwner);
+			}
+		}
+	} else {
+		reporter?.start?.(0);
+	}
+
+	return { lists, unlisted, currentExportRepos };
+}
+
+/**
+ * Extract all repo names from lists and unlisted repos
+ * Used for cleanup operations to determine which repos should exist
+ */
+function extractCurrentRepoNames(
+	lists: StarList[],
+	unlisted?: RepoInfo[],
+): Set<string> {
+	const currentRepoNames = new Set<string>();
+
+	// Add unlisted repos
+	if (unlisted) {
+		for (const repo of unlisted) {
+			currentRepoNames.add(repo.nameWithOwner);
+		}
+	}
+
+	// Add repos from lists
+	for (const list of lists) {
+		for (const repo of list.repos) {
+			currentRepoNames.add(repo.nameWithOwner);
+		}
+	}
+
+	return currentRepoNames;
+}
+
 export function createIngestService(database?: Database) {
 	const db = withDB(database);
 
@@ -444,45 +526,31 @@ export function createIngestService(database?: Database) {
 			dir: string,
 			reporter?: IngestReporter,
 		): Promise<{ lists: number; reposFromLists: number; unlisted: number }> {
-			prepareStatements(db);
+			// Load data from export files
+			const { lists, unlisted } = await loadFromExports(dir, reporter);
 
-			// unlisted first (so lists win on any subsequent conflicts)
-			const unlistedArr = await readUnlisted(dir);
-			let unlisted = 0;
-			if (unlistedArr?.length) {
-				unlisted = ingestUnlistedTx(unlistedArr);
-			}
+			// Process the data (includes automatic cleanup)
+			const result = this.ingestFromData(lists, unlisted, reporter);
 
-			// lists (optional)
-			const index = await readIndex(dir);
-			let lists = 0;
-			let reposFromLists = 0;
-
-			if (index?.length) {
-				reporter?.start?.(index.length);
-				const { listsPreloaded, totalRepos } = await preloadLists(
-					dir,
-					index,
-					reporter,
-				);
-				const res = ingestListsTx(listsPreloaded, reporter);
-				lists = res.lists;
-				reposFromLists = res.reposFromLists;
-				reporter?.done?.({ lists, repos: totalRepos });
-			} else {
-				reporter?.start?.(0);
-				reporter?.done?.({ lists: 0, repos: 0 });
-			}
-
-			return { lists, reposFromLists, unlisted };
+			// Return without cleanup info to maintain backward compatibility
+			return {
+				lists: result.lists,
+				reposFromLists: result.reposFromLists,
+				unlisted: result.unlisted,
+			};
 		},
 
-		/** Ingest from in-memory data (optionally with unlisted first, then lists). */
+		/** Ingest from in-memory data (optionally with unlisted first, then lists) with automatic cleanup. */
 		ingestFromData(
 			lists: StarList[],
 			unlisted?: RepoInfo[],
 			reporter?: IngestReporter,
-		): { lists: number; reposFromLists: number; unlisted: number } {
+		): {
+			lists: number;
+			reposFromLists: number;
+			unlisted: number;
+			cleanup: { removed: number; preserved: number };
+		} {
 			prepareStatements(db);
 
 			let unlistedCount = 0;
@@ -513,37 +581,46 @@ export function createIngestService(database?: Database) {
 				reporter?.done?.({ lists: 0, repos: 0 });
 			}
 
+			// Automatic cleanup based on current data
+			const currentRepoNames = extractCurrentRepoNames(lists, unlisted);
+			const cleanupResult = this.cleanupRemovedFromExports(currentRepoNames);
+
 			return {
 				lists: res.lists,
 				reposFromLists: res.reposFromLists,
 				unlisted: unlistedCount,
+				cleanup: {
+					removed: cleanupResult.removed,
+					preserved: cleanupResult.preserved,
+				},
 			};
 		},
 
-		/** Clean up repositories that are no longer starred (preserves those with overrides). */
-		cleanupRemovedStars(currentStarIds: Set<string>): {
+		/** Clean up repositories that are no longer in the current exports (preserves those with overrides). */
+		cleanupRemovedFromExports(currentExportRepos: Set<string>): {
 			removed: number;
 			preserved: number;
 			checkedCount: number;
 		} {
 			prepareStatements(db);
 
-			// Get all repos that might need cleanup (have repo_id and could be from stars)
+			// Get all repos currently in the database (exclude manual entries with null repo_id)
 			const existingRepos = db
-				.prepare<{ id: number; repo_id: string }, []>(
-					`SELECT id, repo_id FROM repo WHERE repo_id IS NOT NULL`,
+				.prepare<{ id: number; name_with_owner: string }, []>(
+					`SELECT id, name_with_owner FROM repo WHERE repo_id IS NOT NULL`,
 				)
 				.all();
 
+			// Find repos that are in DB but NOT in current exports
 			const reposToCheck = existingRepos.filter(
-				(repo) => !currentStarIds.has(repo.repo_id),
+				(repo) => !currentExportRepos.has(repo.name_with_owner),
 			);
 
 			let removed = 0;
 			let preserved = 0;
 
 			for (const repo of reposToCheck) {
-				// Check if repo has overrides
+				// Check if repo has overrides (manual curation protection)
 				const hasOverrides = db
 					.prepare<{ count: number }, [number]>(
 						`SELECT COUNT(*) as count FROM repo_overrides WHERE repo_id = ?`,

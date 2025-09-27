@@ -47,7 +47,7 @@ function setupTestDb() {
 }
 
 describe("ingest service cleanup functionality", () => {
-	test("cleanupRemovedStars removes repos no longer starred without overrides", () => {
+	test("cleanupRemovedFromExports removes repos no longer in exports without overrides", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
@@ -63,9 +63,9 @@ describe("ingest service cleanup functionality", () => {
 			.all();
 		expect(beforeCleanup).toHaveLength(1);
 
-		// Run cleanup with current starred set that doesn't include our test repo
-		const currentStarIds = new Set(["R_keep1", "R_keep2"]);
-		service.cleanupRemovedStars(currentStarIds);
+		// Run cleanup with current export repos that doesn't include our test repo
+		const currentExportRepos = new Set(["test/keep-repo1", "test/keep-repo2"]);
+		service.cleanupRemovedFromExports(currentExportRepos);
 
 		// Verify repo was removed
 		const afterCleanup = db
@@ -74,7 +74,7 @@ describe("ingest service cleanup functionality", () => {
 		expect(afterCleanup).toHaveLength(0);
 	});
 
-	test("cleanupRemovedStars preserves repos with repo_overrides", () => {
+	test("cleanupRemovedFromExports preserves repos with repo_overrides", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
@@ -90,9 +90,9 @@ describe("ingest service cleanup functionality", () => {
 			VALUES (1, 'Custom summary', '2024-01-01T00:00:00Z')
 		`);
 
-		// Run cleanup with current starred set that doesn't include our test repo
-		const currentStarIds = new Set(["R_keep1", "R_keep2"]);
-		service.cleanupRemovedStars(currentStarIds);
+		// Run cleanup with current export repos that doesn't include our test repo
+		const currentExportRepos = new Set(["test/keep-repo1", "test/keep-repo2"]);
+		service.cleanupRemovedFromExports(currentExportRepos);
 
 		// Verify repo was preserved due to override
 		const afterCleanup = db
@@ -101,7 +101,7 @@ describe("ingest service cleanup functionality", () => {
 		expect(afterCleanup).toHaveLength(1);
 	});
 
-	test("cleanupRemovedStars preserves currently starred repos", () => {
+	test("cleanupRemovedFromExports preserves currently exported repos", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
@@ -111,18 +111,21 @@ describe("ingest service cleanup functionality", () => {
 			VALUES (1, 'R_starred', 'test/starred-repo', 'https://github.com/test/starred-repo', 'Test repo', 5, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')
 		`);
 
-		// Run cleanup including our test repo in current stars
-		const currentStarIds = new Set(["R_starred", "R_other"]);
-		service.cleanupRemovedStars(currentStarIds);
+		// Run cleanup including our test repo in current exports
+		const currentExportRepos = new Set([
+			"test/starred-repo",
+			"test/other-repo",
+		]);
+		service.cleanupRemovedFromExports(currentExportRepos);
 
-		// Verify repo was preserved because it's still starred
+		// Verify repo was preserved because it's still in exports
 		const afterCleanup = db
 			.query(`SELECT * FROM repo WHERE repo_id = 'R_starred'`)
 			.all();
 		expect(afterCleanup).toHaveLength(1);
 	});
 
-	test("cleanupRemovedStars removes repo from lists before deleting", () => {
+	test("cleanupRemovedFromExports removes repo from lists before deleting", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
@@ -148,8 +151,8 @@ describe("ingest service cleanup functionality", () => {
 		expect(beforeCleanup).toHaveLength(1);
 
 		// Run cleanup
-		const currentStarIds = new Set(["R_other"]);
-		service.cleanupRemovedStars(currentStarIds);
+		const currentExportRepos = new Set(["test/other-repo"]);
+		service.cleanupRemovedFromExports(currentExportRepos);
 
 		// Verify both repo and list link were removed
 		const reposAfter = db.query(`SELECT * FROM repo WHERE id = 1`).all();
@@ -161,7 +164,7 @@ describe("ingest service cleanup functionality", () => {
 		expect(linksAfter).toHaveLength(0);
 	});
 
-	test("cleanupRemovedStars handles repos with null repo_id safely", () => {
+	test("cleanupRemovedFromExports handles repos with null repo_id safely", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
@@ -172,8 +175,10 @@ describe("ingest service cleanup functionality", () => {
 		`);
 
 		// Should not throw and should preserve manual entry
-		const currentStarIds = new Set(["R_other"]);
-		expect(() => service.cleanupRemovedStars(currentStarIds)).not.toThrow();
+		const currentExportRepos = new Set(["test/other-repo"]);
+		expect(() =>
+			service.cleanupRemovedFromExports(currentExportRepos),
+		).not.toThrow();
 
 		// Verify manual entry was preserved
 		const afterCleanup = db
@@ -182,17 +187,17 @@ describe("ingest service cleanup functionality", () => {
 		expect(afterCleanup).toHaveLength(1);
 	});
 
-	test("cleanupRemovedStars returns summary of actions taken", () => {
+	test("cleanupRemovedFromExports returns summary of actions taken", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
-		// Insert repos: one to remove, one to preserve with overrides, one still starred
+		// Insert repos: one to remove, one to preserve with overrides, one still in exports
 		db.run(`
 			INSERT INTO repo (id, repo_id, name_with_owner, url, description, stars, created_at, updated_at)
 			VALUES 
 			(1, 'R_remove', 'test/remove', 'https://github.com/test/remove', 'Remove me', 5, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z'),
 			(2, 'R_preserve', 'test/preserve', 'https://github.com/test/preserve', 'Preserve me', 3, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z'),
-			(3, 'R_starred', 'test/starred', 'https://github.com/test/starred', 'Still starred', 10, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')
+			(3, 'R_exported', 'test/exported', 'https://github.com/test/exported', 'Still exported', 10, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')
 		`);
 
 		// Add override for preservation
@@ -201,20 +206,20 @@ describe("ingest service cleanup functionality", () => {
 			VALUES (2, 'Custom summary', '2024-01-01T00:00:00Z')
 		`);
 
-		const currentStarIds = new Set(["R_starred", "R_other"]);
-		const result = service.cleanupRemovedStars(currentStarIds);
+		const currentExportRepos = new Set(["test/exported", "test/other-repo"]);
+		const result = service.cleanupRemovedFromExports(currentExportRepos);
 
 		expect(result.removed).toBe(1);
 		expect(result.preserved).toBe(1);
 		expect(result.checkedCount).toBe(2);
 	});
 
-	test("cleanupRemovedStars handles empty database gracefully", () => {
+	test("cleanupRemovedFromExports handles empty database gracefully", () => {
 		const db = setupTestDb();
 		const service = createIngestService(db);
 
-		const currentStarIds = new Set(["R_any"]);
-		const result = service.cleanupRemovedStars(currentStarIds);
+		const currentExportRepos = new Set(["test/any-repo"]);
+		const result = service.cleanupRemovedFromExports(currentExportRepos);
 
 		expect(result.removed).toBe(0);
 		expect(result.preserved).toBe(0);
