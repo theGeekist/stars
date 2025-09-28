@@ -1,6 +1,6 @@
 {
 	"name": "@geekist/stars",
-	"version": "0.3.5",
+	"version": "0.4.0",
 	"type": "module",
 	"description": "Query GitHub Stars Lists via GraphQL and enrich repos with health signals.",
 	"repository": {
@@ -28,8 +28,8 @@
 		"score:one": "bun start score --one",
 		"score:batch": "bun start score --all",
 		"score:dry": "bun start score --all --dry",
-		"score:curated": "bun start score --all --respect-curation",
-		"score:curated:dry": "bun start score --all --respect-curation --dry",
+		"score:curated": "bun start score --all",
+		"score:curated:dry": "bun start score --all --dry",
 		"sum:one": "bun start summarise --one",
 		"sum:batch": "bun start summarise --all",
 		"sum:dry": "bun start summarise --all --dry",
