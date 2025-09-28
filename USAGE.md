@@ -113,3 +113,75 @@ FROM repo
 ORDER BY activeness DESC
 LIMIT 10;
 ```
+
+## CLI Usage
+
+### Setup and Initial Import
+
+```bash
+# Initial setup - creates database and prompts
+gks setup
+
+# Import your GitHub stars and lists
+gks ingest
+```
+
+### Scoring and Categorization
+
+**Basic scoring workflow:**
+
+```bash
+# Preview scoring changes (dry run)
+gks score --all --dry
+
+# Apply scoring changes
+gks score --all
+
+# Score a single repository
+gks score --one facebook/react --dry
+```
+
+**Curation with custom threshold:**
+
+The `--curation-threshold` flag controls when manually curated repositories are removed from lists. The default threshold is 0.2 (repositories with scores below this are candidates for removal).
+
+```bash
+# Use default curation threshold (0.2)
+gks score --all --dry
+
+# Use a lower threshold to be more selective (keep more repos)
+gks score --all --curation-threshold 0.1 --dry
+
+# Use a higher threshold to be more aggressive (remove more repos)
+gks score --all --curation-threshold 0.3 --dry
+
+# Score a single repo with custom threshold
+gks score --one facebook/react --curation-threshold 0.15
+```
+
+### Summaries
+
+```bash
+# Generate summaries for all repos (dry run)
+gks summarise --all --dry
+
+# Generate summaries with limit
+gks summarise --all --limit 100
+
+# Summarise a single repository
+gks summarise --one microsoft/vscode
+```
+
+### Other Commands
+
+```bash
+# List your GitHub stars lists
+gks lists
+
+# Export data in various formats
+gks export
+
+# Get help for any command
+gks score --help
+gks summarise --help
+```

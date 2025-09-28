@@ -72,8 +72,6 @@ Tips:
 - Prefer `:Q4_K_M` or similar quant for speed.
 - If you notice thrash, set `OLLAMA_NUM_PARALLEL=1`.
 
-**Curation Mode**: The system now supports preserving manual GitHub list curation while still allowing AI-driven categorisation. Enable with `--respect-curation` to protect manually curated repositories from automatic removal while still suggesting new additions.
-
 **Enhanced CLI Experience**: The command-line interface now features structured help with clear sections, detailed examples, and comprehensive flag descriptions. Run any command with `--help` for context-aware guidance.
 
 > Looking for CLI usage? See [USAGE.md](USAGE.md) for command-by-command examples and flags.
@@ -159,8 +157,6 @@ Summaries are generated in a fixed style: 60-90 words, factual, and present-tens
 ### Categorisation and Policy
 
 Categorisation converts list criteria into structured prompts. Each repo receives a score and rationale per list. A simple explicit policy turns scores into suggested add/remove/review actions. The plan is reported before any changes are applied.
-
-**New: Curation Mode** - When enabled, repositories manually added to GitHub lists are protected from automatic removal, allowing AI-driven additions while preserving human curation decisions. Configure via `--respect-curation` CLI flag or `policy` parameter in the API.
 
 ### Topic Enrichment
 
@@ -253,7 +249,7 @@ if (ranked.status === "ok") {
 const curatedRanking = await ranking.rankAll({
   limit: 100,
   dry: false,
-  policy: ranking.CURATION_POLICY, // Respects manual curation
+  policy: ranking.DEFAULT_POLICY, // Respects manual curation
 });
 
 // Custom curation threshold

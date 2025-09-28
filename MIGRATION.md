@@ -4,16 +4,6 @@
 
 ### New Features
 
-**Curation Policy Support**: Added `--respect-curation` flag to preserve manual GitHub list curation while allowing AI-driven categorisation. When enabled, manually curated repositories are protected from automatic removal.
-
-```bash
-# Protect manually curated repositories from removal
-gk-stars rank --respect-curation
-
-# Or rank a specific list while respecting curation
-gk-stars rank productivity --respect-curation
-```
-
 **Enhanced CLI Help Interface**: Restructured command help with clear sections, detailed examples, and comprehensive flag descriptions. The help system now provides:
 
 - Structured command sections with usage examples
@@ -96,7 +86,6 @@ Both `ranking.rankAll` and `ranking.rankOne` now accept a `policy` parameter for
 await ranking.rankAll({
   limit: 50,
   apply: true,
-  policy: ranking.CURATION_POLICY, // or pass custom policy
 });
 
 // Custom curation threshold
@@ -111,12 +100,12 @@ await ranking.rankOne({
 
 ### Stars / Lists
 
-| Old                                  | New                                      | Notes                                            |
-| ------------------------------------ | ---------------------------------------- | ------------------------------------------------ |
-| `runLists(json, out?, dir?)`         | `starsData.fetchLists()`                 | pure data; throws `ConfigError` if missing token |
-| `runRepos(listName, json)`           | `starsData.fetchReposFromList(listName)` | pure data                                        |
-| `runStars(json, out?, dir?)`         | `starsData.fetchStars()`                 | pure data                                        |
-| `runUnlisted(json, out?, dir?, db?)` | `starsData.fetchUnlistedStars(db)`       | uses DB to compute                               |
+| Old                                  | New     | Notes                                                                   |
+| ------------------------------------ | ------- | ----------------------------------------------------------------------- |
+| `runLists(json, out?, dir?)`         | removed | use CLI `gks lists` or call `runListsCore(json, out, dir, logger)`      |
+| `runRepos(listName, json)`           | removed | use CLI `gks repos` or `runReposCore(list, json, logger)`               |
+| `runStars(json, out?, dir?)`         | removed | use CLI `gks stars` or `runStarsCore(json, out, dir, logger)`           |
+| `runUnlisted(json, out?, dir?, db?)` | removed | use CLI `gks unlisted` or `runUnlistedCore(json, out, dir, db, logger)` |
 
 ### Ingest
 
@@ -129,11 +118,9 @@ await ranking.rankOne({
 
 ## Deprecated Functions
 
-All deprecated functions remain exported but are tagged with JSDoc `@deprecated`. They will be removed in a future major version:
+Remaining deprecated functions are still exported with JSDoc `@deprecated` and will be removed in a future major version:
 
-- `summariseBatchAll`, `summariseOne`
 - `scoreBatchAll`, `scoreOne`
-- `runLists`, `runRepos`, `runStars`, `runUnlisted`
 
 ## New Shared Types
 
@@ -144,7 +131,6 @@ Available via root import:
 - `BatchResult<T>` / `BatchStats`
 - `SummaryItemResult`, `RankingItemResult`
 - `ApplyPolicy` - Policy configuration for curation mode
-- `CURATION_POLICY` - Default curation policy (via `ranking` export)
 
 ## New Curation Mode
 
@@ -154,20 +140,13 @@ This release introduces **curation mode** for respecting manual GitHub list cura
 
 - **Preserve Manual Curation**: Repositories manually added to GitHub lists are protected from removal
 - **Configurable Threshold**: Set minimum score threshold for automatic removal (default: 0.1)
-- **CLI Integration**: Use `--respect-curation` flag with score command
 - **API Support**: Pass `policy` parameter to ranking functions
 
 ### CLI Usage
 
 ```bash
-# Enable curation mode with default settings
-bun start score --respect-curation --apply
-
 # Use custom curation threshold
-bun start score --respect-curation --curation-threshold 0.2 --apply
-
-# Shorthand flag
-bun start score --curation --apply
+bun start score --curation-threshold 0.2 --apply
 ```
 
 ### Programmatic Usage
@@ -179,7 +158,7 @@ import { ranking } from "@geekist/stars";
 const results = await ranking.rankAll({
   limit: 100,
   apply: true,
-  policy: ranking.CURATION_POLICY,
+  policy: ranking.DEFAULT_POLICY,
 });
 
 // Custom curation settings
@@ -205,8 +184,8 @@ When curation mode is enabled:
 ### Migration Notes
 
 - Curation mode is **opt-in** - existing behavior unchanged when not using curation flags/policy
-- Default policy available as `ranking.CURATION_POLICY` export
-- CLI flags: `--respect-curation`, `--curation`, `--curation-threshold`
+- Default policy available as `ranking.DEFAULT_POLICY` export
+- CLI flags: `--curation-threshold`
 - All existing APIs continue to work without modification
 
 ## Error Handling Changes
