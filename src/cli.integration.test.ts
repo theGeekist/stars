@@ -1,7 +1,7 @@
 // src/features/integration/cli.integration.test.ts
 
 import type { Database } from "bun:sqlite";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
 import { createDb, initSchema, setDefaultDb, withDB } from "@lib/db";
 import { _testMain } from "@src/cli";
 
@@ -21,6 +21,7 @@ function resetTables(database?: Database) {
 }
 
 beforeAll(() => {
+	mock.restore();
 	db = createDb(":memory:"); // one DB for the whole file
 	setDefaultDb(db);
 	initSchema(db); // ensure schema+indexes
@@ -72,7 +73,7 @@ describe("CLI integration", () => {
 	});
 
 	it("summarises repos and saves to DB with dry=false (no network)", async () => {
-		const { summariseOne } = await import("@src/api/summarise");
+		const { summariseRepo } = await import("@src/api/summarise.public");
 
 		db.query(
 			`INSERT INTO repo (id, name_with_owner, url, description, stars, popularity, freshness, activeness, topics)
@@ -89,7 +90,13 @@ describe("CLI integration", () => {
 			},
 		};
 
-		await summariseOne("owner/awesome-stuff", false, fakeDeps); // dry=false with mocked deps
+		const result = await summariseRepo({
+			selector: "owner/awesome-stuff",
+			dry: false,
+			deps: fakeDeps,
+		});
+		expect(result.status).toBe("ok");
+		expect(result.saved).toBe(true);
 
 		const row = db
 			.query<{ summary: string | null }, [number]>(

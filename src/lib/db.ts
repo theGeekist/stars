@@ -59,6 +59,7 @@ function migrateIfNeeded(database: Database = getDefaultDb()): void {
     CREATE UNIQUE INDEX IF NOT EXISTS ux_repo_repo_id
     ON repo(repo_id);
   `);
+	_addColumnIfMissing("repo", "updates_json", "TEXT", database);
 }
 
 /* --------------------------------- API ------------------------------------ */

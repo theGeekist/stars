@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CURATION_POLICY, DEFAULT_POLICY } from "./config";
+import { DEFAULT_POLICY } from "./config";
 import type { ScoreItem } from "./llm";
 import { createScoringService } from "./service";
 
@@ -9,21 +9,18 @@ describe("curation mode", () => {
 	it("preserves manually curated lists unless extremely low scoring", () => {
 		const current = ["productivity", "manual-list"];
 		const scores: ScoreItem[] = [
-			{ list: "productivity", score: 0.4 }, // Would normally be removed (< 0.7, > 0.3)
-			{ list: "manual-list", score: 0.15 }, // Still above curation threshold (0.1)
-			{ list: "ai", score: 0.8 }, // Should be added
+			{ list: "productivity", score: 0.4 }, // below add threshold but above removal cutoff
+			{ list: "manual-list", score: 0.25 }, // above default curationRemoveThreshold (0.2)
+			{ list: "ai", score: 0.8 },
 		];
 
-		const result = scoring.planTargets(current, scores, CURATION_POLICY);
+		const result = scoring.planTargets(current, scores, DEFAULT_POLICY);
 
-		// Should keep manually curated lists even with mediocre scores
-		expect(result.keep).toContain("productivity");
-		expect(result.keep).toContain("manual-list");
-		// Should add new high-scoring lists
+		expect(result.keep).toEqual(
+			expect.arrayContaining(["productivity", "manual-list"]),
+		);
 		expect(result.add).toContain("ai");
-		// Should not remove anything above curation threshold
 		expect(result.remove).toHaveLength(0);
-		// No review category in curation mode
 		expect(result.review).toHaveLength(0);
 	});
 
@@ -35,7 +32,7 @@ describe("curation mode", () => {
 			{ list: "ai", score: 0.8 }, // Should be added
 		];
 
-		const result = scoring.planTargets(current, scores, CURATION_POLICY);
+		const result = scoring.planTargets(current, scores, DEFAULT_POLICY);
 
 		expect(result.keep).toContain("good-list");
 		expect(result.add).toContain("ai");
@@ -43,26 +40,25 @@ describe("curation mode", () => {
 		expect(result.review).toHaveLength(0);
 	});
 
-	it("behaves differently from default policy for low scores", () => {
+	it("allows custom curation threshold to override default", () => {
 		const current = ["productivity"];
 		const scores: ScoreItem[] = [
-			{ list: "productivity", score: 0.2 }, // Below default remove threshold (0.3), above curation threshold (0.1)
+			{ list: "productivity", score: 0.15 }, // Between default threshold (0.2) and lower threshold (0.1)
 			{ list: "ai", score: 0.8 },
 		];
 
-		// Default policy would remove productivity (score 0.2 < remove threshold 0.3)
+		// Default policy removes productivity (score 0.15 < default threshold 0.2)
 		const defaultResult = scoring.planTargets(current, scores, DEFAULT_POLICY);
 		expect(defaultResult.keep).not.toContain("productivity");
 		expect(defaultResult.remove).toContain("productivity");
 
-		// Curation policy keeps productivity (score 0.2 > curation threshold 0.1)
-		const curationResult = scoring.planTargets(
-			current,
-			scores,
-			CURATION_POLICY,
-		);
-		expect(curationResult.keep).toContain("productivity");
-		expect(curationResult.remove).not.toContain("productivity");
+		// Lower curation threshold keeps productivity (score 0.15 > custom threshold 0.1)
+		const customResult = scoring.planTargets(current, scores, {
+			...DEFAULT_POLICY,
+			curationRemoveThreshold: 0.1,
+		});
+		expect(customResult.keep).toContain("productivity");
+		expect(customResult.remove).not.toContain("productivity");
 	});
 
 	it("respects custom curation remove threshold", () => {
@@ -75,21 +71,21 @@ describe("curation mode", () => {
 		const defaultCurationResult = scoring.planTargets(
 			current,
 			scores,
-			CURATION_POLICY,
+			DEFAULT_POLICY,
 		);
 		expect(defaultCurationResult.remove).toContain("borderline-list");
 
 		// With lower threshold (0.05), should also remove (0.07 > 0.05 but still worth removing?)
 		// Actually, let me test with 0.08 threshold - should keep (0.07 < 0.08 = remove)
 		const removeResult = scoring.planTargets(current, scores, {
-			...CURATION_POLICY,
+			...DEFAULT_POLICY,
 			curationRemoveThreshold: 0.08,
 		});
 		expect(removeResult.remove).toContain("borderline-list");
 
 		// With much lower threshold (0.01), should keep (0.07 > 0.01)
 		const keepResult = scoring.planTargets(current, scores, {
-			...CURATION_POLICY,
+			...DEFAULT_POLICY,
 			curationRemoveThreshold: 0.01,
 		});
 		expect(keepResult.remove).not.toContain("borderline-list");

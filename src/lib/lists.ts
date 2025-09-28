@@ -7,7 +7,9 @@ import {
 	type Reporter,
 	resolvePagingConfig,
 } from "./common.js";
+import { REPO_CORE_FRAGMENT } from "./fragments.js";
 import { githubGraphQL, gql } from "./github.js";
+import { mapListRepoNodeToRepoInfo } from "./mapper.js";
 import type {
 	ListItemsAtEdge,
 	ListsEdgesPage,
@@ -95,6 +97,7 @@ export const LISTS_EDGES_PAGE = gql`
 
 // 2) Select exactly one list (the one *after* edgeBefore) and page its items.
 export const LIST_ITEMS_AT_EDGE = gql`
+  ${REPO_CORE_FRAGMENT}
   query ListItemsAtEdge(
     $listAfter: String
     $itemsAfter: String
@@ -113,47 +116,7 @@ export const LIST_ITEMS_AT_EDGE = gql`
               __typename
               ... on Repository {
                 repoId: id
-                nameWithOwner
-                url
-                description
-                homepageUrl
-                stargazerCount
-                forkCount
-                issues(states: OPEN) {
-                  totalCount
-                }
-                pullRequests(states: OPEN) {
-                  totalCount
-                }
-                defaultBranchRef {
-                  name
-                  target {
-                    ... on Commit {
-                      committedDate
-                    }
-                  }
-                }
-                primaryLanguage {
-                  name
-                }
-                licenseInfo {
-                  spdxId
-                }
-                isArchived
-                isDisabled
-                isFork
-                isMirror
-                hasIssuesEnabled
-                pushedAt
-                updatedAt
-                createdAt
-                repositoryTopics(first: 50) {
-                  nodes {
-                    topic {
-                      name
-                    }
-                  }
-                }
+                ...RepoCore
               }
             }
           }
@@ -164,60 +127,6 @@ export const LIST_ITEMS_AT_EDGE = gql`
 `;
 
 // ─────────────────────────────── internals ─────────────────────────────────
-
-// Small pure helper to convert a GraphQL node into our RepoInfo shape
-export function mapRepoNodeToRepoInfo(
-	n: ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number],
-): RepoInfo | null {
-	if (!n || n.__typename !== "Repository") return null;
-
-	const topics: string[] =
-		n.repositoryTopics?.nodes
-			?.map((x) => x.topic?.name)
-			.filter((s): s is string => !!s) ?? [];
-
-	return {
-		repoId: n.repoId ?? null,
-		nameWithOwner: n.nameWithOwner ?? "",
-		url: n.url ?? "",
-		description: n.description ?? null,
-		homepageUrl: n.homepageUrl ?? null,
-
-		stars: n.stargazerCount ?? 0,
-		forks: n.forkCount ?? 0,
-		watchers: 0,
-
-		openIssues: n.issues?.totalCount ?? 0,
-		openPRs: n.pullRequests?.totalCount ?? 0,
-
-		defaultBranch: n.defaultBranchRef?.name ?? null,
-		lastCommitISO:
-			(n.defaultBranchRef?.target &&
-				"committedDate" in n.defaultBranchRef.target &&
-				(n.defaultBranchRef.target as { committedDate?: string })
-					.committedDate) ??
-			undefined,
-
-		lastRelease: null,
-		topics,
-		primaryLanguage: n.primaryLanguage?.name ?? null,
-		languages: [],
-
-		license: n.licenseInfo?.spdxId ?? null,
-
-		isArchived: !!n.isArchived,
-		isDisabled: !!n.isDisabled,
-		isFork: !!n.isFork,
-		isMirror: !!n.isMirror,
-		hasIssuesEnabled: !!n.hasIssuesEnabled,
-
-		pushedAt: n.pushedAt ?? "",
-		updatedAt: n.updatedAt ?? "",
-		createdAt: n.createdAt ?? "",
-
-		diskUsage: null,
-	} as RepoInfo;
-}
 
 /** Fetch all items for a list identified by the cursor *before* it (edgeBefore). */
 async function fetchAllItemsAtEdge(
@@ -272,7 +181,7 @@ async function fetchAllItemsAtEdge(
 		const before = repos.length;
 
 		for (const n of items.nodes as ItemNode[]) {
-			const mapped = mapRepoNodeToRepoInfo(n);
+			const mapped = mapListRepoNodeToRepoInfo(n as ItemNode);
 			if (mapped) repos.push(mapped);
 		}
 

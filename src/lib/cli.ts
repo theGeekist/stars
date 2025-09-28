@@ -44,11 +44,10 @@ export function parseSimpleArgs(argv: string[]): SimpleArgs {
 
 export const SIMPLE_USAGE = `
 Usage (simplified):
-  --one <name_with_owner> [--dry] [--respect-curation]
-  --all [--limit N] [--dry] [--respect-curation]
+  --one <name_with_owner> [--dry]
+  --all [--limit N] [--dry]
 
 Notes:
   - Default mode is --all
   - Applies changes by default; pass --dry to preview only
-  - Use --respect-curation to preserve manual list curation
 `;

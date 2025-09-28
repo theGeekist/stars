@@ -1,3 +1,20 @@
+export type UpdateSourceType =
+	| "release"
+	| "changelog"
+	| "discussion"
+	| "commit";
+
+export type UpdateCandidate = {
+	type: UpdateSourceType;
+	confidence: number;
+	data?: Record<string, unknown>;
+};
+
+export type RepoUpdatesMetadata = {
+	preferred: UpdateSourceType | null;
+	candidates: UpdateCandidate[];
+};
+
 export type RepoInfo = {
 	repoId: string;
 	nameWithOwner: string;
@@ -11,7 +28,11 @@ export type RepoInfo = {
 	openPRs: number;
 	defaultBranch?: string | null;
 	lastCommitISO?: string | boolean;
-	lastRelease?: { tagName?: string | null; publishedAt?: string | null } | null;
+	lastRelease?: {
+		tagName?: string | null;
+		publishedAt?: string | null;
+		url?: string | null;
+	} | null;
 	topics: string[];
 	primaryLanguage?: string | null;
 	languages: { name: string; bytes: number }[];
@@ -25,6 +46,7 @@ export type RepoInfo = {
 	updatedAt: string;
 	createdAt: string;
 	diskUsage?: number | null;
+	updates?: RepoUpdatesMetadata | null;
 };
 
 export type StarList = {
@@ -76,13 +98,22 @@ export type ListItemsAtEdge = {
 
 						defaultBranchRef?: {
 							name?: string | null;
-							target?: { committedDate?: string | null } | null;
+							target?: {
+								committedDate?: string | null;
+								history?: {
+									nodes?: Array<{
+										committedDate?: string | null;
+										messageHeadline?: string | null;
+									}>;
+								};
+							} | null;
 						} | null;
 
 						releases?: {
 							nodes: Array<{
 								tagName?: string | null;
 								publishedAt?: string | null;
+								url?: string | null;
 							}>;
 						};
 
@@ -105,6 +136,41 @@ export type ListItemsAtEdge = {
 						createdAt?: string;
 
 						diskUsage?: number | null;
+
+						hasDiscussionsEnabled?: boolean;
+						discussionCategories?: {
+							nodes: Array<{
+								id: string;
+								name: string;
+								slug?: string | null;
+							}>;
+						};
+
+						changelogRoot?: {
+							__typename?: string;
+							byteSize?: number | null;
+							oid?: string | null;
+						} | null;
+						changelogDocs?: {
+							__typename?: string;
+							byteSize?: number | null;
+							oid?: string | null;
+						} | null;
+						changelogHistory?: {
+							__typename?: string;
+							byteSize?: number | null;
+							oid?: string | null;
+						} | null;
+						changelogChanges?: {
+							__typename?: string;
+							byteSize?: number | null;
+							oid?: string | null;
+						} | null;
+						changelogNews?: {
+							__typename?: string;
+							byteSize?: number | null;
+							oid?: string | null;
+						} | null;
 					}>;
 				};
 			}>;
@@ -147,6 +213,7 @@ export type RepoRow = {
 	license: string | null;
 	tags: string | null;
 	summary: string | null;
+	updates_json: string | null;
 	is_archived: number;
 	is_disabled: number;
 	popularity: number | null;
@@ -187,13 +254,25 @@ export type StarEdge = {
 		homepageUrl?: string | null;
 		stargazerCount?: number;
 		forkCount?: number;
+		watchers?: { totalCount: number };
 		issues?: { totalCount: number };
 		pullRequests?: { totalCount: number };
 		defaultBranchRef?: {
 			name?: string | null;
-			target?: { committedDate?: string } | null;
+			target?: {
+				committedDate?: string;
+				history?: {
+					nodes?: Array<{
+						committedDate?: string | null;
+						messageHeadline?: string | null;
+					}>;
+				};
+			} | null;
 		} | null;
 		primaryLanguage?: { name?: string | null } | null;
+		languages?: {
+			edges?: Array<{ size?: number | null; node?: { name?: string } | null }>;
+		} | null;
 		licenseInfo?: { spdxId?: string | null } | null;
 		isArchived?: boolean;
 		isDisabled?: boolean;
@@ -205,6 +284,46 @@ export type StarEdge = {
 		createdAt?: string;
 		repositoryTopics?: {
 			nodes?: Array<{ topic?: { name?: string | null } | null } | null>;
+		} | null;
+		releases?: {
+			nodes?: Array<{
+				tagName?: string | null;
+				publishedAt?: string | null;
+				url?: string | null;
+			}>;
+		} | null;
+		hasDiscussionsEnabled?: boolean;
+		discussionCategories?: {
+			nodes?: Array<{
+				id: string;
+				name: string;
+				slug?: string | null;
+			}>;
+		} | null;
+		changelogRoot?: {
+			__typename?: string;
+			byteSize?: number | null;
+			oid?: string | null;
+		} | null;
+		changelogDocs?: {
+			__typename?: string;
+			byteSize?: number | null;
+			oid?: string | null;
+		} | null;
+		changelogHistory?: {
+			__typename?: string;
+			byteSize?: number | null;
+			oid?: string | null;
+		} | null;
+		changelogChanges?: {
+			__typename?: string;
+			byteSize?: number | null;
+			oid?: string | null;
+		} | null;
+		changelogNews?: {
+			__typename?: string;
+			byteSize?: number | null;
+			oid?: string | null;
 		} | null;
 	};
 };

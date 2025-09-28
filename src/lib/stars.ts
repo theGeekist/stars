@@ -6,7 +6,9 @@ import {
 	type Reporter,
 	resolvePagingConfig,
 } from "./common.js";
+import { REPO_CORE_FRAGMENT } from "./fragments.js";
 import { githubGraphQL, gql } from "./github.js";
+import { mapStarEdgeToRepoInfo } from "./mapper.js";
 import type { RepoInfo, StarEdge } from "./types.js";
 
 /* Public reporter for parity with lists */
@@ -36,100 +38,25 @@ function debugEnv(
 /* ───────────────────────── GraphQL ───────────────────────── */
 
 export const VIEWER_STARS_PAGE = gql`
+  ${REPO_CORE_FRAGMENT}
   query ViewerStarsPage($after: String, $pageSize: Int = 100) {
     viewer {
-      starredRepositories(first: $pageSize, after: $after, orderBy: {field: STARRED_AT, direction: DESC}) {
+      starredRepositories(
+        first: $pageSize,
+        after: $after,
+        orderBy: { field: STARRED_AT, direction: DESC }
+      ) {
         pageInfo { endCursor hasNextPage }
         edges {
           starredAt
           node {
-            id
-            nameWithOwner
-            url
-            description
-            homepageUrl
-            stargazerCount
-            forkCount
-            issues(states: OPEN) { totalCount }
-            pullRequests(states: OPEN) { totalCount }
-            defaultBranchRef {
-              name
-              target { ... on Commit { committedDate } }
-            }
-            primaryLanguage { name }
-            licenseInfo { spdxId }
-            isArchived
-            isDisabled
-            isFork
-            isMirror
-            hasIssuesEnabled
-            pushedAt
-            updatedAt
-            createdAt
-            repositoryTopics(first: 50) {
-              nodes { topic { name } }
-            }
+            ...RepoCore
           }
         }
       }
     }
   }
 `;
-
-/* ──────────────────────── mapping ────────────────────────── */
-
-function mapStarEdgeToRepoInfo(edge: StarEdge): RepoInfo {
-	const n = edge.node;
-
-	const topics: string[] =
-		n.repositoryTopics?.nodes
-			?.map((x) => x?.topic?.name)
-			?.filter((s): s is string => !!s) ?? [];
-
-	const lastCommitISO =
-		n.defaultBranchRef?.target &&
-		"committedDate" in (n.defaultBranchRef.target as object)
-			? (n.defaultBranchRef.target as { committedDate?: string }).committedDate
-			: undefined;
-
-	return {
-		// Keep parity with lists.ts RepoInfo
-		repoId: n.id ?? null,
-		nameWithOwner: n.nameWithOwner ?? "",
-		url: n.url ?? "",
-		description: n.description ?? null,
-		homepageUrl: n.homepageUrl ?? null,
-
-		stars: n.stargazerCount ?? 0,
-		forks: n.forkCount ?? 0,
-		watchers: 0,
-
-		openIssues: n.issues?.totalCount ?? 0,
-		openPRs: n.pullRequests?.totalCount ?? 0,
-
-		defaultBranch: n.defaultBranchRef?.name ?? null,
-		lastCommitISO,
-
-		lastRelease: null,
-		topics,
-		primaryLanguage: n.primaryLanguage?.name ?? null,
-		languages: [],
-
-		license: n.licenseInfo?.spdxId ?? null,
-
-		isArchived: !!n.isArchived,
-		isDisabled: !!n.isDisabled,
-		isFork: !!n.isFork,
-		isMirror: !!n.isMirror,
-		hasIssuesEnabled: !!n.hasIssuesEnabled,
-
-		pushedAt: n.pushedAt ?? "",
-		updatedAt: n.updatedAt ?? "",
-		createdAt: n.createdAt ?? "",
-
-		diskUsage: null,
-	} as RepoInfo;
-}
 
 /* ─────────────────────── internals ───────────────────────── */
 

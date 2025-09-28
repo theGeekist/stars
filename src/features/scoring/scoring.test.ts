@@ -14,6 +14,7 @@ const makeRepoRow = (id: number, stars: number): RepoRow => ({
 	license: null,
 	tags: null,
 	summary: null,
+	updates_json: null,
 	is_archived: 0,
 	is_disabled: 0,
 	popularity: null,

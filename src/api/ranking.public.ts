@@ -1,10 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createListsService } from "@features/lists";
-import {
-	CURATION_POLICY,
-	createScoringService,
-	DEFAULT_POLICY,
-} from "@features/scoring";
+import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
 import type { ScoringLLM } from "@features/scoring/llm";
 import { scoreRepoAgainstLists } from "@features/scoring/llm";
 import type { ApplyPolicy } from "@features/scoring/types";
@@ -318,7 +314,7 @@ export async function rankOne(
 }
 
 // Export policies for CLI and consumer use
-export { CURATION_POLICY, DEFAULT_POLICY };
+export { DEFAULT_POLICY };
 
 /** @deprecated Use rankAll */
 export const scoreBatchAll = rankAll;

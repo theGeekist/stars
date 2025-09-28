@@ -11,10 +11,47 @@ import {
 	showSetupHintIfNotReady,
 } from "@lib/prompts";
 import ingest from "@src/api/ingest";
-import { CURATION_POLICY, rankAll, rankOne } from "@src/api/ranking.public";
-import { runLists, runRepos, runStars, runUnlisted } from "@src/api/stars";
-import { summariseBatchAll, summariseOne } from "@src/api/summarise";
+import { DEFAULT_POLICY, rankAll, rankOne } from "@src/api/ranking.public";
+import {
+	runListsCore,
+	runReposCore,
+	runStarsCore,
+	runUnlistedCore,
+} from "@src/api/stars";
+import { summariseAll, summariseRepo } from "@src/api/summarise.public";
 import { enrichAllRepoTopics } from "@src/api/topics";
+
+type CliDeps = {
+	runLists: typeof runListsCore;
+	runRepos: typeof runReposCore;
+	runStars: typeof runStarsCore;
+	runUnlisted: typeof runUnlistedCore;
+	rankOne: typeof rankOne;
+	rankAll: typeof rankAll;
+	summariseRepo: typeof summariseRepo;
+	summariseAll: typeof summariseAll;
+};
+
+const defaultDeps: CliDeps = {
+	runLists: runListsCore,
+	runRepos: runReposCore,
+	runStars: runStarsCore,
+	runUnlisted: runUnlistedCore,
+	rankOne,
+	rankAll,
+	summariseRepo,
+	summariseAll,
+};
+
+const cliDeps: CliDeps = { ...defaultDeps };
+
+export function _setCliDeps(overrides: Partial<CliDeps>): void {
+	Object.assign(cliDeps, overrides);
+}
+
+export function _resetCliDeps(): void {
+	Object.assign(cliDeps, defaultDeps);
+}
 
 /* ----------------------------- Usage banner ----------------------------- */
 initBootstrap();
@@ -44,7 +81,7 @@ function usage(): void {
 		"--one <owner/repo>    Score a single repo",
 		"--all [--limit N]     Score all repos (optionally limited)",
 		"--dry                 Dry run without saving",
-		"--respect-curation    Preserve curated repos when scoring",
+		"--curation-threshold N  Override removal threshold (default 0.1)",
 	]);
 	log.line("");
 
@@ -59,7 +96,7 @@ function usage(): void {
 	log.subheader("Examples");
 	log.list([
 		"gks score --one theGeekist/stars --dry",
-		"gks score --all --limit 50 --respect-curation",
+		"gks score --all --limit 50",
 		"gks summarise --all --dry",
 	]);
 	log.line("");
@@ -68,7 +105,7 @@ function usage(): void {
 	log.list([
 		"Default mode is --all",
 		"Applies changes by default; pass --dry to preview only",
-		"Use --respect-curation to preserve manual list curation",
+		"Manual curation is always preserved; adjust removal threshold via --curation-threshold",
 	]);
 	log.line("");
 }
@@ -87,8 +124,8 @@ async function handleLists(args: string[]): Promise<void> {
 		}
 	}
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await runLists(json, out, dir);
-	else await runLists(false, undefined, dir);
+	if (json || out) await cliDeps.runLists(json, out, dir, log);
+	else await cliDeps.runLists(false, undefined, dir, log);
 }
 
 async function handleRepos(args: string[]): Promise<void> {
@@ -105,7 +142,7 @@ async function handleRepos(args: string[]): Promise<void> {
 		log.error("--list <name> is required");
 		process.exit(1);
 	}
-	await runRepos(list, json);
+	await cliDeps.runRepos(list, json, log);
 }
 
 async function handleStars(args: string[]): Promise<void> {
@@ -120,8 +157,8 @@ async function handleStars(args: string[]): Promise<void> {
 		}
 	}
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await runStars(json, out, dir);
-	else await runStars(false, undefined, dir);
+	if (json || out) await cliDeps.runStars(json, out, dir, log);
+	else await cliDeps.runStars(false, undefined, dir, log);
 }
 
 async function handleUnlisted(args: string[]): Promise<void> {
@@ -136,8 +173,8 @@ async function handleUnlisted(args: string[]): Promise<void> {
 		}
 	}
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await runUnlisted(json, out, dir);
-	else await runUnlisted(false, undefined, dir);
+	if (json || out) await cliDeps.runUnlisted(json, out, dir, undefined, log);
+	else await cliDeps.runUnlisted(false, undefined, dir, undefined, log);
 }
 
 async function handleScore(argv: string[], args: string[]): Promise<void> {
@@ -147,7 +184,6 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 	let _notes: string | undefined;
 	let fresh = false;
 	let dry = s.dry;
-	let respectCuration = false;
 	let curationThreshold: number | undefined;
 
 	for (let i = 1; i < args.length; i++) {
@@ -168,38 +204,30 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 			continue;
 		}
 		if (a === "--dry") dry = true;
-		if (a === "--respect-curation" || a === "--curation") {
-			respectCuration = true;
-			continue;
-		}
 		if (a === "--curation-threshold" && args[i + 1]) {
 			i += 1;
 			curationThreshold = Number(args[i]);
 		}
 	}
 
-	// Build policy based on flags
-	const policy = respectCuration
-		? {
-				...CURATION_POLICY,
-				...(curationThreshold && {
-					curationRemoveThreshold: curationThreshold,
-				}),
-			}
-		: undefined;
+	// Build policy (respect curation by default)
+	const policyBase = { ...DEFAULT_POLICY };
+	if (curationThreshold != null && Number.isFinite(curationThreshold)) {
+		policyBase.curationRemoveThreshold = curationThreshold;
+	}
 
 	if (s.mode === "one") {
 		if (!s.one) {
 			log.error("--one requires a value");
 			process.exit(1);
 		}
-		await rankOne({ selector: s.one, dry, policy });
+		await cliDeps.rankOne({ selector: s.one, dry, policy: policyBase });
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
-			`Score --all limit=${limit} dry=${dry}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${respectCuration ? " curation=true" : ""}`,
+			`Score --all limit=${limit} dry=${dry}${resume ? ` resume=${resume}` : ""}${fresh ? " fresh=true" : ""}${curationThreshold != null ? ` curationThreshold=${curationThreshold}` : ""}`,
 		);
-		await rankAll({ limit, dry, policy });
+		await cliDeps.rankAll({ limit, dry, policy: policyBase });
 	}
 }
 
@@ -218,13 +246,13 @@ async function handleSummarise(argv: string[], args: string[]): Promise<void> {
 			log.error("--one requires a value");
 			process.exit(1);
 		}
-		await summariseOne(s.one, dry);
+		await cliDeps.summariseRepo({ selector: s.one, dry, logger: log });
 	} else {
 		const limit = Math.max(1, s.limit ?? 999999999);
 		log.info(
 			`Summarise --all limit=${limit} dry=${dry}${resummarise ? " resummarise=true" : ""}`,
 		);
-		await summariseBatchAll(limit, dry, undefined, { resummarise });
+		await cliDeps.summariseAll({ limit, dry, resummarise, logger: log });
 	}
 }
 

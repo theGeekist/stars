@@ -61,21 +61,21 @@ describe("CLI Routing and Handlers", () => {
 	}));
 
 	mock.module("@src/api/stars", () => ({
-		runLists: () => {},
-		runRepos: () => {},
-		runStars: () => {},
-		runUnlisted: () => {},
+		runListsCore: () => {},
+		runReposCore: () => {},
+		runStarsCore: () => {},
+		runUnlistedCore: () => {},
 	}));
 
 	mock.module("@src/api/ranking.public", () => ({
 		rankOne: () => {},
 		rankAll: () => {},
-		CURATION_POLICY: {},
+		DEFAULT_POLICY: {},
 	}));
 
-	mock.module("@src/api/summarise", () => ({
-		summariseOne: () => {},
-		summariseBatchAll: () => {},
+	mock.module("@src/api/summarise.public", () => ({
+		summariseRepo: () => {},
+		summariseAll: () => {},
 	}));
 
 	// Mock the global usage function by storing original reference

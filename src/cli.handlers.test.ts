@@ -12,67 +12,58 @@ import {
 describe("CLI Command Handlers", () => {
 	// Mock variables - declared here so they're accessible in all tests
 	const mockLogError = jest.fn();
-	const mockRunLists = jest.fn();
-	const mockRunRepos = jest.fn();
-	const mockRunStars = jest.fn();
-	const mockRunUnlisted = jest.fn();
+	const mockRunListsCore = jest.fn();
+	const mockRunReposCore = jest.fn();
+	const mockRunStarsCore = jest.fn();
+	const mockRunUnlistedCore = jest.fn();
 	const mockRankOne = jest.fn();
 	const mockRankAll = jest.fn();
-	const mockSummariseOne = jest.fn();
-	const mockSummariseBatchAll = jest.fn();
-	const mockEnsurePromptsReadyOrExit = jest.fn();
+	const mockSummariseRepo = jest.fn();
+	const mockSummariseAll = jest.fn();
 
 	// Set up mocks within the describe block to isolate them
+	const mockLog = {
+		error: mockLogError,
+		info: () => {},
+		line: () => {},
+		header: () => {},
+		subheader: () => {},
+		list: () => {},
+	};
+
 	mock.module("@lib/bootstrap", () => ({
 		initBootstrap: () => {},
-		log: {
-			error: mockLogError,
-			info: () => {},
-			line: () => {},
-			header: () => {},
-			subheader: () => {},
-			list: () => {},
-		},
-	}));
-
-	mock.module("@src/api/stars", () => ({
-		runLists: mockRunLists,
-		runRepos: mockRunRepos,
-		runStars: mockRunStars,
-		runUnlisted: mockRunUnlisted,
-	}));
-
-	mock.module("@src/api/ranking.public", () => ({
-		rankOne: mockRankOne,
-		rankAll: mockRankAll,
-		CURATION_POLICY: { curationRemoveThreshold: 0.5 },
-	}));
-
-	mock.module("@src/api/summarise", () => ({
-		summariseOne: mockSummariseOne,
-		summariseBatchAll: mockSummariseBatchAll,
-	}));
-
-	mock.module("@lib/prompts", () => ({
-		ensurePromptsReadyOrExit: mockEnsurePromptsReadyOrExit,
-		checkPromptsState: () => ({ ready: true }),
-		criteriaExamples: () => [],
-		printSetupStatus: () => {},
-		showSetupHintIfNotReady: () => {},
+		log: mockLog,
 	}));
 
 	// Import after mocks are set up
 	let _testMain: (argv: string[]) => Promise<void>;
+	let _setCliDepsImpl: (
+		overrides: Parameters<typeof import("@src/cli")._setCliDeps>[0],
+	) => void;
+	let _resetCliDepsImpl: () => void;
 
 	beforeAll(async () => {
 		const cli = await import("@src/cli");
 		_testMain = cli._testMain;
+		_setCliDepsImpl = cli._setCliDeps;
+		_resetCliDepsImpl = cli._resetCliDeps;
 	});
 
 	const originalExit = process.exit;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		_setCliDepsImpl({
+			runLists: mockRunListsCore,
+			runRepos: mockRunReposCore,
+			runStars: mockRunStarsCore,
+			runUnlisted: mockRunUnlistedCore,
+			rankOne: mockRankOne,
+			rankAll: mockRankAll,
+			summariseRepo: mockSummariseRepo,
+			summariseAll: mockSummariseAll,
+		});
 
 		// Mock process.exit to throw so we can test error paths without actually exiting
 		process.exit = ((code: number) => {
@@ -85,31 +76,44 @@ describe("CLI Command Handlers", () => {
 
 	afterEach(() => {
 		process.exit = originalExit;
+		_resetCliDepsImpl();
 	});
+
 	describe("handleLists", () => {
-		it("should call runLists with default options when no flags", async () => {
+		it("should call runListsCore with default options when no flags", async () => {
 			await _testMain(["bun", "cli.ts", "lists"]);
 
-			expect(mockRunLists).toHaveBeenCalledWith(false, undefined, "./exports");
-		});
-
-		it("should call runLists with json=true when --json flag", async () => {
-			await _testMain(["bun", "cli.ts", "lists", "--json"]);
-
-			expect(mockRunLists).toHaveBeenCalledWith(true, undefined, "./exports");
-		});
-
-		it("should call runLists with output file when --out specified", async () => {
-			await _testMain(["bun", "cli.ts", "lists", "--out", "custom.json"]);
-
-			expect(mockRunLists).toHaveBeenCalledWith(
+			expect(mockRunListsCore).toHaveBeenCalledWith(
 				false,
-				"custom.json",
+				undefined,
 				"./exports",
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
-		it("should call runLists with both json and output when both flags specified", async () => {
+		it("should call runListsCore with json=true when --json flag", async () => {
+			await _testMain(["bun", "cli.ts", "lists", "--json"]);
+
+			expect(mockRunListsCore).toHaveBeenCalledWith(
+				true,
+				undefined,
+				"./exports",
+				expect.objectContaining({ error: mockLogError }),
+			);
+		});
+
+		it("should call runListsCore with output file when --out specified", async () => {
+			await _testMain(["bun", "cli.ts", "lists", "--out", "custom.json"]);
+
+			expect(mockRunListsCore).toHaveBeenCalledWith(
+				false,
+				"custom.json",
+				"./exports",
+				expect.objectContaining({ error: mockLogError }),
+			);
+		});
+
+		it("should call runListsCore with both json and output when both flags specified", async () => {
 			await _testMain([
 				"bun",
 				"cli.ts",
@@ -119,10 +123,11 @@ describe("CLI Command Handlers", () => {
 				"output.json",
 			]);
 
-			expect(mockRunLists).toHaveBeenCalledWith(
+			expect(mockRunListsCore).toHaveBeenCalledWith(
 				true,
 				"output.json",
 				"./exports",
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
@@ -130,10 +135,11 @@ describe("CLI Command Handlers", () => {
 			Bun.env.EXPORTS_DIR = "/custom/exports";
 			await _testMain(["bun", "cli.ts", "lists"]);
 
-			expect(mockRunLists).toHaveBeenCalledWith(
+			expect(mockRunListsCore).toHaveBeenCalledWith(
 				false,
 				undefined,
 				"/custom/exports",
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 	});
@@ -150,13 +156,21 @@ describe("CLI Command Handlers", () => {
 		it("should call runRepos with list name when --list specified", async () => {
 			await _testMain(["bun", "cli.ts", "repos", "--list", "productivity"]);
 
-			expect(mockRunRepos).toHaveBeenCalledWith("productivity", false);
+			expect(mockRunReposCore).toHaveBeenCalledWith(
+				"productivity",
+				false,
+				expect.objectContaining({ error: mockLogError }),
+			);
 		});
 
 		it("should call runRepos with json=true when --json flag", async () => {
 			await _testMain(["bun", "cli.ts", "repos", "--list", "ai", "--json"]);
 
-			expect(mockRunRepos).toHaveBeenCalledWith("ai", true);
+			expect(mockRunReposCore).toHaveBeenCalledWith(
+				"ai",
+				true,
+				expect.objectContaining({ error: mockLogError }),
+			);
 		});
 
 		it("should handle flags in different order", async () => {
@@ -169,7 +183,11 @@ describe("CLI Command Handlers", () => {
 				"blockchain",
 			]);
 
-			expect(mockRunRepos).toHaveBeenCalledWith("blockchain", true);
+			expect(mockRunReposCore).toHaveBeenCalledWith(
+				"blockchain",
+				true,
+				expect.objectContaining({ error: mockLogError }),
+			);
 		});
 	});
 
@@ -177,22 +195,33 @@ describe("CLI Command Handlers", () => {
 		it("should call runStars with default options when no flags", async () => {
 			await _testMain(["bun", "cli.ts", "stars"]);
 
-			expect(mockRunStars).toHaveBeenCalledWith(false, undefined, "./exports");
+			expect(mockRunStarsCore).toHaveBeenCalledWith(
+				false,
+				undefined,
+				"./exports",
+				expect.objectContaining({ error: mockLogError }),
+			);
 		});
 
 		it("should call runStars with json=true when --json flag", async () => {
 			await _testMain(["bun", "cli.ts", "stars", "--json"]);
 
-			expect(mockRunStars).toHaveBeenCalledWith(true, undefined, "./exports");
+			expect(mockRunStarsCore).toHaveBeenCalledWith(
+				true,
+				undefined,
+				"./exports",
+				expect.objectContaining({ error: mockLogError }),
+			);
 		});
 
 		it("should call runStars with output file when --out specified", async () => {
 			await _testMain(["bun", "cli.ts", "stars", "--out", "stars.json"]);
 
-			expect(mockRunStars).toHaveBeenCalledWith(
+			expect(mockRunStarsCore).toHaveBeenCalledWith(
 				false,
 				"stars.json",
 				"./exports",
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
@@ -206,10 +235,11 @@ describe("CLI Command Handlers", () => {
 				"all-stars.json",
 			]);
 
-			expect(mockRunStars).toHaveBeenCalledWith(
+			expect(mockRunStarsCore).toHaveBeenCalledWith(
 				true,
 				"all-stars.json",
 				"./exports",
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 	});
@@ -218,30 +248,36 @@ describe("CLI Command Handlers", () => {
 		it("should call runUnlisted with default options when no flags", async () => {
 			await _testMain(["bun", "cli.ts", "unlisted"]);
 
-			expect(mockRunUnlisted).toHaveBeenCalledWith(
+			expect(mockRunUnlistedCore).toHaveBeenCalledWith(
 				false,
 				undefined,
 				"./exports",
+				undefined,
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
 		it("should call runUnlisted with json=true when --json flag", async () => {
 			await _testMain(["bun", "cli.ts", "unlisted", "--json"]);
 
-			expect(mockRunUnlisted).toHaveBeenCalledWith(
+			expect(mockRunUnlistedCore).toHaveBeenCalledWith(
 				true,
 				undefined,
 				"./exports",
+				undefined,
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
 		it("should call runUnlisted with output file when --out specified", async () => {
 			await _testMain(["bun", "cli.ts", "unlisted", "--out", "unlisted.json"]);
 
-			expect(mockRunUnlisted).toHaveBeenCalledWith(
+			expect(mockRunUnlistedCore).toHaveBeenCalledWith(
 				false,
 				"unlisted.json",
 				"./exports",
+				undefined,
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 
@@ -255,10 +291,12 @@ describe("CLI Command Handlers", () => {
 				"unlisted-repos.json",
 			]);
 
-			expect(mockRunUnlisted).toHaveBeenCalledWith(
+			expect(mockRunUnlistedCore).toHaveBeenCalledWith(
 				true,
 				"unlisted-repos.json",
 				"./exports",
+				undefined,
+				expect.objectContaining({ error: mockLogError }),
 			);
 		});
 	});
@@ -270,7 +308,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRankOne).toHaveBeenCalledWith({
 				selector: "owner/repo",
 				dry: false,
-				policy: undefined,
+				policy: {},
 			});
 		});
 
@@ -280,7 +318,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRankAll).toHaveBeenCalledWith({
 				limit: 999999999,
 				dry: false,
-				policy: undefined,
+				policy: {},
 			});
 		});
 
@@ -290,7 +328,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRankAll).toHaveBeenCalledWith({
 				limit: 50,
 				dry: false,
-				policy: undefined,
+				policy: {},
 			});
 		});
 
@@ -307,23 +345,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRankOne).toHaveBeenCalledWith({
 				selector: "owner/repo",
 				dry: true,
-				policy: undefined,
-			});
-		});
-
-		it("should build curation policy when --respect-curation flag specified", async () => {
-			await _testMain([
-				"bun",
-				"cli.ts",
-				"score",
-				"--all",
-				"--respect-curation",
-			]);
-
-			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 999999999,
-				dry: false,
-				policy: { curationRemoveThreshold: 0.5 },
+				policy: {},
 			});
 		});
 
@@ -333,26 +355,17 @@ describe("CLI Command Handlers", () => {
 				"cli.ts",
 				"score",
 				"--all",
-				"--respect-curation",
 				"--curation-threshold",
 				"0.8",
 			]);
 
-			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 999999999,
-				dry: false,
-				policy: { curationRemoveThreshold: 0.8 },
-			});
-		});
-
-		it("should handle --curation alias for --respect-curation", async () => {
-			await _testMain(["bun", "cli.ts", "score", "--all", "--curation"]);
-
-			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 999999999,
-				dry: false,
-				policy: { curationRemoveThreshold: 0.5 },
-			});
+			expect(mockRankAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 999999999,
+					dry: false,
+					policy: expect.objectContaining({ curationRemoveThreshold: 0.8 }),
+				}),
+			);
 		});
 
 		it("should handle --fresh flag for rank all mode", async () => {
@@ -361,7 +374,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRankAll).toHaveBeenCalledWith({
 				limit: 999999999,
 				dry: false,
-				policy: undefined,
+				policy: {},
 			});
 		});
 
@@ -373,7 +386,6 @@ describe("CLI Command Handlers", () => {
 				"--one",
 				"test/repo",
 				"--dry",
-				"--respect-curation",
 				"--curation-threshold",
 				"0.7",
 			]);
@@ -390,26 +402,39 @@ describe("CLI Command Handlers", () => {
 		it("should call summariseOne when --one flag specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--one", "owner/repo"]);
 
-			expect(mockSummariseOne).toHaveBeenCalledWith("owner/repo", false);
-		});
-
-		it("should call summariseBatchAll when --all flag specified", async () => {
-			await _testMain(["bun", "cli.ts", "summarise", "--all"]);
-
-			expect(mockSummariseBatchAll).toHaveBeenCalledWith(
-				999999999,
-				false,
-				undefined,
-				{ resummarise: false },
+			expect(mockSummariseRepo).toHaveBeenCalledWith(
+				expect.objectContaining({
+					selector: "owner/repo",
+					dry: false,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
 			);
 		});
 
-		it("should call summariseBatchAll with limit when --limit specified", async () => {
+		it("should call summariseAll when --all flag specified", async () => {
+			await _testMain(["bun", "cli.ts", "summarise", "--all"]);
+
+			expect(mockSummariseAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 999999999,
+					dry: false,
+					resummarise: false,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
+			);
+		});
+
+		it("should call summariseAll with limit when --limit specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--limit", "25"]);
 
-			expect(mockSummariseBatchAll).toHaveBeenCalledWith(25, false, undefined, {
-				resummarise: false,
-			});
+			expect(mockSummariseAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 25,
+					dry: false,
+					resummarise: false,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
+			);
 		});
 
 		it("should set dry=true when --dry flag specified", async () => {
@@ -422,32 +447,42 @@ describe("CLI Command Handlers", () => {
 				"--dry",
 			]);
 
-			expect(mockSummariseOne).toHaveBeenCalledWith("owner/repo", true);
+			expect(mockSummariseRepo).toHaveBeenCalledWith(
+				expect.objectContaining({
+					selector: "owner/repo",
+					dry: true,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
+			);
 		});
 
 		it("should set resummarise=true when --resummarise flag specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--resummarise"]);
 
-			expect(mockSummariseBatchAll).toHaveBeenCalledWith(
-				999999999,
-				false,
-				undefined,
-				{ resummarise: true },
+			expect(mockSummariseAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 999999999,
+					dry: false,
+					resummarise: true,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
 			);
 		});
 
 		it("should handle --resummarize alias for --resummarise", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--resummarize"]);
 
-			expect(mockSummariseBatchAll).toHaveBeenCalledWith(
-				999999999,
-				false,
-				undefined,
-				{ resummarise: true },
+			expect(mockSummariseAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 999999999,
+					dry: false,
+					resummarise: true,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
 			);
 		});
 
-		it("should handle multiple flags together", async () => {
+		it("should handle multiple summarise flags together", async () => {
 			await _testMain([
 				"bun",
 				"cli.ts",
@@ -459,9 +494,14 @@ describe("CLI Command Handlers", () => {
 				"--resummarise",
 			]);
 
-			expect(mockSummariseBatchAll).toHaveBeenCalledWith(10, true, undefined, {
-				resummarise: true,
-			});
+			expect(mockSummariseAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					limit: 10,
+					dry: true,
+					resummarise: true,
+					logger: expect.objectContaining({ error: mockLogError }),
+				}),
+			);
 		});
 	});
 });

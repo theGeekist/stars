@@ -104,7 +104,7 @@ function prepareStatements(database: Database): void {
     is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled,
     pushed_at, updated_at, created_at, disk_usage,
     readme_md, readme_etag, readme_fetched_at,
-    summary, tags, popularity, freshness, activeness
+    summary, updates_json, tags, popularity, freshness, activeness
   `;
 
 	const UPSERT_REPO_VALUES = `
@@ -115,7 +115,7 @@ function prepareStatements(database: Database): void {
     ?, ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?,
-    ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?
   `;
 
 	upsertRepoById = database.prepare<IdRow | null, UpsertRepoBind>(`
@@ -131,7 +131,7 @@ function prepareStatements(database: Database): void {
       license=excluded.license, is_archived=excluded.is_archived, is_disabled=excluded.is_disabled,
       is_fork=excluded.is_fork, is_mirror=excluded.is_mirror, has_issues_enabled=excluded.has_issues_enabled,
       pushed_at=excluded.pushed_at, updated_at=excluded.updated_at, created_at=excluded.created_at,
-      disk_usage=excluded.disk_usage, tags=excluded.tags,
+      disk_usage=excluded.disk_usage, updates_json=excluded.updates_json, tags=excluded.tags,
       popularity=excluded.popularity, freshness=excluded.freshness, activeness=excluded.activeness
     RETURNING id
   `);
@@ -149,7 +149,7 @@ function prepareStatements(database: Database): void {
       license=excluded.license, is_archived=excluded.is_archived, is_disabled=excluded.is_disabled,
       is_fork=excluded.is_fork, is_mirror=excluded.is_mirror, has_issues_enabled=excluded.has_issues_enabled,
       pushed_at=excluded.pushed_at, updated_at=excluded.updated_at, created_at=excluded.created_at,
-      disk_usage=excluded.disk_usage, tags=excluded.tags,
+      disk_usage=excluded.disk_usage, updates_json=excluded.updates_json, tags=excluded.tags,
       popularity=excluded.popularity, freshness=excluded.freshness, activeness=excluded.activeness
     RETURNING id
   `);
@@ -171,6 +171,7 @@ function prepareStatements(database: Database): void {
     readme_etag = COALESCE(?, readme_etag),
     readme_fetched_at = COALESCE(?, readme_fetched_at),
     summary = COALESCE(?, summary),
+    updates_json = ?,
     tags=?, popularity=?, freshness=?, activeness=?
   WHERE id = ?
   RETURNING id
@@ -301,6 +302,13 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 		is_mirror: r.isMirror,
 	});
 
+	const updatesPayload = r.updates
+		? {
+				...r.updates,
+				lastChecked: new Date().toISOString(),
+			}
+		: null;
+
 	const bind: UpsertRepoBind = [
 		r.repoId ?? null,
 		r.nameWithOwner,
@@ -332,6 +340,7 @@ function normaliseRepo(r: RepoInfo): UpsertRepoBind {
 		null, // readme_etag
 		null, // readme_fetched_at
 		null, // summary
+		updatesPayload ? JSON.stringify(updatesPayload) : null,
 		JSON.stringify(tags),
 		popularity,
 		freshness,

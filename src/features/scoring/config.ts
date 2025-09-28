@@ -25,10 +25,6 @@ export const DEFAULT_POLICY: ApplyPolicy = {
 	thresholds: DEFAULT_THRESHOLDS,
 	avoidListless: true,
 	minStars: 50,
-};
-
-export const CURATION_POLICY: ApplyPolicy = {
-	...DEFAULT_POLICY,
 	respectManualCuration: true,
-	curationRemoveThreshold: 0.1, // Only remove if extremely irrelevant
+	curationRemoveThreshold: 0.2,
 };

@@ -52,6 +52,7 @@ export type UpsertRepoBind = [
 	readme_etag: string | null, // << added
 	readme_fetched_at: string | null, // << added
 	summary: string | null,
+	updates_json: string | null,
 	tags: string, // JSON
 	popularity: number,
 	freshness: number,

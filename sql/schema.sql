@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS repo (
   readme_fetched_at TEXT,
   summary TEXT,
   tags TEXT,               -- JSON array (derived facets)
+  updates_json TEXT,       -- JSON blob describing preferred "what's new" surfaces
   popularity REAL,
   freshness REAL,
   activeness REAL
