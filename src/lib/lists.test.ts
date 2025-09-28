@@ -7,8 +7,8 @@ import {
 	getReposFromList,
 	LIST_ITEMS_AT_EDGE,
 	LISTS_EDGES_PAGE,
-	mapRepoNodeToRepoInfo,
 } from "./lists";
+import { mapListRepoNodeToRepoInfo } from "./mapper";
 import type { ListItemsAtEdge, ListsEdgesPage } from "./types";
 
 describe("lists lib", () => {
@@ -44,7 +44,7 @@ describe("lists lib", () => {
 				},
 			} satisfies ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number];
 
-		const info = mapRepoNodeToRepoInfo(node);
+		const info = mapListRepoNodeToRepoInfo(node);
 		expect(info).toBeDefined();
 		if (!info) throw new Error("mapping failed");
 		expect(info.nameWithOwner).toBe("o/r");
