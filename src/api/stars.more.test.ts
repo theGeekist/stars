@@ -6,6 +6,7 @@ import type { Logger as LibLogger } from "@lib/logger";
 import type { RepoInfo, StarEdge } from "@lib/types";
 import type { Ora } from "ora";
 import { runListsCore, runReposCore, runStarsCore } from "./stars";
+import type { StarsDeps } from "./types";
 
 // JSON logger helper
 function makeJsonLogger(): { logger: LibLogger; payloads: unknown[] } {
@@ -127,7 +128,7 @@ describe("api/stars additional coverage", () => {
 						homepageUrl: "",
 						stargazerCount: 1,
 						forkCount: 0,
-						watchers: 0,
+						watchers: { totalCount: 0 },
 						openIssues: 0,
 						openPRs: 0,
 						defaultBranch: "main",
@@ -167,10 +168,10 @@ describe("api/stars additional coverage", () => {
 				}),
 				VIEWER_STARS_PAGE: "",
 				__testing: { mapStarEdgeToRepoInfo: () => dummyRepo },
-			},
+			} as Partial<StarsDeps>,
 			slugify: (s: string) => s,
 		};
-		await runReposCore("AAA", true, logger, deps);
+		await runReposCore("AAA", true, logger, deps as unknown as StarsDeps);
 		expect(payloads.length).toBe(1);
 	});
 
@@ -244,7 +245,7 @@ describe("api/stars additional coverage", () => {
 						homepageUrl: dummyRepo.homepageUrl,
 						stargazerCount: dummyRepo.stars,
 						forkCount: dummyRepo.forks,
-						watchers: dummyRepo.watchers,
+						watchers: { totalCount: dummyRepo.watchers },
 						openIssues: dummyRepo.openIssues,
 						openPRs: dummyRepo.openPRs,
 						defaultBranch: dummyRepo.defaultBranch,
@@ -283,10 +284,16 @@ describe("api/stars additional coverage", () => {
 				}),
 				VIEWER_STARS_PAGE: "",
 				__testing: { mapStarEdgeToRepoInfo: () => dummyRepo },
-			},
+			} as Partial<StarsDeps>,
 			slugify: (s: string) => s,
 		};
-		await runListsCore(true, undefined, undefined, logger, deps);
+		await runListsCore(
+			true,
+			undefined,
+			undefined,
+			logger,
+			deps as unknown as StarsDeps,
+		);
 		expect(payloads.length).toBe(1);
 	});
 
@@ -351,9 +358,9 @@ describe("api/stars additional coverage", () => {
 						url: "u",
 						description: "",
 						homepageUrl: "",
-						stars: 1,
-						forks: 0,
-						watchers: 0,
+						stargazerCount: 1,
+						forkCount: 0,
+						watchers: { totalCount: 0 },
 						openIssues: 0,
 						openPRs: 0,
 						defaultBranch: "main",
@@ -391,10 +398,16 @@ describe("api/stars additional coverage", () => {
 				}),
 				VIEWER_STARS_PAGE: "",
 				__testing: { mapStarEdgeToRepoInfo: () => dummyRepo },
-			},
+			} as Partial<StarsDeps>,
 			slugify: (s: string) => s,
 		};
-		await runStarsCore(false, out, undefined, logger, deps);
+		await runStarsCore(
+			false,
+			out,
+			undefined,
+			logger,
+			deps as unknown as StarsDeps,
+		);
 		const body = JSON.parse(readFileSync(out, "utf8"));
 		expect(Array.isArray(body)).toBe(true);
 		rmSync(dir, { recursive: true, force: true });

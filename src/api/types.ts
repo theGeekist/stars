@@ -1,5 +1,15 @@
 // ./api/types.ts
+
 import type { Database } from "bun:sqlite";
+import type { createStarsService } from "@features/stars";
+import type {
+	getAllLists,
+	getAllListsStream,
+	getReposFromList,
+} from "@lib/lists";
+import type * as starsLib from "@lib/stars";
+import type { getAllStars, getAllStarsStream } from "@lib/stars";
+import type { slugify } from "@lib/utils";
 
 /* -------------------------------------------------------------------------- */
 /*  SPINNER                                                                   */
@@ -96,6 +106,22 @@ export type StarListIndexItem = {
 export type StarsIndexPageItem = {
 	file: string;
 	count: number;
+};
+
+export type StarsDeps = {
+	// lists
+	getAllLists: typeof getAllLists;
+	getAllListsStream: typeof getAllListsStream;
+	getReposFromList: typeof getReposFromList;
+	// stars
+	getAllStars: typeof getAllStars;
+	getAllStarsStream: typeof getAllStarsStream;
+	// feature service factory
+	createStarsService: typeof createStarsService;
+	// libs for service
+	starsLib: typeof starsLib;
+	// util
+	slugify: typeof slugify;
 };
 
 /* -------------------------------------------------------------------------- */

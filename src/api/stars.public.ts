@@ -5,12 +5,6 @@ import { withDB } from "@lib/db";
 import * as starsLib from "@lib/stars";
 import type { RepoInfo, StarList } from "@lib/types";
 import { ConfigError } from "./public.types";
-import {
-	runListsCore,
-	runReposCore,
-	runStarsCore,
-	runUnlistedCore,
-} from "./stars";
 
 /** Options for stars & lists fetch helpers. */
 export interface StarsFetchOptions {
@@ -102,12 +96,3 @@ export async function fetchUnlistedStars(
 	) ?? svc.read.getUnlistedStars());
 	return unlisted;
 }
-
-/** @deprecated Use fetchLists */
-export const runLists = runListsCore as unknown as undefined;
-/** @deprecated Use fetchReposFromList */
-export const runRepos = runReposCore as unknown as undefined;
-/** @deprecated Use fetchStars */
-export const runStars = runStarsCore as unknown as undefined;
-/** @deprecated Use fetchUnlistedStars */
-export const runUnlisted = runUnlistedCore as unknown as undefined;

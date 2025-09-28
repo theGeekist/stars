@@ -152,27 +152,3 @@ export async function summariseOneCore(
 		logger.error(`${msg}\n`);
 	}
 }
-
-/* --------------------------- Public CLI API --------------------------- */
-/** Public API preserved */
-/** @deprecated Use summariseAll from summarise.public */
-export async function summariseBatchAll(
-	limit: number,
-	dry: boolean,
-	deps?: SummariseDeps,
-	opts?: SummariseBatchOpts,
-	database?: Database,
-): Promise<void> {
-	await summariseBatchAllCore(limit, dry, deps, opts, database, realLog);
-}
-
-/** Public API preserved */
-/** @deprecated Use summariseRepo from summarise.public */
-export async function summariseOne(
-	selector: string,
-	dry: boolean,
-	deps?: SummariseDeps,
-	database?: Database,
-): Promise<void> {
-	await summariseOneCore(selector, dry, deps, database, realLog);
-}

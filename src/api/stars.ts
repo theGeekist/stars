@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createStarsService } from "@features/stars";
-import { log as realLog } from "@lib/bootstrap";
+import type { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import type { ListsReporter } from "@lib/lists";
 import { getAllLists, getAllListsStream, getReposFromList } from "@lib/lists";
@@ -14,7 +14,7 @@ import { getAllStars, getAllStarsStream } from "@lib/stars";
 import type { RepoInfo, StarList } from "@lib/types";
 import { slugify } from "@lib/utils";
 
-import type { StarListIndexItem, StarsIndexPageItem } from "./types";
+import type { StarListIndexItem, StarsDeps, StarsIndexPageItem } from "./types";
 import {
 	ensureDirExists,
 	getEnvStringRequired,
@@ -28,22 +28,6 @@ import {
 /* ----------------------------- Types & DI seams ----------------------------- */
 
 type Logger = typeof realLog;
-
-type StarsDeps = {
-	// lists
-	getAllLists: typeof getAllLists;
-	getAllListsStream: typeof getAllListsStream;
-	getReposFromList: typeof getReposFromList;
-	// stars
-	getAllStars: typeof getAllStars;
-	getAllStarsStream: typeof getAllStarsStream;
-	// feature service factory
-	createStarsService: typeof createStarsService;
-	// libs for service
-	starsLib: typeof starsLib;
-	// util
-	slugify: typeof slugify;
-};
 
 const defaultDeps: StarsDeps = {
 	getAllLists,
@@ -264,31 +248,4 @@ export async function runUnlistedCore(
 
 	if (json) logger.json(unlisted);
 	else printReposHuman(logger, unlisted);
-}
-
-/* ------------------------------ Public API ------------------------------ */
-
-/** @deprecated Use fetchLists from stars.public */
-export async function runLists(json: boolean, out?: string, dir?: string) {
-	await runListsCore(json, out, dir, realLog);
-}
-
-/** @deprecated Use fetchReposFromList from stars.public */
-export async function runRepos(listName: string, json: boolean) {
-	await runReposCore(listName, json, realLog);
-}
-
-/** @deprecated Use fetchStars from stars.public */
-export async function runStars(json: boolean, out?: string, dir?: string) {
-	await runStarsCore(json, out, dir, realLog);
-}
-
-/** @deprecated Use fetchUnlistedStars from stars.public */
-export async function runUnlisted(
-	json: boolean,
-	out?: string,
-	dir?: string,
-	database?: Database,
-) {
-	await runUnlistedCore(json, out, dir, database, realLog);
 }

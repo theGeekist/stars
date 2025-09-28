@@ -205,8 +205,3 @@ export async function summariseRepo(
 		};
 	}
 }
-
-/** @deprecated Use summariseAll */
-export const summariseBatchAll = summariseAll;
-/** @deprecated Use summariseRepo */
-export const summariseOne = summariseRepo;

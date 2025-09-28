@@ -8,7 +8,7 @@ import type { RepoRow } from "@lib/types";
 import { parseJsonArray } from "@lib/utils";
 import { ingestListedFromGh, ingestUnlistedFromGh } from "@src/api/ingest";
 import { rankAll } from "@src/api/ranking.public";
-import { runLists } from "@src/api/stars";
+import { runListsCore } from "@src/api/stars";
 import { summariseAll } from "@src/api/summarise.public";
 import { enrichAllRepoTopics } from "@src/api/topics";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
@@ -48,6 +48,7 @@ let nextLocalPid = 100000; // pseudo PIDs for in-process tasks
 
 // Ensure DB/bootstrap has been initialised
 initBootstrap();
+const taskLog = createLogger();
 
 function mapRepoRow(row: RepoRow): ApiRepo {
 	return {
@@ -286,7 +287,7 @@ function startInProcess(task: string, _dir?: string): Response {
 		try {
 			switch (task) {
 				case "lists":
-					await runLists(false, undefined, undefined);
+					await runListsCore(false, undefined, undefined, taskLog);
 					break;
 				case "ingest":
 					// Replace legacy ingest-from-disk with GH-driven ingestion
@@ -473,4 +474,4 @@ Bun.serve({
 	},
 });
 
-createLogger().success("API → http://localhost:8787");
+taskLog.success("API → http://localhost:8787");
