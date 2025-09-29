@@ -115,53 +115,153 @@ export function chunkMarkdown(
 	const {
 		chunkSizeTokens = 768,
 		chunkOverlapTokens = 80,
-		mode = "sentence",
+		mode = "sentence", // "sentence" | "token"
 	} = opts;
-	// If not sentence mode just fall back to simple windowing using markdown splitter output concatenation
-	const base = markdownSplitter(md, {
+
+	// normalise overlap
+	const size = Math.max(1, chunkSizeTokens | 0);
+	const overlap = Math.max(0, Math.min(chunkOverlapTokens | 0, size - 1));
+	const step = Math.max(1, size - overlap);
+
+	// Utility: safe trim & collapse
+	const tidy = (s: string) =>
+		s
+			.replace(/\r\n/g, "\n")
+			.replace(/[ \t]+\n/g, "\n")
+			.trim();
+
+	// ---------- TOKEN MODE: pure sliding window over whitespace ----------
+	if (mode === "token") {
+		const tokens = tidy(md).split(/\s+/).filter(Boolean);
+		if (tokens.length === 0) return [];
+
+		const chunks: string[] = [];
+		for (let i = 0; i < tokens.length; i += step) {
+			const slice = tokens.slice(i, i + size);
+			if (slice.length === 0) break;
+			chunks.push(slice.join(" "));
+			if (i + size >= tokens.length) break;
+		}
+		return chunks;
+	}
+
+	// ---------- SENTENCE MODE: structural split, but sub-split big segments ----------
+	// 1) Start with structural segments
+	const structural = markdownSplitter(md, {
 		minChunkSize: 300,
 		maxChunkSize: 1800,
 		useHeadingsOnly: false,
 	});
-	if (mode !== "sentence") return base;
 
-	// Approx tokens
-	const approx = (s: string) => Math.max(1, Math.ceil(s.length / 4));
-	const out: string[] = [];
+	// 2) Break oversized segments into sentences/paras so windowing can work within them
+	const sentenceSplit = (s: string): string[] => {
+		// split on blank lines first, then sentence-ish punctuation (keep delimiters)
+		const paras = tidy(s).split(/\n{2,}/);
+		const out: string[] = [];
+		for (const p of paras) {
+			// keep punctuation with the sentence
+			const parts = p
+				.split(/(?<=[.!?])\s+(?=[A-Z0-9(])/)
+				.map(tidy)
+				.filter(Boolean);
+			if (parts.length) out.push(...parts);
+		}
+		return out.length ? out : [tidy(s)];
+	};
+
+	// 3) Flatten to subsegments
+	const subs: string[] = [];
+	for (const seg of structural) {
+		const pieces = sentenceSplit(seg);
+		for (const piece of pieces) {
+			if (piece) subs.push(piece);
+		}
+	}
+
+	// Token estimator (char→token heuristic) for sentence mode
+	const tok = (s: string) => Math.max(1, Math.ceil(s.length / 4));
+
+	const chunks: string[] = [];
 	let cur: string[] = [];
 	let curTok = 0;
-	for (const seg of base) {
-		const t = approx(seg);
-		if (!cur.length) {
-			cur.push(seg);
-			curTok = t;
-			continue;
-		}
-		if (curTok + t <= chunkSizeTokens) {
-			cur.push(seg);
-			curTok += t;
-			continue;
-		}
-		out.push(cur.join("\n"));
-		// overlap tail
-		if (chunkOverlapTokens > 0 && cur.length > 1) {
+
+	const flush = () => {
+		if (!cur.length) return;
+		chunks.push(cur.join("\n"));
+	};
+
+	const addWithOverlap = (next: string) => {
+		// compute tail by token budget
+		if (overlap > 0 && cur.length > 0) {
 			let tailTok = 0;
 			const tail: string[] = [];
 			for (let i = cur.length - 1; i >= 0; i--) {
-				const st = approx(cur[i]);
-				tailTok += st;
+				const t = tok(cur[i]);
+				tailTok += t;
 				tail.unshift(cur[i]);
-				if (tailTok >= chunkOverlapTokens) break;
+				if (tailTok >= overlap) break;
 			}
-			cur = [...tail, seg];
-			curTok = tailTok + t;
+			cur = tail;
+			curTok = tail.reduce((n, s) => n + tok(s), 0);
 		} else {
-			cur = [seg];
-			curTok = t;
+			cur = [];
+			curTok = 0;
+		}
+		// seed next
+		cur.push(next);
+		curTok += tok(next);
+	};
+
+	for (const piece of subs) {
+		const t = tok(piece);
+
+		// Case A: normal append fits
+		if (curTok + t <= size) {
+			cur.push(piece);
+			curTok += t;
+			continue;
+		}
+
+		// Case B: current buffer non-empty, flush and then try to add piece
+		if (curTok > 0) {
+			flush();
+			addWithOverlap(piece);
+			// It’s possible piece itself is still too large; fall through to C
+		} else {
+			// cur is empty but piece alone is too big → hard split the piece by tokens
+			const words = piece.split(/\s+/).filter(Boolean);
+			for (let i = 0; i < words.length; i += step) {
+				const slice = words.slice(i, i + size).join(" ");
+				if (slice.length) {
+					if (curTok > 0) {
+						flush();
+						addWithOverlap(slice);
+					} else {
+						cur.push(slice);
+						curTok = tok(slice);
+					}
+				}
+				if (i + size >= words.length) break;
+			}
+			continue;
+		}
+
+		// If the single piece is still larger than window, sub-slice it
+		while (curTok > size) {
+			// emit first window portion from cur
+			const words = cur.join("\n").split(/\s+/).filter(Boolean);
+			const first = words.slice(0, size).join(" ");
+			const rest = words.slice(step).join(" ");
+			chunks.push(first);
+			cur = rest ? [rest] : [];
+			curTok = rest ? tok(rest) : 0;
 		}
 	}
-	if (cur.length) out.push(cur.join("\n"));
-	return out.filter((s) => s.trim().length > 0);
+
+	// final flush
+	if (cur.length) flush();
+
+	return chunks.filter((s) => s.trim().length > 0);
 }
 
 /** fetch + clean + chunk (cached) */

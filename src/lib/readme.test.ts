@@ -168,18 +168,60 @@ describe("readme clean + chunk", () => {
 			chunkSizeTokens: 20,
 			chunkOverlapTokens: 0,
 		});
-
-		it("token mode chunking produces slices and overlap", () => {
-			const md = Array.from({ length: 200 }, (_, i) => `w${i}`).join(" ");
-			const chunks = chunkMarkdown(md, {
-				mode: "token",
-				chunkSizeTokens: 50,
-				chunkOverlapTokens: 10,
-			});
-			expect(chunks.length).toBeGreaterThan(1);
-		});
 		expect(Array.isArray(chunks)).toBeTrue();
 		expect(chunks.length).toBeGreaterThan(0);
+	});
+
+	it("token mode chunking produces slices and overlap", () => {
+		// Build 600 alphabetic 'tokens' to avoid digit-stripping collisions
+		const vocab = [
+			"alpha",
+			"bravo",
+			"charlie",
+			"delta",
+			"echo",
+			"foxtrot",
+			"golf",
+			"hotel",
+			"india",
+			"juliet",
+			"kilo",
+			"lima",
+			"mike",
+			"november",
+			"oscar",
+			"papa",
+			"quebec",
+			"romeo",
+			"sierra",
+			"tango",
+			"uniform",
+			"victor",
+			"whiskey",
+			"xray",
+			"yankee",
+			"zulu",
+		];
+		const md = Array.from(
+			{ length: 240 },
+			(_, i) => vocab[i % vocab.length],
+		).join(" ");
+
+		const chunks = chunkMarkdown(md, {
+			mode: "token",
+			chunkSizeTokens: 16, // deliberately small to force multiple chunks
+			chunkOverlapTokens: 4,
+		});
+
+		expect(chunks.length).toBeGreaterThan(1); // should definitely split
+
+		// If the impl preserves overlap in text, sanity-check the boundary:
+		// (weak check that some suffix of chunk[0] appears in prefix of chunk[1])
+		const a = chunks[0];
+		const b = chunks[1];
+		const tail = a.split(/\s+/).slice(-4).join(" ");
+		const head = b.split(/\s+/).slice(0, 4).join(" ");
+		expect(tail).toBe(head);
 	});
 });
 
