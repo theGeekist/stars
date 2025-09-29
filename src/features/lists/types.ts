@@ -1,9 +1,13 @@
-import type { RepoRow, StarList } from "@lib/types";
+import type { BatchSelector, RepoRow, StarList } from "@lib/types";
 
-// Re-export RepoRow for use in other modules
-export type { RepoRow };
+// Re-export commonly used types
+export type { RepoRow, BatchSelector, StarList };
 
-export type BatchSelector = { limit?: number; listSlug?: string };
+export type ListDef = {
+	slug: string;
+	name: string;
+	description?: string | null;
+};
 
 export type ListsReadApi = {
 	getAll(): Promise<StarList[]>;

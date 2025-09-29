@@ -30,10 +30,19 @@ export function toNum(x: unknown): number | null {
 	return null;
 }
 
-export function parseStringArray(jsonText: string | null): string[] {
-	if (!jsonText) return [];
+export function parseStringArray(
+	input: string | string[] | null | undefined,
+): string[] {
+	if (!input) return [];
+
+	// If it's already an array, filter for strings
+	if (Array.isArray(input)) {
+		return input.filter((s) => typeof s === "string");
+	}
+
+	// If it's a string, try to parse as JSON
 	try {
-		const arr = JSON.parse(jsonText);
+		const arr = JSON.parse(input);
 		return Array.isArray(arr) ? arr.filter((s) => typeof s === "string") : [];
 	} catch {
 		return [];

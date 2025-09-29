@@ -1,26 +1,7 @@
-import type { RepoInfo } from "@lib/types";
+import type { BatchSelector, RepoInfo, RepoRow } from "@lib/types";
 
-export type BatchSelector = { limit?: number };
-
-export type RepoRow = {
-	id: number;
-	repo_id: string | null; // GH node id (e.g., R_kg...)
-	name_with_owner: string;
-	url: string;
-	description: string | null;
-	primary_language: string | null;
-	topics: string[] | null;
-	stars: number | null;
-	forks: number | null;
-	popularity: number | null;
-	freshness: number | null;
-	activeness: number | null;
-	pushed_at: string | null;
-	last_commit_iso: string | null;
-	last_release_iso: string | null;
-	updated_at: string | null;
-	summary: string | null;
-};
+// Re-export types used by service
+export type { BatchSelector, RepoInfo, RepoRow };
 
 export type StarsService = {
 	read: {

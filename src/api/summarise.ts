@@ -6,9 +6,9 @@ import type { SummariseDeps } from "@features/summarise/types";
 import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
-
+import { parseStringArray, wordCount } from "@lib/utils";
 import type { SummariseBatchOpts } from "./types";
-import { parseStringArray, withSpinner, wordCount } from "./utils";
+import { withSpinner } from "./utils";
 
 /* ------------------------------ Adapters ------------------------------ */
 

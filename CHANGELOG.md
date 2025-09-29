@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.1 (2025-09-30)
+
+### Fixed
+
+- Resolved TypeScript compilation errors across multiple files
+- Fixed `parseStringArray` function signature to handle `string | string[] | null | undefined` input types
+- Corrected missing type re-exports in feature modules (`scoring/types.ts`, `stars/types.ts`)
+
+### Changed
+
+- Consolidated duplicate utility functions to reduce code duplication
+- Moved `parseStringArray` and `wordCount` functions to single source of truth in `@lib/utils`
+- Updated import statements to use centralized utility functions
+- Removed `any` type usage in test files in favor of proper type checking
+
+### Internal
+
+- Improved type safety across API and library modules
+- Enhanced test coverage and eliminated type casting in tests
+- Streamlined utility function organization and imports
+
+---
+
 ## 0.4.0 (2025-09-28)
 
 ### Removed

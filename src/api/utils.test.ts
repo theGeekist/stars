@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseStringArray } from "@lib/utils";
 import { makeLiteLog } from "../__test__/helpers/log";
 import {
 	appendCsvRow,
@@ -12,7 +13,6 @@ import {
 	getEnvStringRequired,
 	listFilename,
 	pageFilename,
-	parseStringArray,
 	withSpinner,
 	writeListlessCsvRow,
 } from "./utils";

@@ -79,22 +79,6 @@ export function resolveEnrichRuntime(opts?: EnrichOptions) {
  * TEXT / JSON HELPERS
  * -------------------------------------------------------------------------- */
 
-export function parseStringArray(
-	jsonText: string | null | undefined,
-): string[] {
-	if (!jsonText) return [];
-	try {
-		const val = JSON.parse(jsonText);
-		return Array.isArray(val) ? val.filter((s) => typeof s === "string") : [];
-	} catch {
-		return [];
-	}
-}
-
-export function wordCount(s: string): number {
-	return s.trim().split(/\s+/).filter(Boolean).length;
-}
-
 /* -----------------------------------------------------------------------------
  * FILESYSTEM HELPERS (clean call-sites; overrides last for tests)
  * -------------------------------------------------------------------------- */

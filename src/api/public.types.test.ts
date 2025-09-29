@@ -7,6 +7,15 @@ import {
 	jest,
 	mock,
 } from "bun:test";
+import type {
+	BatchSelector,
+	RepoInfo,
+	RepoRow,
+	RepoUpdatesMetadata,
+	StarList,
+	UpdateCandidate,
+	UpdateSourceType,
+} from "@lib/types";
 import {
 	buildBatchStats,
 	ConfigError,
@@ -312,6 +321,183 @@ describe("Public API Types and Utilities", () => {
 
 			// Should still work, schema is ignored as documented
 			expect(mockGen).toHaveBeenCalled();
+		});
+	});
+});
+
+describe("Consolidated Types", () => {
+	describe("BatchSelector", () => {
+		it("should accept limit and listSlug properties", () => {
+			const selector: BatchSelector = {
+				limit: 10,
+				listSlug: "test-list",
+			};
+
+			expect(selector.limit).toBe(10);
+			expect(selector.listSlug).toBe("test-list");
+		});
+
+		it("should work with partial properties", () => {
+			const limitOnly: BatchSelector = { limit: 5 };
+			const slugOnly: BatchSelector = { listSlug: "my-list" };
+			const empty: BatchSelector = {};
+
+			expect(limitOnly.limit).toBe(5);
+			expect(limitOnly.listSlug).toBeUndefined();
+			expect(slugOnly.listSlug).toBe("my-list");
+			expect(slugOnly.limit).toBeUndefined();
+			expect(empty).toEqual({});
+		});
+	});
+
+	describe("RepoRow", () => {
+		it("should have required fields", () => {
+			const repo: RepoRow = {
+				id: 1,
+				repo_id: "R_test123",
+				name_with_owner: "user/repo",
+				url: "https://github.com/user/repo",
+				description: "Test repo",
+				is_archived: 0,
+				is_disabled: 0,
+			};
+
+			expect(repo.id).toBe(1);
+			expect(repo.repo_id).toBe("R_test123");
+			expect(repo.name_with_owner).toBe("user/repo");
+		});
+
+		it("should handle optional fields", () => {
+			const repo: RepoRow = {
+				id: 2,
+				repo_id: "R_test456",
+				name_with_owner: "org/app",
+				url: "https://github.com/org/app",
+				is_archived: 0,
+				is_disabled: 0,
+				// Optional fields
+				summary: "A great app",
+				popularity: 0.8,
+				freshness: 0.6,
+				activeness: 0.9,
+				stars: 100,
+				forks: 25,
+			};
+
+			expect(repo.summary).toBe("A great app");
+			expect(repo.popularity).toBe(0.8);
+			expect(repo.stars).toBe(100);
+		});
+	});
+
+	describe("RepoInfo", () => {
+		it("should have required GitHub metadata", () => {
+			const repoInfo: RepoInfo = {
+				repoId: "R_test789",
+				nameWithOwner: "test/project",
+				url: "https://github.com/test/project",
+				stars: 50,
+				forks: 10,
+				watchers: 25,
+				openIssues: 5,
+				openPRs: 2,
+				topics: ["javascript", "testing"],
+				languages: [
+					{ name: "TypeScript", bytes: 1000 },
+					{ name: "JavaScript", bytes: 500 },
+				],
+				isArchived: false,
+				isDisabled: false,
+				isFork: false,
+				isMirror: false,
+				hasIssuesEnabled: true,
+				pushedAt: "2023-01-01T00:00:00Z",
+				updatedAt: "2023-01-01T00:00:00Z",
+				createdAt: "2022-01-01T00:00:00Z",
+			};
+
+			expect(repoInfo.repoId).toBe("R_test789");
+			expect(repoInfo.topics).toEqual(["javascript", "testing"]);
+			expect(repoInfo.languages).toHaveLength(2);
+			expect(repoInfo.languages[0].name).toBe("TypeScript");
+		});
+	});
+
+	describe("UpdateSourceType and related types", () => {
+		it("should allow valid update source types", () => {
+			const sources: UpdateSourceType[] = [
+				"release",
+				"changelog",
+				"discussion",
+				"commit",
+			];
+
+			sources.forEach((source) => {
+				const candidate: UpdateCandidate = {
+					type: source,
+					confidence: 0.8,
+					data: { test: "value" },
+				};
+
+				expect(candidate.type).toBe(source);
+				expect(candidate.confidence).toBe(0.8);
+			});
+		});
+
+		it("should work with RepoUpdatesMetadata", () => {
+			const metadata: RepoUpdatesMetadata = {
+				preferred: "release",
+				candidates: [
+					{ type: "release", confidence: 0.9 },
+					{
+						type: "changelog",
+						confidence: 0.7,
+						data: { path: "CHANGELOG.md" },
+					},
+				],
+			};
+
+			expect(metadata.preferred).toBe("release");
+			expect(metadata.candidates).toHaveLength(2);
+			expect(metadata.candidates[0].confidence).toBe(0.9);
+		});
+	});
+
+	describe("StarList", () => {
+		it("should contain repos and metadata", () => {
+			const mockRepoInfo: RepoInfo = {
+				repoId: "R_test",
+				nameWithOwner: "test/repo",
+				url: "https://github.com/test/repo",
+				stars: 10,
+				forks: 2,
+				watchers: 5,
+				openIssues: 1,
+				openPRs: 0,
+				topics: [],
+				languages: [],
+				isArchived: false,
+				isDisabled: false,
+				isFork: false,
+				isMirror: false,
+				hasIssuesEnabled: true,
+				pushedAt: "2023-01-01T00:00:00Z",
+				updatedAt: "2023-01-01T00:00:00Z",
+				createdAt: "2022-01-01T00:00:00Z",
+			};
+
+			const starList: StarList = {
+				listId: "list_123",
+				name: "My Favorites",
+				description: "Collection of favorite repos",
+				isPrivate: false,
+				repos: [mockRepoInfo],
+			};
+
+			expect(starList.listId).toBe("list_123");
+			expect(starList.name).toBe("My Favorites");
+			expect(starList.repos).toHaveLength(1);
+			expect(starList.repos[0].nameWithOwner).toBe("test/repo");
 		});
 	});
 });

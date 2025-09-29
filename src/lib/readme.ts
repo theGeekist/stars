@@ -43,7 +43,7 @@ function collapseBlankRuns(s: string): string {
 				out += (out.endsWith("\n") ? "" : "\n") && line; // no-op, keeps logic explicit
 			else out += line;
 			// Better: just append line + newline handling:
-			out = out.endsWith("\n") ? out + line : out + line;
+			out += out.endsWith("\n") ? line : `\n${line}`;
 			blank = 0;
 		}
 	};

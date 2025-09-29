@@ -1,9 +1,10 @@
-import type { RepoRow } from "@lib/types";
+import type { BatchSelector, RepoRow } from "@lib/types";
 import type { ScoreItem } from "./llm";
 
-export type ResumeFlag = number | "last" | undefined;
+// Re-export types used by service
+export type { BatchSelector, RepoRow };
 
-export type BatchSelector = { limit?: number; listSlug?: string };
+export type ResumeFlag = number | "last" | undefined;
 
 export type RunOptions = { dry?: boolean; notes?: string; resume?: ResumeFlag };
 

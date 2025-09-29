@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { addColumnIfMissing, createIndexIfNotExists } from "@lib/db-utils";
 
 /** Default DB selection: in-memory under tests; otherwise env or local file. */
 const isTestRunner = Array.isArray(Bun.argv) && Bun.argv.includes("test");
@@ -26,31 +27,10 @@ function resolveSchemaPath(): string {
 
 /* ----------------------------- tiny migrations ---------------------------- */
 
-function tableColumns(table: string, database?: Database): Set<string> {
-	const db = withDB(database);
-	const rows = db.query(`PRAGMA table_info(${table})`).all() as Array<{
-		name: string;
-	}>;
-	return new Set(rows.map((r) => r.name));
-}
-
-function _addColumnIfMissing(
-	table: string,
-	col: string,
-	sqlType: string,
-	database?: Database,
-): void {
-	const db = withDB(database);
-	const cols = tableColumns(table, db);
-	if (!cols.has(col)) {
-		db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${sqlType}`);
-	}
-}
-
 function migrateIfNeeded(database: Database = getDefaultDb()): void {
 	// With GH ids as PK, keep a sanity unique index on repo(id)
-	database.run(`CREATE UNIQUE INDEX IF NOT EXISTS ux_repo_id ON repo(id);`);
-	_addColumnIfMissing("repo", "updates_json", "TEXT", database);
+	createIndexIfNotExists(database, "ux_repo_id", "repo", ["id"], true);
+	addColumnIfMissing("repo", "updates_json", "TEXT", database);
 }
 
 /* --------------------------------- API ------------------------------------ */

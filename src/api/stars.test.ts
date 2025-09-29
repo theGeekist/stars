@@ -2,7 +2,17 @@ import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeLog } from "../__test__/helpers/log";
+import {
+	makeCaptureLog,
+	makeLiteLog,
+	makeLog,
+	makeLogWithLines,
+} from "../__test__/helpers/log";
+import {
+	createFullCapturingLogger,
+	createLineAndSuccessLogger,
+	createSuccessCapturingLogger,
+} from "../__test__/helpers/log-factory";
 import { runListsCore, runStarsCore, runUnlistedCore } from "./stars";
 
 // provide a minimal logger compatible with Logger (realLog) used by stars.ts
@@ -120,5 +130,82 @@ describe("api/stars core flows", () => {
 		const body = JSON.parse(readFileSync(join(dir, "unlisted.json"), "utf8"));
 		expect(body.length).toBe(1);
 		expect(body[0].nameWithOwner).toBe("o/r");
+	});
+});
+
+describe("Log Factory", () => {
+	test("createSuccessCapturingLogger captures success calls", () => {
+		const { log, succeedCalls } = createSuccessCapturingLogger();
+
+		log.success("test message");
+		log.header("header"); // should not be captured
+
+		expect(succeedCalls).toEqual(["test message"]);
+	});
+
+	test("createLineAndSuccessLogger captures both line and success calls", () => {
+		const { log, succeedCalls, lineCalls } = createLineAndSuccessLogger();
+
+		log.success("success msg");
+		log.line("line msg");
+		log.line(undefined);
+
+		expect(succeedCalls).toEqual(["success msg"]);
+		expect(lineCalls).toEqual(["line msg", "undefined"]);
+	});
+
+	test("createFullCapturingLogger captures multiple call types", () => {
+		const {
+			log,
+			headers,
+			infos,
+			successes,
+			spinnerStarts,
+			spinnerSucceedMsgs,
+		} = createFullCapturingLogger();
+
+		log.header("Test Header");
+		log.info("Test Info");
+		log.success("Test Success");
+
+		const spinner = log.spinner("Loading...");
+		const spinnerInstance = spinner.start();
+		spinnerInstance.succeed("Done!");
+
+		expect(headers).toEqual(["Test Header"]);
+		expect(infos).toEqual(["Test Info"]);
+		expect(successes).toEqual(["Test Success"]);
+		expect(spinnerStarts).toEqual(["Loading..."]);
+		expect(spinnerSucceedMsgs).toEqual(["Done!"]);
+	});
+
+	test("backward compatibility - makeLog returns same interface", () => {
+		const { log, succeedCalls } = makeLog();
+		log.success("test");
+		expect(succeedCalls).toEqual(["test"]);
+	});
+
+	test("backward compatibility - makeLogWithLines returns same interface", () => {
+		const { log, succeedCalls, lineCalls } = makeLogWithLines();
+		log.success("success");
+		log.line("line");
+		expect(succeedCalls).toEqual(["success"]);
+		expect(lineCalls).toEqual(["line"]);
+	});
+
+	test("backward compatibility - makeCaptureLog returns same interface", () => {
+		const { log, headers, successes } = makeCaptureLog();
+		log.header("header");
+		log.success("success");
+		expect(headers).toEqual(["header"]);
+		expect(successes).toEqual(["success"]);
+	});
+
+	test("backward compatibility - makeLiteLog returns logger without withSpinner", () => {
+		const { log } = makeLiteLog();
+		// Check withSpinner existence using proper typing
+		expect("withSpinner" in log).toBe(false);
+		expect(typeof log.spinner).toBe("function");
+		expect(typeof log.success).toBe("function");
 	});
 });

@@ -3,6 +3,7 @@
 
 import { initBootstrap, log } from "@lib/bootstrap";
 import { parseSimpleArgs } from "@lib/cli";
+import { parseCommonCliOptions, parseListOption } from "@lib/cli-utils";
 import {
 	checkPromptsState,
 	criteriaExamples,
@@ -11,7 +12,7 @@ import {
 	showSetupHintIfNotReady,
 } from "@lib/prompts";
 import ingest from "@src/api/ingest";
-import { DEFAULT_POLICY, rankAll, rankOne } from "@src/api/ranking.public";
+import { rankAll, rankOne } from "@src/api/ranking.public";
 import {
 	runListsCore,
 	runReposCore,
@@ -113,68 +114,39 @@ function usage(): void {
 /* -------------------------- Command handlers --------------------------- */
 
 async function handleLists(args: string[]): Promise<void> {
-	let json = false;
-	let out: string | undefined;
-	for (let i = 1; i < args.length; i++) {
-		const a = args[i];
-		if (a === "--json") json = true;
-		else if (a === "--out" && args[i + 1]) {
-			i += 1;
-			out = args[i];
-		}
-	}
+	const options = parseCommonCliOptions(args);
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await cliDeps.runLists(json, out, dir, log);
-	else await cliDeps.runLists(false, undefined, dir, log);
+	await cliDeps.runLists(options.json ?? false, options.out, dir, log);
 }
 
 async function handleRepos(args: string[]): Promise<void> {
-	let list: string | undefined;
-	let json = false;
-	for (let i = 1; i < args.length; i++) {
-		const a = args[i];
-		if (a === "--list" && args[i + 1]) {
-			i += 1;
-			list = args[i];
-		} else if (a === "--json") json = true;
-	}
+	const list = parseListOption(args);
+	const options = parseCommonCliOptions(args);
+
 	if (!list) {
 		log.error("--list <name> is required");
 		process.exit(1);
 	}
-	await cliDeps.runRepos(list, json, log);
+
+	await cliDeps.runRepos(list, options.json ?? false, log);
 }
 
 async function handleStars(args: string[]): Promise<void> {
-	let json = false;
-	let out: string | undefined;
-	for (let i = 1; i < args.length; i++) {
-		const a = args[i];
-		if (a === "--json") json = true;
-		else if (a === "--out" && args[i + 1]) {
-			i += 1;
-			out = args[i];
-		}
-	}
+	const options = parseCommonCliOptions(args);
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await cliDeps.runStars(json, out, dir, log);
-	else await cliDeps.runStars(false, undefined, dir, log);
+	await cliDeps.runStars(options.json ?? false, options.out, dir, log);
 }
 
 async function handleUnlisted(args: string[]): Promise<void> {
-	let json = false;
-	let out: string | undefined;
-	for (let i = 1; i < args.length; i++) {
-		const a = args[i];
-		if (a === "--json") json = true;
-		else if (a === "--out" && args[i + 1]) {
-			i += 1;
-			out = args[i];
-		}
-	}
+	const options = parseCommonCliOptions(args);
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	if (json || out) await cliDeps.runUnlisted(json, out, dir, undefined, log);
-	else await cliDeps.runUnlisted(false, undefined, dir, undefined, log);
+	await cliDeps.runUnlisted(
+		options.json ?? false,
+		options.out,
+		dir,
+		undefined,
+		log,
+	);
 }
 
 async function handleScore(argv: string[], args: string[]): Promise<void> {
@@ -210,11 +182,11 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 		}
 	}
 
-	// Build policy (respect curation by default)
-	const policyBase = { ...DEFAULT_POLICY };
-	if (curationThreshold != null && Number.isFinite(curationThreshold)) {
-		policyBase.curationRemoveThreshold = curationThreshold;
-	}
+	// Build policy (only include curation threshold if explicitly provided)
+	const policyBase =
+		curationThreshold != null && Number.isFinite(curationThreshold)
+			? { curationRemoveThreshold: curationThreshold }
+			: {};
 
 	if (s.mode === "one") {
 		if (!s.one) {
