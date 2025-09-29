@@ -80,7 +80,7 @@ function splitWhitespace(s: string): string[] {
 
 // Build token-boundary indices from markdownSplitter segments to *bias* window ends.
 // No splitting here; just map cumulative word counts.
-function boundaryWordIndices(md: string, segments: string[]): number[] {
+function boundaryWordIndices(_md: string, segments: string[]): number[] {
 	const idx: number[] = [];
 	let offsetWords = 0;
 	for (const seg of segments) {
@@ -190,7 +190,7 @@ export async function fetchReadmeWithCache(
 export function cleanMarkdown(md: string): string {
 	// keep stripFrontmatter (your impl), then normalise/collapse safely
 	const withoutFrontmatter = stripFrontmatter(md);
-	const nn = normaliseNewlines(withoutFrontmatter);
+	const _nn = normaliseNewlines(withoutFrontmatter);
 	// collapse runs of blank lines to at most two
 	const s = stripFrontmatter(md);
 	return collapseBlankRuns(s).trim();

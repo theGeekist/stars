@@ -1,4 +1,5 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
+import { createDb } from "@lib/db";
 import {
 	chunkMarkdown,
 	cleanMarkdown,
@@ -6,7 +7,6 @@ import {
 	prepareReadmeForSummary,
 	selectInformativeChunks,
 } from "@lib/readme";
-import { createDb } from "@lib/db";
 import type { FetchLike } from "@lib/types";
 
 function makeDb() {
@@ -18,8 +18,7 @@ function makeDb() {
 	return db;
 }
 
-const README_LONG =
-	`# Title\n` + Array.from({ length: 1200 }, () => "word").join(" ");
+const README_LONG = `# Title\n${Array.from({ length: 1200 }, () => "word").join(" ")}`;
 
 const README_DIR_LIST = `- [link](http://x)\n- [link2](http://y)`;
 
@@ -80,7 +79,7 @@ function freezeEnv<K extends string>(key: K, val?: string) {
 }
 
 export function makeFetch(res: Response | (() => Response)): FetchLike {
-	return async () => (typeof res === "function" ? (res as any)() : res);
+	return async () => (typeof res === "function" ? res() : res);
 }
 
 export const embedStub =
@@ -222,7 +221,7 @@ describe("cleanMarkdown", () => {
 
 describe("chunkMarkdown", () => {
 	it("sentence mode yields chunks even for single huge segment", () => {
-		const md = "Heading\n\n" + repeatWords(800); // likely > one window
+		const md = `Heading\n\n${repeatWords(800)}`; // likely > one window
 		const chunks = chunkMarkdown(md, {
 			mode: "sentence",
 			chunkSizeTokens: 128,
