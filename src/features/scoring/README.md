@@ -1,6 +1,15 @@
 # Scoring / Categorise Feature
 
-Evaluates repositories against list criteria, persists per-list scores/rationales, and turns them into an **add / remove / keep / review** plan.
+**Intelligently categorize your GitHub starred repositories using AI-powered scoring against customizable criteria.**
+
+Evaluates repositories against list criteria, persists per-list scores/rationales, and turns them into an **add / remove / keep / review** plan. Perfect for automatically organizing thousands of stars into meaningful collections.
+
+✨ **Key Benefits:**
+
+- **AI-powered decisions**: Uses local LLMs to score repos against your custom criteria
+- **Explainable results**: Every decision comes with a detailed rationale
+- **Safe automation**: Configurable thresholds with manual review options
+- **Resume-friendly**: Continue large batches across multiple sessions
 
 > LLM model invocation is provided by external peers (`@jasonnathan/llm-core`, `ollama`) which are not bundled. Install them when using ranking APIs; core DB planning utilities remain usable without.
 > Backed by SQLite tables: `model_run`, `repo_list_score`, `list_repo`.

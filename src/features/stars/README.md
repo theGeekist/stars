@@ -1,5 +1,18 @@
 # Stars Feature
 
+**Seamlessly sync and analyze your GitHub starred repositories for intelligent curation.**
+
+Efficiently pulls your **entire GitHub Stars collection** via GraphQL and intelligently cross-references them against your **local corpus** to identify repos you've starred but haven't organized into lists yet. Essential for maintaining a clean, well-organized knowledge base.
+
+✨ **Key Benefits:**
+
+- **Fast bulk operations**: Stream thousands of stars efficiently
+- **Smart diffing**: Find unlisted stars by comparing GitHub vs local data
+- **Repository insights**: Access detailed repo metadata for analysis
+- **Flexible queries**: Support for various selection and filtering patterns
+
+> Perfect for users with hundreds or thousands of starred repositories who want to maintain organized, meaningful collections.ars Feature
+
 Pulls your **GitHub Stars** via GraphQL and cross-checks them against the **local corpus** to find repos you’ve starred but **haven’t placed into any local list** yet.
 Also exposes small DB helpers and a parity batch selector.
 

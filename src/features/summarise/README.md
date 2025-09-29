@@ -1,7 +1,15 @@
 # Summarise Feature
 
-Generates and stores **concise summaries** for repositories in the local DB.
-Summaries are used by the **Scoring** step to reduce hallucinations and keep criteria grounded.
+**Generate intelligent, concise summaries of your starred repositories using local AI models.**
+
+Automatically creates **60-90 word summaries** that capture the essence of each repository, helping you quickly understand what you've starred and why it matters. These summaries power the scoring system to reduce AI hallucinations and keep categorization decisions grounded in reality.
+
+✨ **Key Benefits:**
+
+- **Privacy-first**: All processing happens locally with your own LLM
+- **Smart content extraction**: Analyzes README files and repository metadata
+- **Batch processing**: Efficiently summarize hundreds of repos
+- **Resume capability**: Skip already-summarized repos unless explicitly requested
 
 > LLM generation relies on external peers: install `@jasonnathan/llm-core` and `ollama` if you plan to call higher-level summarise public APIs. The core service here only selects & saves rows.
 

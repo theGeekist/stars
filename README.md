@@ -2,17 +2,21 @@
   <img src="logo.jpg" alt="Geekist Stars Logo" width="600" />
   <h1>Geekist Stars</h1>
 
-  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repo- Summaries: `gks summarise --all --limit 500 --resummarise` (force rebuilds)
-- Ranking:   `gks score --all --resume last` (continue the previous batch)tories</p>
+  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repositories</p>
 
   <p>      
     <a href="https://app.codecov.io/gh/theGeekist/stars">
       <img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" />
     </a>
+    <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
+      <img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&metric=alert_status" />
+    </a>
     <a href="USAGE.md">
       <img alt="Docs" src="https://img.shields.io/badge/docs-usage-blue" />
     </a>
     <img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg" />
+    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Ready-blue.svg" />
+    <img alt="Bun" src="https://img.shields.io/badge/bun-%E2%89%A51.0-ff69b4.svg" />
   </p>
 
 </div>
@@ -30,6 +34,20 @@ bun add @jasonnathan/llm-core
 ```
 
 Without those peers only the non-LLM features (lists, stars data export, ingest, topics) are usable.
+
+## What it does
+
+Geekist Stars provides a local pipeline that helps you organize, analyze, and curate your starred GitHub repositories and lists. Using local AI models, it can score and categorize repositories based on customizable criteria, providing explainable rationales for every decision. You can review, accept, or adjust these categorizations as needed. Learn more in the [Scoring documentation](src/features/scoring/README.md).
+
+The tool generates concise, factual summaries for each repository by analyzing README files, metadata, and activity signals. These summaries are designed for quick recall and triage, making it easier to remember why you starred a project. Details are in the [Summarization documentation](src/features/summarise/README.md).
+
+It manages your starred repositories by syncing with GitHub, efficiently handling thousands of stars, and providing ways to compare and reconcile local and remote data. You get access to rich metadata and can flexibly query and analyze your collection. See the [Stars Management guide](src/features/stars/README.md).
+
+For ingestion, Geekist Stars imports and organizes your GitHub Lists and stars, keeping your local database synchronized and clean. It automatically removes repositories that are no longer starred (unless you specify overrides), and computes useful health metrics like popularity and activeness. Read more in the [Ingestion documentation](src/features/ingest/README.md).
+
+The system enriches and normalizes repository topics by parsing local data from `github/explore`, ensuring topics are standardized, canonicalized, and mapped with relationships and aliases for deeper analysis. More on this in the [Topics documentation](src/features/topics/README.md).
+
+Finally, it integrates with GitHub Lists, enabling bidirectional syncing, membership management, and batch operations for organizing repositories into meaningful groups. Conflicts are handled intelligently to preserve manual curation. Learn about this in the [Lists documentation](src/features/lists/README.md).
 
 ### What you get
 
@@ -60,151 +78,71 @@ LIMIT 10;
 
 ## Abstract
 
-Geekist Stars is a Bun and TypeScript toolkit that turns personal GitHub Lists and starred repositories into an auditable corpus with computed health signals, locally generated summaries, explainable categorisation, and enriched topic metadata.
+Geekist Stars is a Bun and TypeScript toolkit for turning your GitHub Lists and starred repositories into an auditable, local-first corpus. It computes health signals, generates local summaries, provides explainable categorization, and enriches topics using offline metadata.
 
 ### Models (Mac quick-pick)
 
-- **16 GB RAM**: summarise → `llama3.1:8b`; ranking → `qwen2.5:7b` or `llama3.1:8b` (slower)
-- **32 GB+ RAM**: summarise → `qwen2.5:7b`; ranking → `llama3.1:8b` / `qwen2.5:7b`
+For 16 GB RAM, use `llama3.1:8b` for summaries and `qwen2.5:7b` or `llama3.1:8b` (slower) for ranking. With 32 GB+ RAM, use `qwen2.5:7b` for summaries and either `llama3.1:8b` or `qwen2.5:7b` for ranking. Prefer quantized models such as `:Q4_K_M` for speed, and set `OLLAMA_NUM_PARALLEL=1` to avoid system thrashing.
 
-Tips:
+The CLI offers structured help, examples, and detailed flag descriptions. Use `--help` on any command for guidance.
 
-- Prefer `:Q4_K_M` or similar quant for speed.
-- If you notice thrash, set `OLLAMA_NUM_PARALLEL=1`.
-
-**Enhanced CLI Experience**: The command-line interface now features structured help with clear sections, detailed examples, and comprehensive flag descriptions. Run any command with `--help` for context-aware guidance.
-
-> Looking for CLI usage? See [USAGE.md](USAGE.md) for command-by-command examples and flags.
+See [USAGE.md](USAGE.md) for CLI usage and examples.
 
 ## Motivation
 
-Developers often accumulate hundreds or thousands of starred repositories. Over time, recall and organisation degrade, and it becomes hard to remember why a repository mattered or where it belongs. Existing tools provide search and browsing, but they rarely combine:
+Developers often accumulate hundreds or thousands of starred repositories, making it difficult to recall their significance or organize them over time. Existing tools offer basic search and browsing, but rarely combine list curation, concise summaries, explainable categorization, and topic enrichment in a private and extensible way. Geekist Stars fills this gap with a local-first pipeline.
 
-- **List curation**
-- **Concise summaries**
-- **Explainable categorisation** with curation mode to preserve manual list curation
-- **Topic-level enrichment**
-
-all in a way that is private, reproducible, and easy to extend.
-
-Geekist Stars fills this gap with a **local-first pipeline**.
-
-### Why not SaaS stars managers?
-
-- **Private by default**: no repo content leaves your machine.
-- **Auditable**: every decision (scores, rationales, runs) is in SQLite.
-- **Composable**: build your own reports with `SELECT`, not a black‑box UI.
+SaaS stars managers often fall short on privacy, auditability, and composability. Geekist Stars is private by default (no repo content leaves your machine), every decision is auditable in SQLite, and you can build your own reports with SQL.
 
 ## Problem Statement
 
-Given a user’s GitHub Lists and starred repositories, build a local system that:
-
-1. Summarises each repository in one paragraph suitable for an experienced engineer.
-2. Categorises repositories against user-defined list criteria and proposes updates.
-3. Enriches repositories with topic metadata sourced offline from a local clone of `github/explore`.
-4. Persists everything in a relational store that supports reproducible re-runs, auditing, and downstream analysis.
+Given a user's GitHub Lists and starred repositories, the goal is to build a local system that summarizes each repository for engineers, categorizes repositories for user-defined lists, enriches them with offline topic metadata, and stores everything in a relational database for reproducibility and auditing.
 
 ## Contributions
 
-- **Local LLM workflow** using Ollama. No remote inference.
-- **Editable prompt schema** in `prompts.yaml`. A setup step generates list criteria that can be refined.
-- **Explainable categorisation** that matches repositories to lists using transparent prompts and policies. Results can be applied back to GitHub or reviewed first.
-- **Robust summarisation** combining README text, repo metadata, and activity signals into short neutral summaries.
-- **Offline topic enrichment** by parsing a local clone of `github/explore`. No network lookups.
-- **Auditable storage** in SQLite with identifiers for each model run, full scores, and indexed text.
+Geekist Stars uses local LLMs (via Ollama), an editable prompt schema, explainable categorization, robust summarization, offline topic enrichment, and auditable storage in SQLite.
 
 ## System Overview
 
-The pipeline consists of four stages that can be run independently.
-
-1. **Ingest**
-   Imports lists and repositories via the GitHub API. Computes simple metrics such as popularity, freshness, and activeness, then normalises topics. Results are stored in SQLite.
-
-   **Automatic Cleanup**: During ingest, repositories that are no longer starred are automatically removed from the local database (unless they have manual overrides via `repo_overrides`). This ensures the local corpus stays synchronized with your current GitHub stars while preserving any repositories you've manually configured to keep.
-
-2. **Summarise**
-   Generates a single paragraph per repository using an Ollama model. Inputs include README text (when available), description, languages, topics, and activity metrics. Output is saved to `repo.summary` and indexed for search.
-
-3. **Categorise**
-   Evaluates each repository against editable list criteria. Scores and rationales are saved to `repo_list_score` under a `model_run`. A conservative policy proposes add/remove/review actions, which can be applied back to GitHub Lists.
-
-4. **Topics**
-   Reconciles `repo.topics` into `repo_topics`, then populates `topics`, `topic_alias`, and `topic_related` by parsing the local `github/explore` repository. This produces display names, descriptions, aliases, and related topic edges without network calls. A report summarises coverage and usage.
+The pipeline consists of four independent stages: ingest (imports and cleans up repositories and lists, computes metrics, normalizes topics), summarize (generates one-paragraph summaries), categorize (scores repositories for lists and proposes actions), and topics (enriches and normalizes topics from local data).
 
 ## Data Model (Summary)
 
-- **Lists and membership**: `list`, `list_repo`.
-- **Repositories and signals**: `repo` with popularity, freshness, activeness, tags, and `summary`.
-- **Repository overrides**: `repo_overrides` to preserve specific repositories during automatic cleanup.
-- **Text index**: `repo_fts` for search over names, descriptions, README text, and summaries.
-- **Model audit**: `model_run`, `repo_list_score` for reproducibility of categorisation.
-- **Topics**: `topics` with metadata from `github/explore`.
-- **Topic graph**: `topic_alias` for normalisation and `topic_related` for edges.
-- **Repo-to-topic**: `repo_topics` derived from metadata and reconciled locally.
+Data is organized into lists and memberships, repositories and computed signals, repository overrides, a text index for search, model audit tables, topics and their relationships, and reconciled repo-to-topic mappings.
 
 ### Signals (glossary)
 
-- **popularity**: log‑scaled stars & forks (decays with age)
-- **freshness**: last‑commit recency windowed over 180 days
-- **activeness**: commits/issues/PRs velocity normalised per repo size
+Popularity is based on log-scaled stars and forks (decays with age), freshness is based on recent commits, and activeness measures commit/issue/PR velocity normalized for repo size.
 
 ## Methods
 
-### Summarisation
-
-Summaries are generated in a fixed style: 60-90 words, factual, and present-tense. They use both repository text and metadata. The goal is fast recall and triage rather than depth.
-
-### Categorisation and Policy
-
-Categorisation converts list criteria into structured prompts. Each repo receives a score and rationale per list. A simple explicit policy turns scores into suggested add/remove/review actions. The plan is reported before any changes are applied.
-
-### Topic Enrichment
-
-Topics are harvested from `repo.topics`. Metadata is parsed from a local `github/explore` clone (`GH_EXPLORE_PATH`). Front matter provides descriptions, while Markdown bodies supply related links. Aliases and related topics populate `topic_alias` and `topic_related`.
-
-This avoids reliance on undocumented or unstable APIs.
+Summarization produces factual, present-tense summaries of 60-90 words. Categorization uses structured prompts and explicit policies to propose list changes. Topic enrichment parses local `github/explore` data to provide metadata, aliases, and related topics.
 
 ## Reproducibility
 
-- Prompts live in versioned YAML, generated once during setup and edited in place.
-- Each categorisation run has a unique `model_run` identifier; all scores are stored with it.
-- The database evolves via additive migrations to maintain compatibility.
-- The system can be re-run end-to-end to verify outputs.
-
-### Resuming work
-
-Long runs persist progress per `model_run`.
-
-- Summaries: `gk-stars summarise --all --limit 500 --resummarise` (force rebuilds)
-- Ranking: `gk-stars score --all --resume last` (continue the previous batch)
+Prompts are versioned in YAML and editable. Each categorization run is uniquely identified, with all scores stored. The database evolves via additive migrations and can be re-run to verify outputs. Progress is persisted for long runs, and commands support resuming.
 
 ## Current Scope and Non-Goals
 
-- Search is basic (SQLite FTS). Richer querying is possible but not included.
-- No attempt is made to infer beyond prompts and metrics. Human review is expected.
+Search is basic (SQLite FTS), and human review is expected for categorization. The system does not attempt to infer beyond prompts and metrics.
 
 ## Limitations
 
-- Summaries depend on metadata quality. Repos with poor READMEs yield minimal summaries.
-- Categorisation quality depends on criteria clarity. Overlapping lists reduce separation.
-- Topic coverage is bounded by what exists in `github/explore`.
+Summary quality depends on repository metadata. Categorization depends on clear list criteria. Topic coverage is limited to what's available in `github/explore`.
 
 ## Future Work
 
-- Advanced search and filtering over FTS, metrics, and topics.
-- Graph export for repos and topics.
-- Historical diffing across model runs.
-- Assisted criteria authoring and cross-list consistency checks.
+Planned improvements include advanced search, graph export, historical diffing, and assisted criteria authoring.
 
 ## Ethics and Privacy
 
-All inference runs locally via Ollama. The SQLite database remains on disk, fully inspectable and removable. No summaries, scores, or repo data are sent to third parties. Applying list updates to GitHub requires explicit user action.
+All inference is local via Ollama. The database remains on disk and is fully inspectable and removable. No repo data, summaries, or scores are sent to third parties. List updates to GitHub require explicit user action.
 
 ## Conclusion
 
 ### Automation (nightly)
 
-Run the orchestrator every night (example: 1 am), then review plans in the morning.
+Schedule the orchestrator to run nightly (e.g., at 1 am), then review the results in the morning.
 
 ```bash
 0 1 * * *  bun /path/to/stars/scripts/orchestrator.ts --only=lists,ingest,summarise,score >> /path/to/stars/logs/cron.out 2>&1
@@ -212,7 +150,7 @@ Run the orchestrator every night (example: 1 am), then review plans in the mor
 
 ## Programmatic API
 
-In addition to the CLI you can consume the library directly. All batch/single operations use option objects, support progress hooks, and allow per-request model overrides via `modelConfig`.
+You can use Geekist Stars as a library in addition to the CLI. All batch and single operations use options objects, support progress hooks, and allow per-request model overrides.
 
 ```ts
 import {
@@ -229,7 +167,6 @@ const summariesResult = await summaries.summariseAll({
   modelConfig: { model: "llama3:8b", host: "http://localhost:11434" },
   onProgress: (e) => {
     if (e.phase === "summarising") {
-      // NOTE: index & total may be provided when known
       console.log(`Summarising ${e.index}/${e.total}`);
     }
   },
@@ -249,7 +186,7 @@ if (ranked.status === "ok") {
 const curatedRanking = await ranking.rankAll({
   limit: 100,
   dry: false,
-  policy: ranking.DEFAULT_POLICY, // Respects manual curation
+  policy: ranking.DEFAULT_POLICY,
 });
 
 // Custom curation threshold
@@ -258,7 +195,7 @@ const customCuration = await ranking.rankOne({
   dry: false,
   policy: {
     respectManualCuration: true,
-    curationRemoveThreshold: 0.15, // Only remove if score < 0.15
+    curationRemoveThreshold: 0.15,
   },
 });
 
@@ -279,11 +216,7 @@ await dispatchCommand("summaries:all", { args: { limit: 10 } });
 
 ### Model Precedence
 
-For summaries & ranking:
-
-1. Explicit `deps` / `llm` objects (if provided)
-2. `modelConfig` (model, host, apiKey)
-3. Environment variables (legacy fallback)
+For summaries and ranking, explicit `deps`/`llm` objects are used if provided, then `modelConfig`, then environment variables as fallback.
 
 ### Progress Phases (Overview)
 
@@ -297,17 +230,13 @@ For summaries & ranking:
 
 ### Error Handling
 
-Missing configuration raises `ConfigError`. Ranking JSON parse issues surface as per-item `error` status; batches continue.
+Missing configuration raises `ConfigError`. Ranking JSON parse issues are surfaced per item, but batches continue. See `MIGRATION.md` for details.
 
-See `MIGRATION.md` for a complete phase table and dispatch extension notes.
-
-Geekist Stars shows that local-first tooling can transform a noisy GitHub star collection into a structured, auditable, and navigable corpus. By combining editable prompts, simple metrics, explainable categorisation, and topic enrichment from a local source, the system provides a curated environment that stays under the user’s control.
+Geekist Stars demonstrates that local-first tooling can turn a noisy GitHub star collection into a structured, auditable, and navigable resource. By combining editable prompts, simple metrics, explainable categorization, and local topic enrichment, it helps you maintain control over your personal repository corpus.
 
 ## Bundle Size & Externals
 
-The heavy LLM stack (`@jasonnathan/llm-core`, `ollama`) is **externalised** so published bundles stay lean:
-
-Recent build (with peers external):
+The LLM stack (`@jasonnathan/llm-core`, `ollama`) is externalized to keep published bundles small:
 
 ```
 index.js            ~225 KB
@@ -318,19 +247,17 @@ setup.public.js     ~175 KB
 stars.public.js     ~174 KB
 ```
 
-Add peers only if you need LLM-powered features:
+Add peer dependencies only if you need LLM-powered features:
 
 ```bash
 bun add @jasonnathan/llm-core ollama
 ```
 
-Then set `OLLAMA_MODEL` and run `gks summarise` / `gks score` normally.
-
-If the peers are missing and you invoke LLM code, a runtime error will instruct you to install them.
+Set `OLLAMA_MODEL` and run `gks summarise` or `gks score` as usual. If peers are missing and you attempt to use LLM features, you'll get a runtime error with installation instructions.
 
 ## Citation
 
-If you use **Geekist Stars** in your research or projects, please cite:
+If you use Geekist Stars in your research or projects, please cite:
 
 ```bibtex
 @software{nathan_geekist_stars_2025,
