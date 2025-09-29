@@ -1,5 +1,4 @@
-import type { Database } from "bun:sqlite";
-import { withDB } from "@lib/db";
+import { makeCreateService } from "@lib/create-service";
 import type { RepoRow } from "@lib/types";
 import type { ScoreItem } from "./llm";
 import type {
@@ -15,9 +14,9 @@ import type {
 
 const SUMMARY_PRED = "r.summary IS NOT NULL AND length(trim(r.summary)) > 0";
 
-export function createScoringService(database?: Database): ScoringService {
-	const db = withDB(database);
-	const qBatchDefault = db.query<RepoRow, BindRunLimit>(`
+export const createScoringService = makeCreateService<ScoringService>(
+	({ db }) => {
+		const qBatchDefault = db.query<RepoRow, BindRunLimit>(`
       SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
              r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,
              r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
@@ -31,7 +30,7 @@ export function createScoringService(database?: Database): ScoringService {
       LIMIT ?
     `);
 
-	const qBatchBySlug = db.query<RepoRow, BindSlugRunLimit>(`
+		const qBatchBySlug = db.query<RepoRow, BindSlugRunLimit>(`
       SELECT r.id, r.name_with_owner, r.url, r.description, r.primary_language, r.topics,
              r.stars, r.forks, r.popularity, r.freshness, r.activeness, r.pushed_at,
              r.last_commit_iso, r.last_release_iso, r.updated_at, r.summary
@@ -47,221 +46,224 @@ export function createScoringService(database?: Database): ScoringService {
       LIMIT ?
     `);
 
-	const iScore = db.query<
-		unknown,
-		[number, number, string, number, string | null]
-	>(`
+		const iScore = db.query<
+			unknown,
+			[number, number, string, number, string | null]
+		>(`
       INSERT INTO repo_list_score (run_id, repo_id, list_slug, score, rationale)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(run_id, repo_id, list_slug) DO UPDATE SET
         score = excluded.score,
         rationale = excluded.rationale
     `);
-	function getLastRunId(): number | null {
-		const row = db
-			.query<{ id: number | null }, []>(`SELECT MAX(id) AS id FROM model_run`)
-			.get();
-		return row?.id ?? null;
-	}
-
-	function createRun(notes?: string): number {
-		db.query(`INSERT INTO model_run (notes) VALUES (?)`).run(notes ?? null);
-		const row = db
-			.query<{ id: number }, []>(`SELECT last_insert_rowid() AS id`)
-			.get();
-		if (!row?.id) throw new Error("failed to create model_run");
-		return row.id;
-	}
-
-	function resolveRunContext(opts: {
-		dry: boolean;
-		notes?: string;
-		resume?: ResumeFlag;
-	}): { runId: number | null; filterRunId: number | null } {
-		if (opts.resume === "last") {
-			const last = getLastRunId();
-			if (opts.dry) return { runId: null, filterRunId: last };
-			if (last) return { runId: last, filterRunId: last };
-			const created = createRun(opts.notes);
-			return { runId: created, filterRunId: created };
+		function getLastRunId(): number | null {
+			const row = db
+				.query<{ id: number | null }, []>(`SELECT MAX(id) AS id FROM model_run`)
+				.get();
+			return row?.id ?? null;
 		}
-		if (typeof opts.resume === "number") {
-			const ok = db
-				.query<{ ok: number }, [number]>(
-					`SELECT 1 ok FROM model_run WHERE id = ?`,
-				)
-				.get(opts.resume);
-			if (!ok) throw new Error(`--resume ${opts.resume} does not exist`);
-			return opts.dry
-				? { runId: null, filterRunId: opts.resume }
-				: { runId: opts.resume, filterRunId: opts.resume };
+
+		function createRun(notes?: string): number {
+			db.query(`INSERT INTO model_run (notes) VALUES (?)`).run(notes ?? null);
+			const row = db
+				.query<{ id: number }, []>(`SELECT last_insert_rowid() AS id`)
+				.get();
+			if (!row?.id) throw new Error("failed to create model_run");
+			return row.id;
 		}
-		if (opts.dry) return { runId: null, filterRunId: null };
-		const id = createRun(opts.notes);
-		return { runId: id, filterRunId: id };
-	}
 
-	function selectRepos(
-		sel: BatchSelector,
-		filterRunId: number | null,
-	): RepoRow[] {
-		const limit = Math.max(1, Number(sel.limit ?? 10));
-		if (sel.listSlug)
-			return qBatchBySlug.all(sel.listSlug, filterRunId, filterRunId, limit);
-		return qBatchDefault.all(filterRunId, filterRunId, limit);
-	}
+		function resolveRunContext(opts: {
+			dry: boolean;
+			notes?: string;
+			resume?: ResumeFlag;
+		}): { runId: number | null; filterRunId: number | null } {
+			if (opts.resume === "last") {
+				const last = getLastRunId();
+				if (opts.dry) return { runId: null, filterRunId: last };
+				if (last) return { runId: last, filterRunId: last };
+				const created = createRun(opts.notes);
+				return { runId: created, filterRunId: created };
+			}
+			if (typeof opts.resume === "number") {
+				const ok = db
+					.query<{ ok: number }, [number]>(
+						`SELECT 1 ok FROM model_run WHERE id = ?`,
+					)
+					.get(opts.resume);
+				if (!ok) throw new Error(`--resume ${opts.resume} does not exist`);
+				return opts.dry
+					? { runId: null, filterRunId: opts.resume }
+					: { runId: opts.resume, filterRunId: opts.resume };
+			}
+			if (opts.dry) return { runId: null, filterRunId: null };
+			const id = createRun(opts.notes);
+			return { runId: id, filterRunId: id };
+		}
 
-	function persistScores(
-		runId: number,
-		repoId: number,
-		scores: ScoreItem[],
-	): void {
-		for (const s of scores)
-			iScore.run(runId, repoId, s.list, s.score, s.why ?? null);
-	}
+		function selectRepos(
+			sel: BatchSelector,
+			filterRunId: number | null,
+		): RepoRow[] {
+			const limit = Math.max(1, Number(sel.limit ?? 10));
+			if (sel.listSlug)
+				return qBatchBySlug.all(sel.listSlug, filterRunId, filterRunId, limit);
+			return qBatchDefault.all(filterRunId, filterRunId, limit);
+		}
 
-	function planTargets(
-		current: string[],
-		scores: ScoreItem[],
-		policy?: ApplyPolicy,
-	): PlanResult {
-		// CURATION MODE: preserve manual work + add new high-scoring lists
-		if (policy?.respectManualCuration) {
-			const scoreMap = new Map(scores.map((s) => [s.list, s.score]));
-			const removeThreshold = policy.curationRemoveThreshold ?? 0.1;
-			const addBySlug = policy.thresholds?.addBySlug ?? {};
-			const defaultAdd = policy.thresholds?.defaultAdd ?? 0.7;
+		function persistScores(
+			runId: number,
+			repoId: number,
+			scores: ScoreItem[],
+		): void {
+			for (const s of scores)
+				iScore.run(runId, repoId, s.list, s.score, s.why ?? null);
+		}
 
-			// Keep all current lists unless they score extremely low
-			const reallyBad = current.filter(
-				(slug) => (scoreMap.get(slug) ?? 0) < removeThreshold,
+		function planTargets(
+			current: string[],
+			scores: ScoreItem[],
+			policy?: ApplyPolicy,
+		): PlanResult {
+			// CURATION MODE: preserve manual work + add new high-scoring lists
+			if (policy?.respectManualCuration) {
+				const scoreMap = new Map(scores.map((s) => [s.list, s.score]));
+				const removeThreshold = policy.curationRemoveThreshold ?? 0.1;
+				const addBySlug = policy.thresholds?.addBySlug ?? {};
+				const defaultAdd = policy.thresholds?.defaultAdd ?? 0.7;
+
+				// Keep all current lists unless they score extremely low
+				const reallyBad = current.filter(
+					(slug) => (scoreMap.get(slug) ?? 0) < removeThreshold,
+				);
+				const keep = current.filter((slug) => !reallyBad.includes(slug));
+
+				// Add new lists that score highly and aren't already present
+				const add = scores
+					.filter((s) => {
+						const threshold = addBySlug[s.list] ?? defaultAdd;
+						return s.score >= threshold && !current.includes(s.list);
+					})
+					.map((s) => s.list);
+
+				// No review category in curation mode - either keep or add
+				const review: string[] = [];
+
+				return {
+					planned: [...new Set([...keep, ...add])],
+					add,
+					remove: reallyBad,
+					keep,
+					review,
+				};
+			}
+
+			// EXISTING LOGIC for unlisted/first-run repos (unchanged)
+			const cfg = policy?.thresholds;
+			const addBySlug = cfg?.addBySlug ?? {};
+			const defaultAdd = cfg?.defaultAdd ?? 0.7;
+			const removeTh = cfg?.remove ?? 0.3;
+			const preserve = cfg?.preserve ?? new Set<string>();
+
+			const scoreMap = new Map<string, number>(
+				scores.map((s) => [s.list, s.score]),
 			);
-			const keep = current.filter((slug) => !reallyBad.includes(slug));
+			const keep = current.filter(
+				(slug) => (scoreMap.get(slug) ?? 0) > removeTh,
+			);
 
-			// Add new lists that score highly and aren't already present
+			const review = scores
+				.filter(
+					(s) =>
+						s.score > removeTh && s.score < (addBySlug[s.list] ?? defaultAdd),
+				)
+				.map((s) => s.list);
+
 			const add = scores
 				.filter((s) => {
-					const threshold = addBySlug[s.list] ?? defaultAdd;
-					return s.score >= threshold && !current.includes(s.list);
+					const th = addBySlug[s.list] ?? defaultAdd;
+					return s.score >= th && !keep.includes(s.list);
 				})
 				.map((s) => s.list);
 
-			// No review category in curation mode - either keep or add
-			const review: string[] = [];
+			const plannedBase = [...new Set([...keep, ...add])];
+			const preservedOnRepo = current.filter((s) => preserve.has(s));
+			const planned = [...new Set([...plannedBase, ...preservedOnRepo])];
+			const remove = current.filter(
+				(s) => !planned.includes(s) && !preserve.has(s),
+			);
+
+			return { planned, add, remove, keep, review };
+		}
+
+		function planMembership(
+			repo: RepoRow,
+			current: string[],
+			scores: ScoreItem[],
+			policy?: ApplyPolicy,
+		): PlanMembershipResult {
+			const base = planTargets(current, scores, policy);
+			const preserve = policy?.thresholds?.preserve ?? new Set<string>();
+
+			// Start with base plan
+			let finalPlanned = base.planned.slice();
+			let blocked = false;
+			let blockReason: string | undefined;
+			let fallbackUsed: { list: string; score: number } | null = null;
+
+			// Guard: min stars
+			if (policy?.minStars != null && (repo.stars ?? 0) < policy.minStars) {
+				blocked = true;
+				blockReason = `safety: stars ${repo.stars ?? 0} < ${policy.minStars}`;
+			}
+
+			// Avoid listless: if planned is empty, optionally fall back to top review
+			if (!blocked && policy?.avoidListless && finalPlanned.length === 0) {
+				const byScoreDesc = [...scores].sort((a, b) => b.score - a.score);
+				const topReview =
+					byScoreDesc.find((s) => base.review.includes(s.list)) ?? null;
+				if (topReview) {
+					finalPlanned = [topReview.list];
+					fallbackUsed = { list: topReview.list, score: topReview.score };
+				} else {
+					blocked = true;
+					blockReason = "would become listless (no review candidate)";
+				}
+			}
+
+			// Always preserve personal lists already on the repo
+			if (!blocked) {
+				const preserved = current.filter((s) => preserve.has(s));
+				finalPlanned = [...new Set([...finalPlanned, ...preserved])];
+			}
+
+			const changed =
+				finalPlanned
+					.slice()
+					.sort((a, b) => a.localeCompare(b))
+					.join(",") !==
+				current
+					.slice()
+					.sort((a, b) => a.localeCompare(b))
+					.join(",");
 
 			return {
-				planned: [...new Set([...keep, ...add])],
-				add,
-				remove: reallyBad,
-				keep,
-				review,
+				...base,
+				finalPlanned,
+				changed,
+				blocked,
+				blockReason,
+				fallbackUsed,
 			};
 		}
 
-		// EXISTING LOGIC for unlisted/first-run repos (unchanged)
-		const cfg = policy?.thresholds;
-		const addBySlug = cfg?.addBySlug ?? {};
-		const defaultAdd = cfg?.defaultAdd ?? 0.7;
-		const removeTh = cfg?.remove ?? 0.3;
-		const preserve = cfg?.preserve ?? new Set<string>();
-
-		const scoreMap = new Map<string, number>(
-			scores.map((s) => [s.list, s.score]),
-		);
-		const keep = current.filter((slug) => (scoreMap.get(slug) ?? 0) > removeTh);
-
-		const review = scores
-			.filter(
-				(s) =>
-					s.score > removeTh && s.score < (addBySlug[s.list] ?? defaultAdd),
-			)
-			.map((s) => s.list);
-
-		const add = scores
-			.filter((s) => {
-				const th = addBySlug[s.list] ?? defaultAdd;
-				return s.score >= th && !keep.includes(s.list);
-			})
-			.map((s) => s.list);
-
-		const plannedBase = [...new Set([...keep, ...add])];
-		const preservedOnRepo = current.filter((s) => preserve.has(s));
-		const planned = [...new Set([...plannedBase, ...preservedOnRepo])];
-		const remove = current.filter(
-			(s) => !planned.includes(s) && !preserve.has(s),
-		);
-
-		return { planned, add, remove, keep, review };
-	}
-
-	function planMembership(
-		repo: RepoRow,
-		current: string[],
-		scores: ScoreItem[],
-		policy?: ApplyPolicy,
-	): PlanMembershipResult {
-		const base = planTargets(current, scores, policy);
-		const preserve = policy?.thresholds?.preserve ?? new Set<string>();
-
-		// Start with base plan
-		let finalPlanned = base.planned.slice();
-		let blocked = false;
-		let blockReason: string | undefined;
-		let fallbackUsed: { list: string; score: number } | null = null;
-
-		// Guard: min stars
-		if (policy?.minStars != null && (repo.stars ?? 0) < policy.minStars) {
-			blocked = true;
-			blockReason = `safety: stars ${repo.stars ?? 0} < ${policy.minStars}`;
-		}
-
-		// Avoid listless: if planned is empty, optionally fall back to top review
-		if (!blocked && policy?.avoidListless && finalPlanned.length === 0) {
-			const byScoreDesc = [...scores].sort((a, b) => b.score - a.score);
-			const topReview =
-				byScoreDesc.find((s) => base.review.includes(s.list)) ?? null;
-			if (topReview) {
-				finalPlanned = [topReview.list];
-				fallbackUsed = { list: topReview.list, score: topReview.score };
-			} else {
-				blocked = true;
-				blockReason = "would become listless (no review candidate)";
-			}
-		}
-
-		// Always preserve personal lists already on the repo
-		if (!blocked) {
-			const preserved = current.filter((s) => preserve.has(s));
-			finalPlanned = [...new Set([...finalPlanned, ...preserved])];
-		}
-
-		const changed =
-			finalPlanned
-				.slice()
-				.sort((a, b) => a.localeCompare(b))
-				.join(",") !==
-			current
-				.slice()
-				.sort((a, b) => a.localeCompare(b))
-				.join(",");
-
 		return {
-			...base,
-			finalPlanned,
-			changed,
-			blocked,
-			blockReason,
-			fallbackUsed,
+			getLastRunId,
+			createRun,
+			resolveRunContext,
+			selectRepos,
+			persistScores,
+			planTargets,
+			planMembership,
 		};
-	}
-
-	return {
-		getLastRunId,
-		createRun,
-		resolveRunContext,
-		selectRepos,
-		persistScores,
-		planTargets,
-		planMembership,
-	};
-}
+	},
+);

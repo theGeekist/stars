@@ -14,9 +14,9 @@ Summaries are used by the **Scoring** step to reduce hallucinations and keep cri
 ## Import / DI
 
 ```ts
-import { createSummariseService } from '@features/summarise';
+import { createSummariseService } from "@features/summarise";
 
-const svc = createSummariseService(database?);
+const svc = createSummariseService({ db: database });
 ```
 
 - `database?`: optional `Database` from `bun:sqlite`.

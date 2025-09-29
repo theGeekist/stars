@@ -10,7 +10,7 @@ describe("export-based cleanup integration", () => {
 	test("ingestFromExports automatically cleans up repos not in export files", async () => {
 		const db = createDb(":memory:");
 		initSchema(db);
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Create a temporary export directory
 		const tempDir = await mkdtemp(join(tmpdir(), "stars-test-"));

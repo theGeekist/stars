@@ -137,7 +137,7 @@ type RepoInfo = {
 ### Fetch “unlisted stars” for export
 
 ```ts
-const starsSvc = createStarsService(starsLib);
+const starsSvc = createStarsService();
 
 const unlisted = await starsSvc.read.getUnlistedStars();
 // write to exports/unlisted.json for ingest to pick up

@@ -83,7 +83,7 @@ export async function summariseBatchAllCore(
 	database: Database | undefined,
 	logger: typeof realLog,
 ): Promise<void> {
-	const svc = createSummariseService(database);
+	const svc = createSummariseService({ db: database });
 	const rows = svc.selectRepos({ limit, resummarise: !!opts?.resummarise });
 
 	if (!rows.length) {
@@ -139,7 +139,7 @@ export async function summariseOneCore(
 	logger.info("URL:", row.url);
 	if (row.primary_language) logger.info("Lang:", row.primary_language);
 
-	const svc = createSummariseService(database);
+	const svc = createSummariseService({ db: database });
 
 	try {
 		const { paragraph } = await generateSummaryForRow(row, deps, logger);

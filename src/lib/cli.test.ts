@@ -154,12 +154,12 @@ describe("CLI Utilities", () => {
 
 	describe("hasBooleanFlag", () => {
 		it("returns true when flag is present", () => {
-			const hasFlag = hasBooleanFlag(["cmd", "--verbose", "arg"], "--verbose");
+			const hasFlag = hasBooleanFlag(["cmd", "--verbose", "arg"], "verbose");
 			expect(hasFlag).toBe(true);
 		});
 
 		it("returns false when flag is not present", () => {
-			const hasFlag = hasBooleanFlag(["cmd", "--other", "arg"], "--verbose");
+			const hasFlag = hasBooleanFlag(["cmd", "--other", "arg"], "verbose");
 			expect(hasFlag).toBe(false);
 		});
 	});

@@ -49,7 +49,7 @@ function setupTestDb() {
 describe("ingest service cleanup functionality", () => {
 	test("cleanupRemovedFromExports removes repos no longer in exports without overrides", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert test repo
 		db.run(`
@@ -76,7 +76,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports preserves repos with repo_overrides", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert test repo
 		db.run(`
@@ -103,7 +103,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports preserves currently exported repos", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert test repo
 		db.run(`
@@ -127,7 +127,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports removes repo from lists before deleting", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert test repo and list
 		db.run(`
@@ -166,7 +166,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports handles repos with null repo_id safely", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert repo with null repo_id (manual entry)
 		db.run(`
@@ -189,7 +189,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports returns summary of actions taken", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		// Insert repos: one to remove, one to preserve with overrides, one still in exports
 		db.run(`
@@ -216,7 +216,7 @@ describe("ingest service cleanup functionality", () => {
 
 	test("cleanupRemovedFromExports handles empty database gracefully", () => {
 		const db = setupTestDb();
-		const service = createIngestService(db);
+		const service = createIngestService({ db });
 
 		const currentExportRepos = new Set(["test/any-repo"]);
 		const result = service.cleanupRemovedFromExports(currentExportRepos);

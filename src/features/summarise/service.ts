@@ -1,10 +1,8 @@
-import type { Database } from "bun:sqlite";
-import { withDB } from "@lib/db";
+import { makeCreateService } from "@lib/create-service";
 import type { RepoRow } from "@lib/types";
 import type { BatchSelector, BindLimit, BindLimitSlug } from "./types";
 
-export function createSummariseService(database?: Database) {
-	const db = withDB(database);
+export const createSummariseService = makeCreateService(({ db }) => {
 	function selectRepos(sel: BatchSelector): RepoRow[] {
 		const limit = Math.max(1, Number(sel.limit ?? 10));
 		if (sel.slug) {
@@ -42,4 +40,4 @@ export function createSummariseService(database?: Database) {
 	}
 
 	return { selectRepos, saveSummary };
-}
+});

@@ -1,5 +1,6 @@
 // src/features/stars/service.ts
 import type { Database } from "bun:sqlite";
+import { makeCreateService } from "@lib/create-service";
 import { withDB } from "@lib/db";
 import { githubGraphQL } from "@lib/github";
 import * as starsLib from "@lib/stars";
@@ -15,7 +16,15 @@ export type StarsApi = {
 	collectStarIdsSet: typeof starsLib.collectStarIdsSet;
 };
 
-export function createStarsService(
+// For production use with standard dependency injection
+export const createStarsService = makeCreateService<StarsService>(
+	({ db, token }) => {
+		return createStarsServiceInternal(starsLib, db, githubGraphQL, { token });
+	},
+);
+
+// Internal service factory that allows full customization for tests
+export function createStarsServiceInternal(
 	api: StarsApi = starsLib, // <-- injectable, defaults to real lib
 	database?: Database,
 	ghGraphQLParam: <T>(

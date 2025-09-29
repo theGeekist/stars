@@ -85,7 +85,7 @@ export async function summariseAll(
 		"./summarise"
 	);
 
-	const svc = createSummariseService(db);
+	const svc = createSummariseService({ db });
 	const rows = svc.selectRepos({ limit, resummarise });
 	if (!rows.length) {
 		return {
@@ -179,7 +179,7 @@ export async function summariseRepo(
 		).generateSummaryForRow(row, effectiveDeps, logger);
 		const svc = (
 			await import("@features/summarise/service")
-		).createSummariseService(db);
+		).createSummariseService({ db });
 		(await import("./summarise")).saveSummaryOrDryRun(
 			svc,
 			row.id,

@@ -1,7 +1,14 @@
 // src/lib/types/graphql.ts
 // Common GraphQL response patterns
 
-import type { PageInfo } from "./base";
+import type {
+	CoreRepoFields,
+	PageInfo,
+	RepoMetaFields,
+	RepoStatsFields,
+	RepoStatusFields,
+	RepoTimestampFields,
+} from "./base";
 
 /** Common edge pattern for GraphQL responses */
 export type Edge<T> = {
@@ -122,78 +129,62 @@ export type ListItemsAtEdge = {
 				name: string;
 				items: {
 					pageInfo: PageInfo;
-					nodes: Array<{
-						__typename: "Repository";
-						repoId: string;
-						nameWithOwner?: string;
-						url?: string;
-						description?: string | null;
-						homepageUrl?: string | null;
-						stargazerCount?: number;
-						forkCount?: number;
-						watchers?: { totalCount: number };
-						issues?: { totalCount: number };
-						pullRequests?: { totalCount: number };
-						defaultBranchRef?: {
-							name?: string | null;
-							target?: { committedDate?: string | null } | null;
-						} | null;
-						releases?: {
-							nodes: Array<{
-								tagName?: string | null;
-								publishedAt?: string | null;
-								url?: string | null;
-							}>;
-						};
-						repositoryTopics?: { nodes: Array<{ topic: { name: string } }> };
-						primaryLanguage?: { name: string } | null;
-						languages?: {
-							edges: Array<{ size: number; node: { name: string } }>;
-						};
-						licenseInfo?: { spdxId?: string | null } | null;
-						isArchived?: boolean;
-						isDisabled?: boolean;
-						isFork?: boolean;
-						isMirror?: boolean;
-						hasIssuesEnabled?: boolean;
-						pushedAt?: string;
-						updatedAt?: string;
-						createdAt?: string;
-						diskUsage?: number | null;
-						hasDiscussionsEnabled?: boolean;
-						discussionCategories?: {
-							nodes: Array<{
-								id: string;
-								name: string;
-								slug?: string | null;
-							}>;
-						};
-						changelogRoot?: {
-							__typename?: string;
-							byteSize?: number | null;
-							oid?: string | null;
-						} | null;
-						changelogDocs?: {
-							__typename?: string;
-							byteSize?: number | null;
-							oid?: string | null;
-						} | null;
-						changelogHistory?: {
-							__typename?: string;
-							byteSize?: number | null;
-							oid?: string | null;
-						} | null;
-						changelogChanges?: {
-							__typename?: string;
-							byteSize?: number | null;
-							oid?: string | null;
-						} | null;
-						changelogNews?: {
-							__typename?: string;
-							byteSize?: number | null;
-							oid?: string | null;
-						} | null;
-					}>;
+					nodes: Array<
+						{
+							__typename: "Repository";
+							repoId: string;
+						} & CoreRepoFields &
+							RepoStatsFields &
+							RepoMetaFields &
+							RepoStatusFields &
+							RepoTimestampFields & {
+								defaultBranchRef?: {
+									name?: string | null;
+									target?: { committedDate?: string | null } | null;
+								} | null;
+								releases?: {
+									nodes: Array<{
+										tagName?: string | null;
+										publishedAt?: string | null;
+										url?: string | null;
+									}>;
+								};
+								diskUsage?: number | null;
+								hasDiscussionsEnabled?: boolean;
+								discussionCategories?: {
+									nodes: Array<{
+										id: string;
+										name: string;
+										slug?: string | null;
+									}>;
+								};
+								changelogRoot?: {
+									__typename?: string;
+									byteSize?: number | null;
+									oid?: string | null;
+								} | null;
+								changelogDocs?: {
+									__typename?: string;
+									byteSize?: number | null;
+									oid?: string | null;
+								} | null;
+								changelogHistory?: {
+									__typename?: string;
+									byteSize?: number | null;
+									oid?: string | null;
+								} | null;
+								changelogChanges?: {
+									__typename?: string;
+									byteSize?: number | null;
+									oid?: string | null;
+								} | null;
+								changelogNews?: {
+									__typename?: string;
+									byteSize?: number | null;
+									oid?: string | null;
+								} | null;
+							}
+					>;
 				};
 			}>;
 		};

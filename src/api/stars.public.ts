@@ -2,7 +2,6 @@ import type { Database } from "bun:sqlite";
 import { createStarsService } from "@features/stars";
 import type { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
-import * as starsLib from "@lib/stars";
 import type { RepoInfo, StarList } from "@lib/types";
 import { ConfigError } from "./public.types";
 
@@ -89,7 +88,7 @@ export async function fetchUnlistedStars(
 	opts: StarsFetchOptions = {},
 ): Promise<RepoInfo[]> {
 	const { logger } = opts;
-	const svc = createStarsService(starsLib, withDB(db));
+	const svc = createStarsService({ db: withDB(db) });
 	const unlisted = await (logger?.withSpinner?.(
 		"Computing unlisted stars",
 		() => svc.read.getUnlistedStars(),

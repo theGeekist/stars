@@ -224,7 +224,7 @@ export async function runUnlistedCore(
 	ensureToken(logger);
 
 	const s = logger.spinner("Computing unlisted stars...").start();
-	const svc = deps.createStarsService(deps.starsLib, withDB(database));
+	const svc = deps.createStarsService({ db: withDB(database) });
 	const unlisted = await svc.read.getUnlistedStars();
 	s.succeed(`Found ${unlisted.length} unlisted starred repositories`);
 

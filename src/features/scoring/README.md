@@ -14,9 +14,9 @@ Evaluates repositories against list criteria, persists per-list scores/rationale
 ## Import / DI
 
 ```ts
-import { createScoringService } from '@features/scoring';
+import { createScoringService } from "@features/scoring";
 
-const svc = createScoringService(database?); // Database from 'bun:sqlite' optional
+const svc = createScoringService({ db: database }); // Database from create-service utility
 ```
 
 - `database` _(optional)_: if omitted, `withDB()` opens the default DB.

@@ -18,7 +18,7 @@ describe("summarise service", () => {
              (3, 'o/r3', 'u3', 0.5, 0.9, NULL);
     `);
 
-		const svc = createSummariseService(db);
+		const svc = createSummariseService({ db });
 		const rows = svc.selectRepos({ limit: 10 });
 		expect(rows.map((r) => r.name_with_owner)).toEqual(["o/r1", "o/r3"]);
 	});
@@ -32,7 +32,7 @@ describe("summarise service", () => {
       INSERT INTO list_repo(list_id, repo_id) VALUES (1, 1), (1, 2);
     `);
 
-		const svc = createSummariseService(db);
+		const svc = createSummariseService({ db });
 		// Without resummarise, only r1 (summary NULL)
 		const a = svc.selectRepos({ limit: 10, slug: "productivity" });
 		expect(a.map((r) => r.name_with_owner)).toEqual(["o/r1"]);
@@ -50,7 +50,7 @@ describe("summarise service", () => {
 		db.exec(
 			`INSERT INTO repo(id, name_with_owner, url) VALUES (42, 'o/x', 'u');`,
 		);
-		const svc = createSummariseService(db);
+		const svc = createSummariseService({ db });
 		svc.saveSummary(42, "hello world");
 		const row = db
 			.query<{ summary: string | null }, [number]>(

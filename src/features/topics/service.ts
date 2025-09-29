@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { makeCreateService } from "@lib/create-service";
 import { withDB } from "@lib/db";
 import * as api from "./api";
 import type { Deps, RepoMini, RepoRef } from "./types";
@@ -157,7 +158,14 @@ export function refreshStaleTopicMeta(
 }
 
 /* ── Public service (sync) ──────────────────────────────────────────────── */
-export function createTopicsService(
+
+// For production use with standard dependency injection
+export const createTopicsService = makeCreateService(({ db }) => {
+	return createTopicsServiceInternal({}, db);
+});
+
+// Internal service factory that allows full customization for tests
+export function createTopicsServiceInternal(
 	deps: Partial<Deps> = {},
 	database?: Database,
 ) {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { createDb } from "@lib/db";
-import { createTopicsService } from "./service";
+import { createTopicsServiceInternal } from "./service";
 import type { TopicMeta } from "./types";
 
 const db = createDb();
@@ -56,7 +56,7 @@ describe("topics service", () => {
 			"INSERT OR IGNORE INTO topics(topic, display_name, updated_at) VALUES ('rss', 'rss', datetime('now'))",
 		);
 
-		const svc = createTopicsService(
+		const svc = createTopicsServiceInternal(
 			{
 				selectStaleTopics: fakeSelectStale,
 				topicMetaMany: fakeTopicMetaMany,

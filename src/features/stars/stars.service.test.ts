@@ -1,6 +1,9 @@
 // src/features/stars.service.test.ts
 import { describe, expect, it } from "bun:test";
-import { createStarsService, type StarsApi } from "@features/stars/service";
+import {
+	createStarsServiceInternal,
+	type StarsApi,
+} from "@features/stars/service";
 import { createDb } from "@lib/db";
 import * as starsLib from "@lib/stars";
 import { makeEdge, starsPage, VIEWER_STARS_PAGE } from "@lib/stars";
@@ -80,7 +83,7 @@ function makeFakeApi(batches: string[][]): StarsApi {
 describe("stars service — delegation (no pagination duplication)", () => {
 	it("read.getAll delegates to lib and returns combined list", async () => {
 		const db = createDb();
-		const svc = createStarsService(
+		const svc = createStarsServiceInternal(
 			makeFakeApi([["o1/r1"], ["o2/r2"]]),
 			db,
 			undefined,
@@ -92,7 +95,7 @@ describe("stars service — delegation (no pagination duplication)", () => {
 
 	it("read.getAllStream yields batches passed through from lib", async () => {
 		const db = createDb();
-		const svc = createStarsService(
+		const svc = createStarsServiceInternal(
 			makeFakeApi([["a/r"], ["b/r"]]),
 			db,
 			undefined,
@@ -110,7 +113,7 @@ describe("stars service — DB-centric behaviour", () => {
 	it("read.getReposToScore selects top N from local DB", async () => {
 		const db = createDb();
 		// use real api surface; GH client not needed here
-		const svc = createStarsService(starsLib, db);
+		const svc = createStarsServiceInternal(starsLib, db);
 
 		// Seed local repo table (no lists linkage required)
 		db.run(`
@@ -127,7 +130,9 @@ describe("stars service — DB-centric behaviour", () => {
 
 	it("read.collectLocallyListedRepoIdsSet returns GH node ids linked via lists", async () => {
 		const db = createDb();
-		const svc = createStarsService(starsLib, db, undefined, { token: "TEST" });
+		const svc = createStarsServiceInternal(starsLib, db, undefined, {
+			token: "TEST",
+		});
 
 		// list table and repo table with GH node ids, link one repo via list_repo
 		db.run(
@@ -178,7 +183,9 @@ describe("stars service — DB-centric behaviour", () => {
 		});
 
 		// Use real lib for stream diffing, but inject GH client & token
-		const svc = createStarsService(starsLib, db, fakeGh, { token: "TEST" });
+		const svc = createStarsServiceInternal(starsLib, db, fakeGh, {
+			token: "TEST",
+		});
 		const unlisted = await svc.read.getUnlistedStars();
 
 		// Expect R2, R3 only (R1 is listed locally)

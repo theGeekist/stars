@@ -32,6 +32,68 @@ export type BaseRepoMeta = {
 	updated_at?: string | null;
 };
 
+/** Core repository identification fields */
+export type CoreRepoFields = {
+	nameWithOwner?: string;
+	url?: string;
+	description?: string | null;
+	homepageUrl?: string | null;
+};
+
+/** Repository statistics fields */
+export type RepoStatsFields = {
+	stargazerCount?: number;
+	forkCount?: number;
+	watchers?: { totalCount: number };
+	issues?: { totalCount: number };
+	pullRequests?: { totalCount: number };
+};
+
+/** Repository metadata fields */
+export type RepoMetaFields = {
+	primaryLanguage?: { name: string } | null;
+	languages?: {
+		edges: Array<{ size: number; node: { name: string } }>;
+	};
+	licenseInfo?: { spdxId?: string | null } | null;
+	repositoryTopics?: { nodes: Array<{ topic: { name: string } }> };
+};
+
+/** Repository status fields */
+export type RepoStatusFields = {
+	isArchived?: boolean;
+	isDisabled?: boolean;
+	isFork?: boolean;
+	isMirror?: boolean;
+	hasIssuesEnabled?: boolean;
+};
+
+/** Repository timestamps */
+export type RepoTimestampFields = {
+	pushedAt?: string;
+	updatedAt?: string;
+	createdAt?: string;
+};
+
+/** Complete GitHub repository fields composition */
+export type GitHubRepoFields = CoreRepoFields &
+	RepoStatsFields &
+	RepoMetaFields &
+	RepoStatusFields &
+	RepoTimestampFields & {
+		defaultBranchRef?: {
+			name?: string | null;
+			target?: { committedDate?: string | null } | null;
+		} | null;
+		releases?: {
+			nodes: Array<{
+				tagName?: string | null;
+				publishedAt?: string | null;
+			}>;
+		};
+		diskUsage?: number | null;
+	};
+
 /** Standard CLI command options */
 export type BaseCliOptions = {
 	json?: boolean;

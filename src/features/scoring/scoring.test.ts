@@ -28,7 +28,7 @@ const makeRepoRow = (id: number, stars: number): RepoRow => ({
 
 describe("scoring planTargets", () => {
 	const db = createDb();
-	const scoring = createScoringService(db);
+	const scoring = createScoringService({ db });
 
 	it("adds when score >= slug threshold and not in current", () => {
 		const current: string[] = ["ai"];
@@ -67,7 +67,7 @@ describe("scoring planTargets", () => {
 
 describe("scoring planMembership", () => {
 	const db = createDb();
-	const scoring = createScoringService(db);
+	const scoring = createScoringService({ db });
 	const repo: RepoRow = makeRepoRow(1, 100);
 
 	it("blocks apply for low stars when minStars set", () => {
@@ -102,7 +102,7 @@ describe("scoring planMembership", () => {
 describe("scoring DB-backed selection & persistence", () => {
 	it("selectRepos filters by listSlug and respects resume filter", () => {
 		const db = createDb();
-		const svc = createScoringService(db);
+		const svc = createScoringService({ db });
 		// seed list and repos
 		db.run(
 			`INSERT INTO list(name, description, is_private, slug, list_id) VALUES ('AI','',0,'ai','L1')`,
@@ -135,7 +135,7 @@ describe("scoring DB-backed selection & persistence", () => {
 
 	it("resolveRunContext covers last/no-run dry and create flow", () => {
 		const db = createDb();
-		const svc = createScoringService(db);
+		const svc = createScoringService({ db });
 		// resume last with dry and no runs
 		const a = svc.resolveRunContext({ dry: true, resume: "last" });
 		expect(a.runId).toBeNull();
@@ -170,7 +170,7 @@ describe("scoring DB-backed selection & persistence", () => {
 
 	it("planMembership blocks when listless and no review candidate", () => {
 		const db = createDb();
-		const svc = createScoringService(db);
+		const svc = createScoringService({ db });
 		const current: string[] = ["old-cat"];
 		const scores: ScoreItem[] = [
 			{ list: "old-cat", score: 0.1 }, // removed

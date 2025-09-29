@@ -47,9 +47,9 @@ The cleanup compares your current GitHub stars with the local database and remov
 ## Import / DI
 
 ```ts
-import { createIngestService } from '@features/ingest';
+import { createIngestService } from "@features/ingest";
 
-const svc = createIngestService(database?); // Database from 'bun:sqlite' optional
+const svc = createIngestService({ db: database }); // Database from create-service utility
 ```
 
 - `database` _(optional)_: if omitted, `withDB()` opens the default DB.
@@ -67,13 +67,13 @@ type IngestReporter = {
   done?: (x: { lists: number; repos: number }) => void;
 };
 
-createIngestService(database?).ingestFromExports(
+createIngestService().ingestFromExports(
   dir: string,
   reporter?: IngestReporter
 ): Promise<{ lists: number; reposFromLists: number; unlisted: number }>;
 
 // 🆕 New cleanup functionality
-createIngestService(database?).cleanupRemovedStars(
+createIngestService().cleanupRemovedStars(
   currentStarIds: Set<string>
 ): { removed: number; preserved: number; checkedCount: number };
 ```

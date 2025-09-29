@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.5.0 (2025-09-30)
+
+### Added
+
+- **Service Factory Standardization**: All service factories now use the standardized `makeCreateService` utility for consistent dependency injection
+- **Improved Developer Experience**: Services can now be created with simple `createService()` calls using sensible defaults
+- **Enhanced Type Safety**: Consolidated duplicate types across the codebase, reducing type duplication from 7% to below 3%
+
+### Changed
+
+- **BREAKING**: Service factory signatures now use options objects instead of positional parameters:
+  - `createScoringService(database)` → `createScoringService({ db: database })` or `createScoringService()`
+  - `createStarsService(api, db, ghQL, opts)` → `createStarsService({ db, token })` or `createStarsService()`
+  - `createSummariseService(database)` → `createSummariseService({ db: database })` or `createSummariseService()`
+  - `createTopicsService(deps, database)` → `createTopicsService({ db: database })` or `createTopicsService()`
+  - `createIngestService(database)` → `createIngestService({ db: database })` or `createIngestService()`
+- **Standardized Dependencies**: All services now receive `{ db, exec, token }` through the create-service utility
+- **Cleaner APIs**: Services no longer require empty objects `{}` - they can be called with no parameters for default behavior
+
+### Added for Testing
+
+- **Internal Service Factories**: Added `*ServiceInternal` variants for tests requiring custom dependency injection:
+  - `createStarsServiceInternal(api, db, ghQL, opts)` for custom GitHub API injection
+  - `createTopicsServiceInternal(deps, db)` for custom topic API dependency injection
+
+### Internal
+
+- **Architecture Improvement**: Leveraged the previously underused `makeCreateService` utility across all service factories
+- **Consistent Patterns**: Unified service creation patterns improve maintainability and reduce cognitive overhead
+- **Better Testability**: Standardized dependency injection makes mocking and testing more consistent
+
+### Migration
+
+See [MIGRATION.md](MIGRATION.md#v050---service-factory-standardization-and-type-consolidation) for detailed migration instructions.
+
+---
+
 ## 0.4.1 (2025-09-30)
 
 ### Fixed

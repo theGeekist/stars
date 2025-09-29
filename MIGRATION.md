@@ -1,5 +1,93 @@
 # Migration Guide
 
+## v0.5.0 - Service Factory Standardization and Type Consolidation
+
+### Service Factory Changes
+
+**Standardized Service Creation**: All service factories now use the `makeCreateService` utility for consistent dependency injection:
+
+```ts
+// Before (inconsistent patterns)
+createScoringService(database);
+createStarsService(api, database, ghGraphQL, opts);
+createSummariseService(database);
+createTopicsService(deps, database);
+createIngestService(database);
+
+// After (standardized pattern)
+createScoringService({ db: database });
+createStarsService({ db: database, token: "optional" });
+createSummariseService({ db: database });
+createTopicsService({ db: database });
+createIngestService({ db: database });
+
+// Default usage (no parameters needed for default behavior)
+createScoringService();
+createStarsService();
+createSummariseService();
+createTopicsService();
+createIngestService();
+```
+
+**Benefits**:
+
+- **Consistent API**: All services use the same dependency injection pattern
+- **Better Testing**: Standardized mocking through `{ db, exec, token }` interface
+- **Future-proof**: Easy to extend with new dependencies
+- **Type Safety**: Improved TypeScript support with standardized options
+
+**For Testing**: Services that need custom dependencies now provide an internal variant:
+
+```ts
+// For tests requiring custom API or GraphQL injection
+import { createStarsServiceInternal } from "@features/stars/service";
+const svc = createStarsServiceInternal(mockApi, db, mockGraphQL, opts);
+
+import { createTopicsServiceInternal } from "@features/topics/service";
+const svc = createTopicsServiceInternal(customDeps, db);
+```
+
+### Type Consolidation
+
+**Reduced Type Duplication**: Extensive type consolidation work reduced duplicated type definitions from 7% to below 3% across the codebase.
+
+### Breaking Changes
+
+- **Service Factory Signatures**: All service creation functions now require an options object instead of positional parameters. Update service creation calls as shown above.
+- **Test Dependencies**: Tests using service factories will need to update to the new parameter format.
+
+### Migration Steps
+
+1. **Update Service Creation**:
+
+   ```ts
+   // Change this:
+   const service = createIngestService(database);
+
+   // To this:
+   const service = createIngestService({ db: database });
+
+   // Or use defaults:
+   const service = createIngestService();
+   ```
+
+2. **Update Test Files**:
+
+   ```ts
+   // Change this:
+   const svc = createScoringService(mockDb);
+
+   // To this:
+   const svc = createScoringService({ db: mockDb });
+   ```
+
+3. **Use Internal Services for Complex Testing**:
+   ```ts
+   // For tests needing dependency injection:
+   import { createStarsServiceInternal } from "@features/stars/service";
+   const svc = createStarsServiceInternal(mockApi, db, mockGraphQL, opts);
+   ```
+
 ## v0.3.0 - Enhanced CLI and Curation Features
 
 ### New Features

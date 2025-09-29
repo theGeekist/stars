@@ -67,7 +67,7 @@ export async function rankAll(
 	} = options;
 	const apply = !dry;
 	const database = withDB(db);
-	const scoring = createScoringService(database);
+	const scoring = createScoringService({ db: database });
 	const { runId, filterRunId } = scoring.resolveRunContext({
 		dry,
 		resume: "last",
@@ -217,7 +217,7 @@ export async function rankOne(
 		};
 	}
 	try {
-		const scoring = createScoringService(database);
+		const scoring = createScoringService({ db: database });
 		const { runId } = scoring.resolveRunContext({ dry });
 		const listsSvc = createListsService(listsLib, database);
 		const listRows = await listsSvc.read.getListDefs();

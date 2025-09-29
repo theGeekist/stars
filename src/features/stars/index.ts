@@ -1,2 +1,2 @@
-export { createStarsService } from "./service.js";
+export { createStarsService, createStarsServiceInternal } from "./service.js";
 export type { StarsService } from "./types.js";

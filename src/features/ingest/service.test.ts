@@ -15,7 +15,7 @@ function mkTempDir(prefix = "ingest-test-") {
 // Use ONE in-memory DB for all tests and pass it into the service.
 const db = createDb();
 initSchema(db);
-const ingest = createIngestService(db);
+const ingest = createIngestService({ db });
 
 beforeEach(() => {
 	db.run("DELETE FROM list_repo");

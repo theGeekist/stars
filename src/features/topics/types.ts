@@ -34,8 +34,9 @@ export type TopicRow = {
 	related?: string[]; // from explore front-matter
 };
 
-// Row type for statements that don't return rows
-export type NoRow = Record<string, never>;
+import type { NoRow } from "@lib/types";
+
+export type { NoRow };
 // GitHub /search/topics payload shapes
 type TopicSearchItem = {
 	name?: string;

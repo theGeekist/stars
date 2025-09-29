@@ -6,7 +6,6 @@ import { createStarsService } from "@features/stars";
 import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import { getAllListsStream } from "@lib/lists";
-import * as starsLib from "@lib/stars";
 import type { RepoInfo, StarList } from "@lib/types";
 import type { IngestReturn, TestLoggerLike } from "./types";
 import {
@@ -32,7 +31,7 @@ export async function ingestCore(
 	const source = resolveSourceDir(dir);
 	const { reporter } = createIngestReporter(log, source);
 
-	const service = createIngestService(db);
+	const service = createIngestService({ db });
 	const result = await service.ingestFromExports(source, reporter);
 
 	// Details line (concise)
@@ -88,7 +87,7 @@ export function ingestFromData(
 ): { lists: number; reposFromLists: number; unlisted: number } {
 	const source = "memory";
 	const { reporter } = createIngestReporter(log, source);
-	const service = createIngestService(db);
+	const service = createIngestService({ db });
 	const res = service.ingestFromData(lists, unlisted, reporter);
 	log.line(
 		`Details: ${res.reposFromLists} repos via lists, ${res.unlisted} unlisted repos`,
@@ -153,7 +152,7 @@ export async function ingestUnlistedFromGh(
 	log: Logger | TestLoggerLike = realLog,
 	signal?: AbortSignal,
 ): Promise<IngestReturn> {
-	const svc = createStarsService(starsLib, withDB(db));
+	const svc = createStarsService({ db: withDB(db) });
 	const s = log.spinner("Computing unlisted stars...").start();
 	let unlisted: RepoInfo[] = [];
 	try {

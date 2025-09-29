@@ -160,7 +160,7 @@ export async function scoreBatchAllCore(
 	database: Database | undefined,
 	logger: Logger,
 ): Promise<void> {
-	const scoring = createScoringService(database);
+	const scoring = createScoringService({ db: database });
 
 	// Run context
 	const { runId, filterRunId } = scoring.resolveRunContext({
@@ -235,7 +235,7 @@ export async function scoreOneCore(
 		return;
 	}
 
-	const scoring = createScoringService(db);
+	const scoring = createScoringService({ db });
 	const { runId } = scoring.resolveRunContext({ dry: !apply });
 
 	const listsSvc = createListsService(listsLib, db);

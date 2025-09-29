@@ -1,6 +1,6 @@
 import type { Database, Statement } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { withDB } from "@lib/db";
+import { makeCreateService } from "@lib/create-service";
 import {
 	chooseFreshnessSource,
 	deriveTags,
@@ -479,9 +479,7 @@ function extractCurrentRepoNames(
 	return currentRepoNames;
 }
 
-export function createIngestService(database?: Database) {
-	const db = withDB(database);
-
+export const createIngestService = makeCreateService(({ db }) => {
 	function ingestListsTx(
 		listsPreloaded: Array<{ meta: IndexEntry; data: StarList }>,
 		reporter?: IngestReporter,
@@ -660,4 +658,4 @@ export function createIngestService(database?: Database) {
 			};
 		},
 	};
-}
+});

@@ -1,6 +1,11 @@
 // src/lib/common.ts
-export type Reporter = { debug: (...args: unknown[]) => void };
-export const NoopReporter: Reporter = { debug: () => {} };
+
+import type { Reporter } from "./types";
+import { NoopReporter } from "./types/utilities";
+
+// Re-export for backward compatibility
+export { NoopReporter };
+export type { Reporter };
 
 /** Clamp helper (e.g., for page size bounds) */
 export function clamp(n: number, min: number, max: number) {

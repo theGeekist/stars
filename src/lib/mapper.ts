@@ -61,6 +61,88 @@ function mapLastCommitISO(
 		: undefined;
 }
 
+/**
+ * Common mapping logic from GraphQL node to RepoInfo
+ * Takes any node with the standard repository fields and maps to RepoInfo
+ */
+function mapRepoNodeToRepoInfo(
+	node: {
+		repoId?: string;
+		id?: string;
+		nameWithOwner?: string;
+		url?: string;
+		description?: string | null;
+		homepageUrl?: string | null;
+		stargazerCount?: number;
+		forkCount?: number;
+		watchers?: { totalCount: number };
+		issues?: { totalCount: number };
+		pullRequests?: { totalCount: number };
+		defaultBranchRef?: {
+			name?: string | null;
+			target?: { committedDate?: string | null } | null;
+		} | null;
+		repositoryTopics?: {
+			nodes?: Array<{ topic?: { name?: string | null } | null } | null>;
+		} | null;
+		primaryLanguage?: { name?: string | null } | null;
+		languages?: {
+			edges?: Array<{ size?: number | null; node?: { name?: string } | null }>;
+		} | null;
+		licenseInfo?: { spdxId?: string | null } | null;
+		isArchived?: boolean;
+		isDisabled?: boolean;
+		isFork?: boolean;
+		isMirror?: boolean;
+		hasIssuesEnabled?: boolean;
+		pushedAt?: string;
+		updatedAt?: string;
+		createdAt?: string;
+		diskUsage?: number | null;
+	},
+	options: {
+		repoIdField?: "repoId" | "id";
+	} = {},
+): RepoInfo {
+	const { repoIdField = "repoId" } = options;
+
+	return {
+		repoId: (repoIdField === "repoId" ? node.repoId : node.id) ?? "",
+		nameWithOwner: node.nameWithOwner ?? "",
+		url: node.url ?? "",
+		description: node.description ?? null,
+		homepageUrl: node.homepageUrl ?? null,
+
+		stars: node.stargazerCount ?? 0,
+		forks: node.forkCount ?? 0,
+		watchers: node.watchers?.totalCount ?? 0,
+
+		openIssues: node.issues?.totalCount ?? 0,
+		openPRs: node.pullRequests?.totalCount ?? 0,
+
+		defaultBranch: node.defaultBranchRef?.name ?? null,
+		lastCommitISO: mapLastCommitISO(node),
+
+		topics: mapTopics(node.repositoryTopics?.nodes),
+		primaryLanguage: node.primaryLanguage?.name ?? null,
+		languages: mapLanguagesEdges({ languages: node.languages }),
+
+		license: node.licenseInfo?.spdxId ?? null,
+
+		isArchived: !!node.isArchived,
+		isDisabled: !!node.isDisabled,
+		isFork: !!node.isFork,
+		isMirror: !!node.isMirror,
+		hasIssuesEnabled: node.hasIssuesEnabled ?? true,
+
+		// Required timestamp fields
+		pushedAt: node.pushedAt ?? "",
+		updatedAt: node.updatedAt ?? "",
+		createdAt: node.createdAt ?? "",
+		diskUsage: node.diskUsage ?? null,
+	};
+}
+
 type RepoNodeWithUpdates =
 	| Extract<ListItemNode, { __typename: "Repository" }>
 	| StarEdge["node"];
@@ -235,40 +317,8 @@ export function mapListRepoNodeToRepoInfo(n: ListItemNode): RepoInfo | null {
 	if (!isRepoNode(n)) return null;
 	if (!n.repoId) return null; // must have GH node id in new types
 
-	const info: RepoInfo = {
-		repoId: n.repoId, // required string
-		nameWithOwner: n.nameWithOwner ?? "",
-		url: n.url ?? "",
-		description: n.description ?? null,
-		homepageUrl: n.homepageUrl ?? null,
-
-		stars: n.stargazerCount ?? 0,
-		forks: n.forkCount ?? 0,
-		watchers: n.watchers?.totalCount ?? 0,
-
-		openIssues: n.issues?.totalCount ?? 0,
-		openPRs: n.pullRequests?.totalCount ?? 0,
-
-		defaultBranch: n.defaultBranchRef?.name ?? null,
-		lastCommitISO: mapLastCommitISO(n),
-
-		topics: mapTopics(n.repositoryTopics?.nodes),
-		primaryLanguage: n.primaryLanguage?.name ?? null,
-		languages: mapLanguagesEdges({ languages: n.languages }),
-
-		license: n.licenseInfo?.spdxId ?? null,
-
-		isArchived: !!n.isArchived,
-		isDisabled: !!n.isDisabled,
-		isFork: !!n.isFork,
-		isMirror: !!n.isMirror,
-		hasIssuesEnabled: !!n.hasIssuesEnabled,
-
-		pushedAt: n.pushedAt ?? "",
-		updatedAt: n.updatedAt ?? "",
-		createdAt: n.createdAt ?? "",
-		diskUsage: n.diskUsage ?? null,
-	};
+	// Use shared mapping logic
+	const info = mapRepoNodeToRepoInfo(n, { repoIdField: "repoId" });
 
 	const releaseInfo = selectReleaseInfo(n);
 	info.lastRelease = releaseInfo;
@@ -282,40 +332,8 @@ export function mapListRepoNodeToRepoInfo(n: ListItemNode): RepoInfo | null {
 export function mapStarEdgeToRepoInfo(edge: StarEdge): RepoInfo {
 	const n = edge.node;
 
-	const info: RepoInfo = {
-		repoId: n.id,
-		nameWithOwner: n.nameWithOwner ?? "",
-		url: n.url ?? "",
-		description: n.description ?? null,
-		homepageUrl: n.homepageUrl ?? null,
-
-		stars: n.stargazerCount ?? 0,
-		forks: n.forkCount ?? 0,
-		watchers: n.watchers?.totalCount ?? 0,
-
-		openIssues: n.issues?.totalCount ?? 0,
-		openPRs: n.pullRequests?.totalCount ?? 0,
-
-		defaultBranch: n.defaultBranchRef?.name ?? null,
-		lastCommitISO: mapLastCommitISO(n),
-
-		topics: mapTopics(n.repositoryTopics?.nodes),
-		primaryLanguage: n.primaryLanguage?.name ?? null,
-		languages: mapLanguagesEdges({ languages: n.languages }),
-
-		license: n.licenseInfo?.spdxId ?? null,
-
-		isArchived: !!n.isArchived,
-		isDisabled: !!n.isDisabled,
-		isFork: !!n.isFork,
-		isMirror: !!n.isMirror,
-		hasIssuesEnabled: !!n.hasIssuesEnabled,
-
-		pushedAt: n.pushedAt ?? "",
-		updatedAt: n.updatedAt ?? "",
-		createdAt: n.createdAt ?? "",
-		diskUsage: null,
-	};
+	// Use shared mapping logic
+	const info = mapRepoNodeToRepoInfo(n, { repoIdField: "id" });
 
 	const releaseInfo = selectReleaseInfo(n);
 	info.lastRelease = releaseInfo;
