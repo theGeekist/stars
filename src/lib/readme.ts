@@ -11,20 +11,113 @@ import {
 	stripFrontmatter,
 } from "./utils";
 
-// NOTE: No module-level prepared statements; use provided DB or default DB per call.
+// ---------- tiny safe helpers (linear-time, no catastrophic regex) ----------
 
-// --- helpers -----------------------------------------------------------------
+function normaliseNewlines(s: string): string {
+	// handle CRLF/CR → LF without regex
+	if (s.indexOf("\r") >= 0) {
+		s = s.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+	}
+	return s;
+}
+
+function collapseBlankRuns(s: string): string {
+	// collapse 3+ blank lines to 2 via linear scan
+	s = normaliseNewlines(s);
+	let out = "";
+	let i = 0,
+		n = s.length,
+		blank = 0,
+		lineStart = 0;
+
+	const flushLine = (end: number) => {
+		const line = s.slice(lineStart, end);
+		const isBlank = line.trim().length === 0;
+		if (isBlank) {
+			blank++;
+			if (blank <= 2) out += "\n"; // keep at most 2 consecutive newlines
+		} else {
+			// if we had blanks before, we already emitted up to 2 '\n'
+			if (out.length && out[out.length - 1] !== "\n") out += "\n";
+			if (line)
+				out += (out.endsWith("\n") ? "" : "\n") && line; // no-op, keeps logic explicit
+			else out += line;
+			// Better: just append line + newline handling:
+			out = out.endsWith("\n") ? out + line : out + line;
+			blank = 0;
+		}
+	};
+
+	while (i <= n) {
+		const ch = i < n ? s.charCodeAt(i) : 10; // sentinel '\n'
+		if (ch === 10) {
+			flushLine(i);
+			lineStart = i + 1;
+		}
+		i++;
+	}
+	// trim stray leading/trailing newlines
+	return out.replace(/^\n+/, "").replace(/\n+$/, "");
+}
+
+function splitWhitespace(s: string): string[] {
+	const out: string[] = [];
+	let start = -1;
+	for (let i = 0; i <= s.length; i++) {
+		const c = i < s.length ? s.charCodeAt(i) : 32; // space at end
+		const isWS = c <= 32;
+		if (isWS) {
+			if (start >= 0) {
+				out.push(s.slice(start, i));
+				start = -1;
+			}
+		} else if (start < 0) {
+			start = i;
+		}
+	}
+	return out;
+}
+
+// Build token-boundary indices from markdownSplitter segments to *bias* window ends.
+// No splitting here; just map cumulative word counts.
+function boundaryWordIndices(md: string, segments: string[]): number[] {
+	const idx: number[] = [];
+	let offsetWords = 0;
+	for (const seg of segments) {
+		const words = splitWhitespace(normaliseNewlines(seg));
+		offsetWords += words.length;
+		idx.push(offsetWords);
+	}
+	return idx;
+}
+
+// Snap a proposed window end to the nearest boundary not exceeding end+slack.
+function snapEndToBoundary(
+	end: number,
+	boundaries: number[],
+	slack: number,
+): number {
+	if (!boundaries.length) return end;
+	// binary search could be used; linear scan is fine given few segments
+	let snapped = end;
+	for (let i = 0; i < boundaries.length; i++) {
+		const b = boundaries[i];
+		if (b > end + slack) break;
+		if (b >= end - slack && b <= end + slack) snapped = Math.max(snapped, b);
+	}
+	return snapped;
+}
+
+// ---------- GitHub fetch/cache ----------
+
 function getGitHubToken(): string | undefined {
-	// Prefer GITHUB_TOKEN; fallback to GH_TOKEN
 	return Bun.env.GITHUB_TOKEN ?? Bun.env.GH_TOKEN ?? undefined;
 }
 
 function headersWithAuth(etag?: string): Record<string, string> {
 	const token = getGitHubToken();
-	// Start from shared GH headers for consistency
 	const base = ghHeaders(token ?? "", false);
 	if (!token) delete base.Authorization;
-	// Force raw Accept for README content
 	base.Accept = "application/vnd.github.v3.raw";
 	if (etag) base["If-None-Match"] = etag;
 	return base;
@@ -57,29 +150,23 @@ export async function fetchReadmeWithCache(
 
 	const now = new Date().toISOString();
 
-	// 304 → unchanged, bump fetched_at and return cached
 	if (res.status === 304) {
 		if (existing?.readme_md) {
 			db.query<unknown, [string, number]>(
 				`UPDATE repo SET readme_fetched_at = ? WHERE id = ?`,
-			).run(now, repoId); // keep a record that we checked
+			).run(now, repoId);
 			return existing.readme_md;
 		}
-		// theoretically 304 with no cache; treat as miss
 		return null;
 	}
 
-	// 404 → no README
 	if (res.status === 404) return null;
 
-	// Other non-OK → log & fallback; still bump fetched_at so we don't hammer repeatedly
 	if (!res.ok) {
 		const remain = res.headers.get("X-RateLimit-Remaining");
 		const reset = res.headers.get("X-RateLimit-Reset");
 		console.warn(
-			`GitHub ${res.status} ${res.statusText} for ${nameWithOwner} (remaining=${
-				remain ?? "?"
-			}, reset=${reset ?? "?"})`,
+			`GitHub ${res.status} ${res.statusText} for ${nameWithOwner} (remaining=${remain ?? "?"}, reset=${reset ?? "?"})`,
 		);
 		if (existing?.readme_md)
 			db.query<unknown, [string, number]>(
@@ -88,7 +175,6 @@ export async function fetchReadmeWithCache(
 		return existing?.readme_md ?? null;
 	}
 
-	// 200 OK → store README + ETag + fetched_at
 	const body = await res.text();
 	const md = body.slice(0, maxBytes);
 	const etag = res.headers.get("ETag") ?? null;
@@ -99,13 +185,15 @@ export async function fetchReadmeWithCache(
 	return md;
 }
 
-// --- clean + chunk -----------------------------------------------------------
+// ---------- clean + chunk ----------
+
 export function cleanMarkdown(md: string): string {
+	// keep stripFrontmatter (your impl), then normalise/collapse safely
 	const withoutFrontmatter = stripFrontmatter(md);
-	return withoutFrontmatter
-		.replace(/\r\n/g, "\n")
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
+	const nn = normaliseNewlines(withoutFrontmatter);
+	// collapse runs of blank lines to at most two
+	const s = stripFrontmatter(md);
+	return collapseBlankRuns(s).trim();
 }
 
 export function chunkMarkdown(
@@ -116,152 +204,54 @@ export function chunkMarkdown(
 		chunkSizeTokens = 768,
 		chunkOverlapTokens = 80,
 		mode = "sentence", // "sentence" | "token"
+		// countTokens,                      // optional hook if you want exact tokenizer
 	} = opts;
 
-	// normalise overlap
 	const size = Math.max(1, chunkSizeTokens | 0);
 	const overlap = Math.max(0, Math.min(chunkOverlapTokens | 0, size - 1));
 	const step = Math.max(1, size - overlap);
 
-	// Utility: safe trim & collapse
-	const tidy = (s: string) =>
-		s
-			.replace(/\r\n/g, "\n")
-			.replace(/[ \t]+\n/g, "\n")
-			.trim();
+	const text = normaliseNewlines(md).trim();
+	if (!text) return [];
 
-	// ---------- TOKEN MODE: pure sliding window over whitespace ----------
-	if (mode === "token") {
-		const tokens = tidy(md).split(/\s+/).filter(Boolean);
-		if (tokens.length === 0) return [];
+	// Core token stream: whitespace-split words
+	const words = splitWhitespace(text);
 
-		const chunks: string[] = [];
-		for (let i = 0; i < tokens.length; i += step) {
-			const slice = tokens.slice(i, i + size);
-			if (slice.length === 0) break;
-			chunks.push(slice.join(" "));
-			if (i + size >= tokens.length) break;
-		}
-		return chunks;
-	}
-
-	// ---------- SENTENCE MODE: structural split, but sub-split big segments ----------
-	// 1) Start with structural segments
-	const structural = markdownSplitter(md, {
-		minChunkSize: 300,
-		maxChunkSize: 1800,
-		useHeadingsOnly: false,
-	});
-
-	// 2) Break oversized segments into sentences/paras so windowing can work within them
-	const sentenceSplit = (s: string): string[] => {
-		// split on blank lines first, then sentence-ish punctuation (keep delimiters)
-		const paras = tidy(s).split(/\n{2,}/);
-		const out: string[] = [];
-		for (const p of paras) {
-			// keep punctuation with the sentence
-			const parts = p
-				.split(/(?<=[.!?])\s+(?=[A-Z0-9(])/)
-				.map(tidy)
-				.filter(Boolean);
-			if (parts.length) out.push(...parts);
-		}
-		return out.length ? out : [tidy(s)];
-	};
-
-	// 3) Flatten to subsegments
-	const subs: string[] = [];
-	for (const seg of structural) {
-		const pieces = sentenceSplit(seg);
-		for (const piece of pieces) {
-			if (piece) subs.push(piece);
+	// Boundary bias (sentence mode only): try to end windows near markdownSplitter edges
+	let boundaries: number[] = [];
+	if (mode === "sentence") {
+		try {
+			const segs = markdownSplitter(text, {
+				minChunkSize: 300,
+				maxChunkSize: 1800,
+				useHeadingsOnly: false,
+			});
+			boundaries = boundaryWordIndices(text, segs);
+		} catch {
+			boundaries = [];
 		}
 	}
 
-	// Token estimator (char→token heuristic) for sentence mode
-	const tok = (s: string) => Math.max(1, Math.ceil(s.length / 4));
+	const out: string[] = [];
+	const slack = Math.min(Math.floor(size / 4), 32); // how far we allow snapping
 
-	const chunks: string[] = [];
-	let cur: string[] = [];
-	let curTok = 0;
-
-	const flush = () => {
-		if (!cur.length) return;
-		chunks.push(cur.join("\n"));
-	};
-
-	const addWithOverlap = (next: string) => {
-		// compute tail by token budget
-		if (overlap > 0 && cur.length > 0) {
-			let tailTok = 0;
-			const tail: string[] = [];
-			for (let i = cur.length - 1; i >= 0; i--) {
-				const t = tok(cur[i]);
-				tailTok += t;
-				tail.unshift(cur[i]);
-				if (tailTok >= overlap) break;
-			}
-			cur = tail;
-			curTok = tail.reduce((n, s) => n + tok(s), 0);
-		} else {
-			cur = [];
-			curTok = 0;
-		}
-		// seed next
-		cur.push(next);
-		curTok += tok(next);
-	};
-
-	for (const piece of subs) {
-		const t = tok(piece);
-
-		// Case A: normal append fits
-		if (curTok + t <= size) {
-			cur.push(piece);
-			curTok += t;
-			continue;
+	for (let start = 0; start < words.length; ) {
+		let end = start + size;
+		if (end >= words.length) {
+			out.push(words.slice(start).join(" "));
+			break;
 		}
 
-		// Case B: current buffer non-empty, flush and then try to add piece
-		if (curTok > 0) {
-			flush();
-			addWithOverlap(piece);
-			// It’s possible piece itself is still too large; fall through to C
-		} else {
-			// cur is empty but piece alone is too big → hard split the piece by tokens
-			const words = piece.split(/\s+/).filter(Boolean);
-			for (let i = 0; i < words.length; i += step) {
-				const slice = words.slice(i, i + size).join(" ");
-				if (slice.length) {
-					if (curTok > 0) {
-						flush();
-						addWithOverlap(slice);
-					} else {
-						cur.push(slice);
-						curTok = tok(slice);
-					}
-				}
-				if (i + size >= words.length) break;
-			}
-			continue;
+		if (boundaries.length) {
+			const snapped = snapEndToBoundary(end, boundaries, slack);
+			if (snapped > start) end = snapped;
 		}
 
-		// If the single piece is still larger than window, sub-slice it
-		while (curTok > size) {
-			// emit first window portion from cur
-			const words = cur.join("\n").split(/\s+/).filter(Boolean);
-			const first = words.slice(0, size).join(" ");
-			const rest = words.slice(step).join(" ");
-			chunks.push(first);
-			cur = rest ? [rest] : [];
-			curTok = rest ? tok(rest) : 0;
-		}
+		out.push(words.slice(start, end).join(" "));
+		start += step;
 	}
 
-	// final flush
-	if (cur.length) flush();
-
-	return chunks.filter((s) => s.trim().length > 0);
+	return out;
 }
 
 /** fetch + clean + chunk (cached) */
@@ -285,6 +275,8 @@ export async function fetchAndChunkReadmeCached(
 	return chunkMarkdown(clean, options);
 }
 
+// ---------- heuristics ----------
+
 function looksLikeDirectoryRepo(
 	nameWithOwner: string,
 	description?: string | null,
@@ -292,15 +284,30 @@ function looksLikeDirectoryRepo(
 ): boolean {
 	const name = nameWithOwner.toLowerCase();
 	const desc = (description ?? "").toLowerCase();
-	const topicHit = (topics ?? []).some((t) =>
-		/awesome|list|curated|links?/.test(t),
-	);
-	const nameHit = /awesome-|awesome$|^awesome|list|lists/.test(name);
-	const descHit = /curated\s+list|awesome\s+list|directory|index/.test(desc);
+	const topicHit = (topics ?? []).some((t) => {
+		const x = t.toLowerCase();
+		return (
+			x.includes("awesome") ||
+			x.includes("list") ||
+			x.includes("curated") ||
+			x.includes("link")
+		);
+	});
+	const nameHit =
+		name.startsWith("awesome") ||
+		name.includes("awesome-") ||
+		name.endsWith("awesome") ||
+		name.includes("list");
+	const descHit =
+		desc.includes("curated list") ||
+		desc.includes("awesome list") ||
+		desc.includes("directory") ||
+		desc.includes("index");
 	return topicHit || nameHit || descHit;
 }
 
 export type SelectedChunk = { text: string; score: number };
+
 /** pick up to K salient chunks guided by a “what is this project?” query */
 export async function selectInformativeChunks(
 	chunks: string[],
@@ -309,18 +316,15 @@ export async function selectInformativeChunks(
 	topK = 6,
 ): Promise<SelectedChunk[]> {
 	if (chunks.length === 0) return [];
-	// Filter out very short and very link-dense chunks
 	const candidates = chunks
 		.map((t) => t.trim())
 		.filter((t) => t.length > 200 && linkDensity(t) < 0.35);
-
 	if (candidates.length === 0) return [];
 
 	const [qv] = await embed([query]);
 	const cvs = await embed(candidates);
 
 	const scored = cvs.map((v, i) => {
-		// cosine similarity
 		let dot = 0,
 			na = 0,
 			nb = 0;
@@ -367,10 +371,11 @@ export async function prepareReadmeForSummary(
 	);
 	const base = cleanMarkdown(raw);
 	const pruned = isDirectory ? stripCatalogue(base) : base;
-	// Advanced cosine-based chunking using llm-core (best effort, fallback to naive)
+
+	// try cosine chunker; fallback to our deterministic windowing
 	let chunks: string[] = [];
 	try {
-		const embedFn = opts.embed; // Provided by caller
+		const embedFn = opts.embed;
 		if (embedFn) {
 			const chunker = cosineDropChunker(embedFn);
 			chunks = await chunker.chunk(pruned, {
@@ -383,10 +388,11 @@ export async function prepareReadmeForSummary(
 		}
 	} catch (e) {
 		console.warn(
-			"Cosine chunker failed, falling back to heuristic splitter",
+			"Cosine chunker failed, falling back to windowing",
 			e instanceof Error ? e.message : e,
 		);
 	}
+
 	if (!chunks || chunks.length === 0) {
 		chunks = chunkMarkdown(pruned, {
 			chunkSizeTokens: 768,

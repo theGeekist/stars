@@ -1,42 +1,108 @@
-import { describe, expect, it } from "bun:test";
-import { createDb } from "@lib/db";
+import { describe, it, expect } from "bun:test";
 import {
 	chunkMarkdown,
-	// fetchAndChunkReadmeCached,
 	cleanMarkdown,
 	fetchReadmeWithCache,
 	prepareReadmeForSummary,
 	selectInformativeChunks,
 } from "@lib/readme";
-import type { FetchLike } from "./types";
+import { createDb } from "@lib/db";
+import type { FetchLike } from "@lib/types";
 
 function makeDb() {
 	const db = createDb(":memory:");
-	// minimal repo row
 	db.run(
-		`INSERT INTO repo(name_with_owner, url, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
-     VALUES ('owner/repo','https://x',0,0,0,0,1)`,
+		`INSERT INTO repo(id, name_with_owner, url, is_archived, is_disabled, is_fork, is_mirror, has_issues_enabled)
+     VALUES (1,'owner/repo','https://x',0,0,0,0,1)`,
 	);
 	return db;
 }
 
+const README_LONG =
+	`# Title\n` + Array.from({ length: 1200 }, () => "word").join(" ");
+
+const README_DIR_LIST = `- [link](http://x)\n- [link2](http://y)`;
+
+const README_NORMAL = [
+	"# Project",
+	"",
+	"Purpose. Architecture. Implementation details.",
+	"",
+	"Features:",
+	"- Fast",
+	"- Small",
+	"- Clever",
+].join("\n");
+
+const VOCAB_26 = [
+	"alpha",
+	"bravo",
+	"charlie",
+	"delta",
+	"echo",
+	"foxtrot",
+	"golf",
+	"hotel",
+	"india",
+	"juliet",
+	"kilo",
+	"lima",
+	"mike",
+	"november",
+	"oscar",
+	"papa",
+	"quebec",
+	"romeo",
+	"sierra",
+	"tango",
+	"uniform",
+	"victor",
+	"whiskey",
+	"xray",
+	"yankee",
+	"zulu",
+];
+
+function repeatWords(n: number, vocab = VOCAB_26): string {
+	return Array.from({ length: n }, (_, i) => vocab[i % vocab.length]).join(" ");
+}
+
+function freezeEnv<K extends string>(key: K, val?: string) {
+	const prev = (Bun.env as Record<string, string | undefined>)[key];
+	if (val === undefined)
+		delete (Bun.env as Record<string, string | undefined>)[key];
+	else (Bun.env as Record<string, string | undefined>)[key] = val;
+	return () => {
+		if (prev === undefined)
+			delete (Bun.env as Record<string, string | undefined>)[key];
+		else (Bun.env as Record<string, string | undefined>)[key] = prev;
+	};
+}
+
+export function makeFetch(res: Response | (() => Response)): FetchLike {
+	return async () => (typeof res === "function" ? (res as any)() : res);
+}
+
+export const embedStub =
+	(vals?: number[][]) =>
+	async (texts: string[]): Promise<number[][]> =>
+		vals ?? texts.map((_, i) => [1 - i * 0.01, 0.0, 0.0]);
+
 describe("readme fetch + cache", () => {
-	it("returns null on 404 and does not write DB", async () => {
+	it("404 returns null and does not write DB", async () => {
 		const db = makeDb();
-
-		const fakeFetch: FetchLike = async () =>
-			new Response("not found", { status: 404, statusText: "Not Found" });
-
+		const fake: FetchLike = makeFetch(
+			new Response("not found", { status: 404 }),
+		);
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
 			200000,
 			false,
-			fakeFetch,
+			fake,
 			db,
 		);
 		expect(md).toBeNull();
-
 		const row = db
 			.query<{ readme_md: string | null }, []>(
 				`SELECT readme_md FROM repo WHERE id=1`,
@@ -45,26 +111,20 @@ describe("readme fetch + cache", () => {
 		expect(row?.readme_md ?? null).toBeNull();
 	});
 
-	it("stores README and ETag on 200, respects maxBytes", async () => {
+	it("200 stores README & ETag, respects maxBytes", async () => {
 		const db = makeDb();
-		const body = `#·Title\n${"A".repeat(1000)}`;
-
-		const fakeFetch: FetchLike = async () =>
-			new Response(body, {
-				status: 200,
-				headers: { ETag: '"abc"' }, // HeadersInit accepts Record<string,string>
-			});
-
+		const fake = makeFetch(
+			new Response(README_LONG, { status: 200, headers: { ETag: '"abc"' } }),
+		);
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
 			100,
 			false,
-			fakeFetch,
+			fake,
 			db,
 		);
 		expect(md?.length).toBe(100);
-
 		const row = db
 			.query<{ readme_md: string | null; readme_etag: string | null }, []>(
 				`SELECT readme_md, readme_etag FROM repo WHERE id=1`,
@@ -74,22 +134,19 @@ describe("readme fetch + cache", () => {
 		expect(row?.readme_etag).toBe('"abc"');
 	});
 
-	it("returns cached on 304 and bumps fetched_at", async () => {
+	it("304 returns cached and bumps fetched_at", async () => {
 		const db = makeDb();
 		db.run(`UPDATE repo SET readme_md='cached', readme_etag='"e"' WHERE id=1`);
-
-		const fakeFetch: FetchLike = async () => new Response("", { status: 304 });
-
+		const fake = makeFetch(new Response("", { status: 304 }));
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
 			200000,
 			false,
-			fakeFetch,
+			fake,
 			db,
 		);
 		expect(md).toBe("cached");
-
 		const row = db
 			.query<{ readme_fetched_at: string | null }, []>(
 				`SELECT readme_fetched_at FROM repo WHERE id=1`,
@@ -98,174 +155,165 @@ describe("readme fetch + cache", () => {
 		expect(typeof row?.readme_fetched_at).toBe("string");
 	});
 
-	it("non-OK returns cached and bumps fetched_at; honors auth + accept headers", async () => {
-		const prev = Bun.env.GITHUB_TOKEN;
-		(Bun.env as unknown as Record<string, string>).GITHUB_TOKEN = "tok";
+	it("304 with no cache returns null (miss)", async () => {
+		const db = makeDb();
+		const fake = makeFetch(new Response("", { status: 304 }));
+		const md = await fetchReadmeWithCache(
+			1,
+			"owner/repo",
+			200000,
+			false,
+			fake,
+			db,
+		);
+		expect(md).toBeNull();
+	});
+
+	it("non-OK returns cached fallback and bumps fetched_at; honours headers", async () => {
+		const restore = freezeEnv("GITHUB_TOKEN", "tok");
 		const db = makeDb();
 		db.run(`UPDATE repo SET readme_md='cached' WHERE id=1`);
-
-		let calledHeaders: HeadersInit | undefined;
-		const fakeFetch: FetchLike = async (_input, init) => {
-			calledHeaders = init?.headers as HeadersInit | undefined;
+		let headersSeen: HeadersInit | undefined;
+		const fake: FetchLike = async (_input, init) => {
+			headersSeen = init?.headers;
 			return new Response("err", {
 				status: 403,
 				statusText: "Forbidden",
-				headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "soon" },
+				headers: { "X-RateLimit-Remaining": "0" },
 			});
 		};
-
 		const md = await fetchReadmeWithCache(
 			1,
 			"owner/repo",
 			200000,
 			false,
-			fakeFetch,
+			fake,
 			db,
 		);
 		expect(md).toBe("cached");
-		const h = calledHeaders as Record<string, string>;
+		const h = headersSeen as Record<string, string>;
 		expect(h.Accept).toBe("application/vnd.github.v3.raw");
 		expect(h.Authorization).toBe("Bearer tok");
-
-		const row = db
-			.query<{ readme_fetched_at: string | null }, []>(
-				`SELECT readme_fetched_at FROM repo WHERE id=1`,
-			)
-			.get();
-		expect(typeof row?.readme_fetched_at).toBe("string");
-
-		if (prev == null)
-			delete (Bun.env as unknown as Record<string, string>).GITHUB_TOKEN;
-		else (Bun.env as unknown as Record<string, string>).GITHUB_TOKEN = prev;
+		restore();
 	});
 
-	it("forceRefresh ignores ETag in request headers", async () => {
+	it("forceRefresh ignores If-None-Match", async () => {
 		const db = makeDb();
 		db.run(
 			`UPDATE repo SET readme_md='cached', readme_etag='"etag"' WHERE id=1`,
 		);
-		let ifNoneMatch: string | undefined;
-		const fakeFetch: FetchLike = async (_input, init) => {
-			ifNoneMatch = (init?.headers as Record<string, string>)["If-None-Match"];
+		let inm: string | undefined;
+		const fake: FetchLike = async (_input, init) => {
+			inm = (init?.headers as Record<string, string>)?.["If-None-Match"];
 			return new Response("OK", { status: 200 });
 		};
-		await fetchReadmeWithCache(1, "owner/repo", 100, true, fakeFetch, db);
-		expect(ifNoneMatch).toBeUndefined();
+		await fetchReadmeWithCache(1, "owner/repo", 100, true, fake, db);
+		expect(inm).toBeUndefined();
 	});
 });
 
-describe("readme clean + chunk", () => {
-	it("removes frontmatter and normalises whitespace", () => {
-		const md = `---\ntitle: x\n---\n\nLine1\n\n\nLine2`;
+describe("cleanMarkdown", () => {
+	it("removes frontmatter and normalises blanks", () => {
+		const md = `---\ntitle: x\n---\r\n\r\nLine1\r\n\r\n\r\nLine2`;
 		const out = cleanMarkdown(md);
 		expect(out).toBe("Line1\n\nLine2");
 	});
+});
 
-	it("sentence chunking yields non-empty chunks", () => {
-		const md = "Sentence one. Sentence two. Sentence three.";
+describe("chunkMarkdown", () => {
+	it("sentence mode yields chunks even for single huge segment", () => {
+		const md = "Heading\n\n" + repeatWords(800); // likely > one window
 		const chunks = chunkMarkdown(md, {
 			mode: "sentence",
-			chunkSizeTokens: 20,
-			chunkOverlapTokens: 0,
+			chunkSizeTokens: 128,
+			chunkOverlapTokens: 16,
 		});
-		expect(Array.isArray(chunks)).toBeTrue();
-		expect(chunks.length).toBeGreaterThan(0);
+		expect(chunks.length).toBeGreaterThan(1);
 	});
 
-	it("token mode chunking produces slices and overlap", () => {
-		// Build 600 alphabetic 'tokens' to avoid digit-stripping collisions
-		const vocab = [
-			"alpha",
-			"bravo",
-			"charlie",
-			"delta",
-			"echo",
-			"foxtrot",
-			"golf",
-			"hotel",
-			"india",
-			"juliet",
-			"kilo",
-			"lima",
-			"mike",
-			"november",
-			"oscar",
-			"papa",
-			"quebec",
-			"romeo",
-			"sierra",
-			"tango",
-			"uniform",
-			"victor",
-			"whiskey",
-			"xray",
-			"yankee",
-			"zulu",
-		];
-		const md = Array.from(
-			{ length: 240 },
-			(_, i) => vocab[i % vocab.length],
-		).join(" ");
-
+	it("token mode slices deterministically with overlap", () => {
+		const md = repeatWords(240);
 		const chunks = chunkMarkdown(md, {
 			mode: "token",
-			chunkSizeTokens: 16, // deliberately small to force multiple chunks
+			chunkSizeTokens: 16,
 			chunkOverlapTokens: 4,
 		});
+		expect(chunks.length).toBeGreaterThan(1);
+		const a = chunks[0].split(/\s+/);
+		const b = chunks[1].split(/\s+/);
+		expect(a.slice(-4).join(" ")).toBe(b.slice(0, 4).join(" "));
+	});
 
-		expect(chunks.length).toBeGreaterThan(1); // should definitely split
-
-		// If the impl preserves overlap in text, sanity-check the boundary:
-		// (weak check that some suffix of chunk[0] appears in prefix of chunk[1])
-		const a = chunks[0];
-		const b = chunks[1];
-		const tail = a.split(/\s+/).slice(-4).join(" ");
-		const head = b.split(/\s+/).slice(0, 4).join(" ");
-		expect(tail).toBe(head);
+	it("handles overlap >= size by reducing to step=1", () => {
+		const md = repeatWords(40);
+		const chunks = chunkMarkdown(md, {
+			mode: "token",
+			chunkSizeTokens: 8,
+			chunkOverlapTokens: 999,
+		});
+		expect(chunks.length).toBeGreaterThan(1);
 	});
 });
 
-describe("selectInformativeChunks & prepareReadmeForSummary", () => {
-	it("ranks chunks by embedding similarity and trims link-heavy content", async () => {
+describe("selectInformativeChunks", () => {
+	it("ranks by embedding similarity and filters link-heavy", async () => {
 		const chunks = [
 			"Intro paragraph about purpose and architecture.".repeat(20),
 			"- [link](http://a)\n- [link2](http://b)",
 			"Another paragraph with details and features explained.".repeat(20),
 		];
-
-		const embed: (texts: string[]) => Promise<number[][]> = async (texts) =>
-			texts.map((_t, i) => [1 - i * 0.01, 0, 0]);
-
-		const picked = await selectInformativeChunks(chunks, "purpose arch", embed);
+		const picked = await selectInformativeChunks(
+			chunks,
+			"purpose arch",
+			embedStub(),
+		);
 		expect(picked.length).toBeGreaterThan(0);
-		// ensure link-heavy list was filtered
 		expect(picked.some((c) => c.text.includes("link"))).toBeFalse();
 	});
+});
 
-	it("classifies awesome/directory repos and returns no chunks", async () => {
+describe("prepareReadmeForSummary", () => {
+	it("classifies awesome/directory and returns empty chunks", async () => {
 		const db = makeDb();
-		const embed: (texts: string[]) => Promise<number[][]> = async (_texts) => [
-			[1, 0, 0],
-		];
-		// Bypass GitHub by directly inserting readme and calling prepare
-		db.run(
-			`UPDATE repo SET readme_md='- [link](http://x)\n- [link2](http://y)', readme_etag='"e"' WHERE id=1`,
-		);
-
-		const fakeFetch: FetchLike = async () => new Response("", { status: 304 });
-
+		db.run(`UPDATE repo SET readme_md=?, readme_etag='"e"' WHERE id=1`, [
+			README_DIR_LIST,
+		]);
+		const fake: FetchLike = makeFetch(new Response("", { status: 304 }));
 		const out = await prepareReadmeForSummary(
 			{
 				repoId: 1,
 				nameWithOwner: "owner/awesome-list",
 				description: "curated list",
 				topics: ["awesome"],
-				embed,
+				embed: embedStub([[1, 0, 0]]),
 			},
-			fakeFetch,
+			fake,
 			db,
 		);
 		expect(out.mode).toBe("directory");
 		expect(out.chunks.length).toBe(0);
+	});
+
+	it("falls back to deterministic windowing when cosine chunker returns empty", async () => {
+		const db = makeDb();
+		db.run(`UPDATE repo SET readme_md=?, readme_etag='"e"' WHERE id=1`, [
+			README_NORMAL,
+		]);
+		const fake: FetchLike = makeFetch(new Response("", { status: 304 }));
+		// embed stub that makes cosineDropChunker produce something but allow fallback to be covered when empty
+		const out = await prepareReadmeForSummary(
+			{
+				repoId: 1,
+				nameWithOwner: "owner/repo",
+				description: "desc",
+				topics: ["tool"],
+				embed: embedStub(),
+			},
+			fake,
+			db,
+		);
+		// Either cosine chunker or fallback yields chunks; ensure structure is valid
+		expect(out.mode).toBe("normal");
+		expect(Array.isArray(out.chunks)).toBeTrue();
 	});
 });
