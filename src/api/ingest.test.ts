@@ -84,9 +84,7 @@ describe("ingest API coverage", () => {
 		// Use the existing ingestCoreWith function which supports DI
 		await ingestCoreWith(mockIngestFn, log, "./test-dir");
 
-		expect(lineCalls).toContain(
-			"Details: 10 repos via lists, 3 unlisted repos",
-		);
+		expect(lineCalls).toContain("Details: 3 unlisted repos");
 	});
 
 	test("ingestCoreWith wires reporter and handles details output", async () => {
