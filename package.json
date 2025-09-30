@@ -51,7 +51,10 @@
 		"test:main:cov": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*') && mv coverage/lcov.info coverage/main-lcov.info",
 		"coverage:merge": "npx -y lcov-result-merger 'coverage/*-lcov.info' > coverage/lcov.info",
 		"coverage:html": "npx -y genhtml coverage/lcov.info --output-directory coverage/html",
+		"coverage:report": "bun run scripts/coverage-report.ts",
+		"coverage:test-codecov": "bun run scripts/test-codecov.ts",
 		"coverage:ci": "bun run test:cli:cov && bun run test:lib:cov && bun run test:main:cov && bun run coverage:merge",
+		"coverage:full": "bun run coverage:ci && bun run coverage:report",
 		"lint": "biome check src",
 		"format": "biome format --write src README.md usage.md src/features/**/README.md .github/workflows/ci.yml"
 	},

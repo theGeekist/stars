@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it, mock } from "bun:test";
+import { beforeAll, describe, expect, it, mock, afterEach } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
-import { rankOne } from "./ranking.public";
+import { rankOne, rankAll } from "./ranking.public";
 
 describe("ranking public API modelConfig DI", () => {
 	const db = createDb(":memory:");
@@ -11,6 +11,10 @@ describe("ranking public API modelConfig DI", () => {
 		);
 		db.exec(`INSERT INTO repo(id, name_with_owner, url, description, topics, popularity, freshness, activeness)
              VALUES (10,'o/r','https://x','Test repo','[]',0.5,0.6,0.7);`);
+	});
+
+	afterEach(() => {
+		mock.restore();
 	});
 
 	it("uses provided modelConfig (model, host, apiKey) instead of env", async () => {

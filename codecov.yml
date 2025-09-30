@@ -1,0 +1,61 @@
+# Codecov Configuration for Geekist Stars
+# https://docs.codecov.com/docs/codecov-yaml
+
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    wait_for_ci: yes
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...95"
+  
+  status:
+    project:
+      default:
+        target: 75%
+        threshold: 2%
+        base: auto
+    patch:
+      default:
+        target: 70%
+        threshold: 5%
+        base: auto
+
+# Configure file path fixes for better detection
+fixes:
+  - "src/::src/"  # Ensure src paths are recognized
+
+# Ignore patterns
+ignore:
+  - "coverage/**/*"
+  - "dist/**/*"
+  - "scripts/**/*"
+  - "**/*.test.ts"
+  - "**/*.config.*"
+  - "test-setup.ts"
+  - "exports/**/*"
+  - "exports-test/**/*"
+
+# Comment configuration
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+# Flag configuration for sharded tests
+flags:
+  cli:
+    paths:
+      - src/cli.ts
+      - src/lib/cli-utils.ts
+  lib:
+    paths:
+      - src/lib/
+  main:
+    paths:
+      - src/features/
+      - src/api/

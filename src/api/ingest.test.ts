@@ -1,21 +1,340 @@
 // src/api/ingest.test.ts
-import { describe, expect, mock, test } from "bun:test";
-import type { IngestReporter } from "@features/ingest/types";
+import { describe, expect, test, afterEach, mock } from "bun:test";
+import { createDb, initSchema } from "@lib/db";
+import type { RepoInfo, StarList } from "@lib/types";
 import { makeLog, makeLogWithLines } from "../__test__/helpers/log";
-import { ingestCoreWith } from "./ingest";
+import {
+	ingestFromData,
+	ingestCoreWith,
+	ingestListedFromGh,
+	ingestUnlistedFromGh,
+} from "./ingest";
 import { createIngestReporter, resolveSourceDir } from "./utils";
 
-/* --------------------------------- tests ---------------------------------- */
+// Helper to create test repo data
+function makeRepo(nameWithOwner: string): RepoInfo {
+	const now = new Date().toISOString();
+	return {
+		repoId: nameWithOwner.replace("/", ":"),
+		nameWithOwner,
+		url: `https://example.com/${nameWithOwner}`,
+		description: "Test repo description",
+		homepageUrl: null,
+		stars: 100,
+		forks: 10,
+		watchers: 5,
+		openIssues: 2,
+		openPRs: 1,
+		defaultBranch: "main",
+		lastCommitISO: now,
+		lastRelease: null,
+		topics: ["typescript"],
+		primaryLanguage: "TypeScript",
+		languages: [{ name: "TypeScript", bytes: 1000 }],
+		license: "MIT",
+		isArchived: false,
+		isDisabled: false,
+		isFork: false,
+		isMirror: false,
+		hasIssuesEnabled: true,
+		pushedAt: now,
+		updatedAt: now,
+		createdAt: now,
+		diskUsage: 1024,
+		updates: null,
+	};
+}
 
+describe("ingest API coverage", () => {
+	afterEach(() => {
+		// Clean up any environment variables
+		delete process.env.EXPORTS_DIR;
+		mock.restore();
+	});
+
+	test("ingestCore uses dependency injection properly", async () => {
+		const { log, lineCalls } = makeLogWithLines();
+
+		// Create a mock ingest function that follows the real signature
+		const mockIngestFn = async (source: string, reporter: any) => {
+			reporter.start(2);
+			reporter.done({ lists: 2, repos: 13 });
+			return {
+				lists: 2,
+				reposFromLists: 10,
+				unlisted: 3,
+			};
+		};
+
+		// Use the existing ingestCoreWith function which supports DI
+		await ingestCoreWith(mockIngestFn, log, "./test-dir");
+
+		expect(lineCalls).toContain(
+			"Details: 10 repos via lists, 3 unlisted repos",
+		);
+	});
+
+	test("ingestCoreWith wires reporter and handles details output", async () => {
+		const { log, succeedCalls, lineCalls } = makeLogWithLines();
+
+		const mockIngestFn = mock(async (source: string, reporter: any) => {
+			reporter.start(3);
+			reporter.listStart(
+				{ name: "list1", isPrivate: false, file: "", listId: "1" },
+				0,
+				3,
+				2,
+			);
+			reporter.listDone(
+				{ name: "list1", isPrivate: false, file: "", listId: "1" },
+				2,
+			);
+			reporter.listStart(
+				{ name: "list2", isPrivate: false, file: "", listId: "2" },
+				1,
+				3,
+				1,
+			);
+			reporter.listDone(
+				{ name: "list2", isPrivate: false, file: "", listId: "2" },
+				1,
+			);
+			reporter.done({ lists: 3, repos: 3 });
+			return {
+				lists: 3,
+				reposFromLists: 3,
+				unlisted: 5,
+			};
+		});
+
+		await ingestCoreWith(mockIngestFn, log, "/test/exports");
+
+		expect(mockIngestFn).toHaveBeenCalledWith(
+			"/test/exports",
+			expect.any(Object),
+		);
+		expect(succeedCalls).toContain("Ingest complete: 3 lists, 3 repos");
+		expect(lineCalls).toContain("Details: 3 repos via lists, 5 unlisted repos");
+	});
+
+	test("ingestCoreWith handles unlisted-only results", async () => {
+		const { log, lineCalls } = makeLogWithLines();
+
+		const mockIngestFn = async (source: string, reporter: any) => {
+			reporter.start(0);
+			reporter.done({ lists: 0, repos: 0 });
+			return {
+				lists: 0,
+				unlisted: 7,
+			};
+		};
+
+		await ingestCoreWith(mockIngestFn, log, "/test/exports");
+
+		expect(lineCalls).toContain("Details: 7 unlisted repos");
+	});
+
+	test("ingestListedFromGh processes GitHub lists with DI", async () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+		const { log } = makeLog();
+
+		// Save original env
+		const prevToken = Bun.env.GITHUB_TOKEN;
+		Bun.env.GITHUB_TOKEN = "test-token";
+
+		// Create mock lists data
+		const mockLists: StarList[] = [
+			{
+				listId: "work",
+				name: "Work Tools",
+				description: "Professional tools",
+				isPrivate: false,
+				repos: [makeRepo("company/api-tool"), makeRepo("team/workflow")],
+			},
+			{
+				listId: "personal",
+				name: "Personal Projects",
+				description: "Side projects",
+				isPrivate: false,
+				repos: [makeRepo("me/side-project")],
+			},
+		];
+
+		// Mock the lists stream
+		mock.module("@lib/lists", () => ({
+			getAllListsStream: async function* () {
+				for (const list of mockLists) {
+					yield list;
+				}
+			},
+		}));
+
+		const result = await ingestListedFromGh(db, log);
+
+		// Should have processed the lists through ingestFromData
+		expect(result.lists).toBe(2);
+		expect(result.reposFromLists).toBe(3);
+		expect(result.unlisted).toBe(0);
+
+		// Restore env
+		Bun.env.GITHUB_TOKEN = prevToken;
+	});
+
+	test("ingestUnlistedFromGh fetches and processes unlisted stars", async () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+		const { log } = makeLog();
+
+		// Create mock unlisted repos
+		const mockUnlisted: RepoInfo[] = [
+			makeRepo("random/useful-lib"),
+			makeRepo("someone/interesting-tool"),
+		];
+
+		// Mock the stars service
+		const mockStarsService = {
+			read: {
+				getUnlistedStars: mock(async () => mockUnlisted),
+			},
+		};
+
+		mock.module("@features/stars", () => ({
+			createStarsService: () => mockStarsService,
+		}));
+
+		const result = await ingestUnlistedFromGh(db, log);
+
+		expect(mockStarsService.read.getUnlistedStars).toHaveBeenCalledWith(
+			undefined,
+		);
+		expect(result.lists).toBe(0);
+		expect(result.reposFromLists).toBe(0);
+		expect(result.unlisted).toBe(2);
+	});
+
+	test("ingestListedFromGh handles abort signal", async () => {
+		const { log } = makeLog();
+		const controller = new AbortController();
+
+		Bun.env.GITHUB_TOKEN = "test-token";
+
+		// Mock stream that responds to abort signal
+		mock.module("@lib/lists", () => ({
+			getAllListsStream: async function* () {
+				if (controller.signal.aborted) {
+					throw new Error("Operation was aborted");
+				}
+				yield {
+					listId: "test",
+					name: "Test",
+					description: "",
+					isPrivate: false,
+					repos: [],
+				};
+			},
+		}));
+
+		// Abort immediately
+		controller.abort();
+
+		await expect(
+			ingestListedFromGh(undefined, log, controller.signal),
+		).rejects.toThrow("Operation was aborted");
+	});
+
+	test("ingestUnlistedFromGh handles abort signal", async () => {
+		const { log } = makeLog();
+		const controller = new AbortController();
+
+		// Abort immediately before calling the function
+		controller.abort();
+
+		await expect(
+			ingestUnlistedFromGh(undefined, log, controller.signal),
+		).rejects.toThrow("Aborted");
+	});
+
+	test("ingestFromData with real database and mixed data", () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+		const { log, lineCalls } = makeLogWithLines();
+
+		// Create test data with multiple lists and unlisted repos
+		const lists: StarList[] = [
+			{
+				listId: "productivity",
+				name: "Productivity Tools",
+				description: "Tools that boost productivity",
+				isPrivate: false,
+				repos: [
+					makeRepo("user/awesome-tool"),
+					makeRepo("dev/productivity-app"),
+				],
+			},
+			{
+				listId: "learning",
+				name: "Learning Resources",
+				description: "Educational content",
+				isPrivate: false,
+				repos: [makeRepo("edu/course-material")],
+			},
+		];
+
+		const unlisted: RepoInfo[] = [
+			makeRepo("misc/random-repo"),
+			makeRepo("temp/test-project"),
+		];
+
+		// Use real function with real database - no mocking needed
+		const result = ingestFromData(lists, unlisted, db, log);
+
+		// Verify the results
+		expect(result.lists).toBe(2);
+		expect(result.reposFromLists).toBe(3);
+		expect(result.unlisted).toBe(2);
+
+		// Verify logging includes details
+		expect(
+			lineCalls.some((line) =>
+				String(line).includes("Details: 3 repos via lists, 2 unlisted repos"),
+			),
+		).toBe(true);
+	});
+
+	test("ingestFromData with empty data handles edge case", () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+		const { log, lineCalls } = makeLogWithLines();
+
+		// Test with no data
+		const result = ingestFromData([], [], db, log);
+
+		expect(result.lists).toBe(0);
+		expect(result.reposFromLists).toBe(0);
+		expect(result.unlisted).toBe(0);
+
+		// Should still log details
+		expect(
+			lineCalls.some((line) =>
+				String(line).includes("Details: 0 repos via lists, 0 unlisted repos"),
+			),
+		).toBe(true);
+	});
+});
+
+// Test utility functions without module mocking
 describe("resolveSourceDir", () => {
 	test("arg > env > default", () => {
 		const prev = Bun.env.EXPORTS_DIR;
-		Bun.env.EXPORTS_DIR = "/env/exports";
-		expect(resolveSourceDir("/arg/exports")).toBe("/arg/exports");
-		Bun.env.EXPORTS_DIR = "/env/exports";
-		expect(resolveSourceDir()).toBe("/env/exports");
-		Bun.env.EXPORTS_DIR = undefined;
+		Bun.env.EXPORTS_DIR = "/env";
+
+		expect(resolveSourceDir("./arg")).toBe("./arg");
+		expect(resolveSourceDir()).toBe("/env");
+
+		delete Bun.env.EXPORTS_DIR;
 		expect(resolveSourceDir()).toBe("./exports");
+
 		Bun.env.EXPORTS_DIR = prev;
 	});
 });
@@ -23,7 +342,7 @@ describe("resolveSourceDir", () => {
 describe("createReporter", () => {
 	test("tracks totals and logs final message (computed totals)", () => {
 		const { log, succeedCalls } = makeLog();
-		const { reporter, getTotals } = createIngestReporter(log, "/fixtures");
+		const { reporter, getTotals } = createIngestReporter(log, "/temp");
 
 		reporter.start(2);
 		expect(getTotals()).toEqual({ lists: 2, repos: 0 });
@@ -48,126 +367,26 @@ describe("createReporter", () => {
 			{ name: "B", isPrivate: false, file: "", listId: "B" },
 			3,
 		);
+
 		expect(getTotals()).toEqual({ lists: 2, repos: 4 });
 
-		reporter.done({ lists: 2, repos: 4 }); // use computed totals
+		// Force computation with computed totals
+		reporter.done({ lists: 2, repos: 4 });
+
 		expect(succeedCalls).toContain("Ingest complete: 2 lists, 4 repos");
 	});
 
 	test("done() honours provided totals", () => {
 		const { log, succeedCalls } = makeLog();
-		const { reporter } = createIngestReporter(log, "/fixtures");
+		const { reporter } = createIngestReporter(log, "/temp");
 
-		reporter.start(10);
+		reporter.start(2);
 		reporter.listDone(
 			{ name: "X", isPrivate: false, file: "", listId: "X" },
 			1,
 		);
-		reporter.done({ lists: 3, repos: 7 });
+		reporter.done({ lists: 5, repos: 10 });
 
-		expect(succeedCalls).toContain("Ingest complete: 3 lists, 7 repos");
-	});
-});
-
-describe("ingestCore", () => {
-	test("calls service with resolved source and wires reporter", async () => {
-		const { log, succeedCalls } = makeLog();
-
-		let captured = "";
-		const fakeService = mock(
-			async (src: string, r: Required<IngestReporter>) => {
-				captured = src;
-				r.start(2);
-				// exercise wiring with full shapes
-				r.listStart(
-					{ name: "A", isPrivate: false, file: "", listId: "A" },
-					0,
-					2,
-					1,
-				);
-				r.listDone({ name: "A", isPrivate: false, file: "", listId: "A" }, 1);
-				r.done({ lists: 2, repos: 3 });
-				return { lists: 0 };
-			},
-		);
-
-		await ingestCoreWith(fakeService, log, "/my/exports");
-
-		expect(captured).toBe("/my/exports");
-		expect(fakeService).toHaveBeenCalledTimes(1);
-		expect(succeedCalls).toContain("Ingest complete: 2 lists, 3 repos");
-	});
-
-	test("uses env var when arg is absent", async () => {
-		const { log, succeedCalls } = makeLog();
-		const prev = Bun.env.EXPORTS_DIR;
-		Bun.env.EXPORTS_DIR = "/env/exports";
-
-		let captured = "";
-		const fakeService = mock(
-			async (src: string, r: Required<IngestReporter>) => {
-				captured = src;
-				r.start(0);
-				r.done({ lists: 0, repos: 0 });
-				return { lists: 0 };
-			},
-		);
-
-		await ingestCoreWith(fakeService, log);
-
-		expect(captured).toBe("/env/exports");
-		expect(succeedCalls).toContain("Ingest complete: 0 lists, 0 repos");
-
-		Bun.env.EXPORTS_DIR = prev;
-	});
-});
-
-describe("ingestCore (unlisted support)", () => {
-	test("prints extra details line when service returns reposFromLists + unlisted", async () => {
-		const { log, succeedCalls, lineCalls } = makeLogWithLines();
-
-		const fakeService = mock(
-			async (_src: string, r: Required<IngestReporter>) => {
-				r.start(2);
-				r.listStart(
-					{ name: "A", isPrivate: false, file: "", listId: "A" },
-					0,
-					2,
-					1,
-				);
-				r.listDone({ name: "A", isPrivate: false, file: "", listId: "A" }, 1);
-				r.listStart(
-					{ name: "B", isPrivate: false, file: "", listId: "B" },
-					1,
-					2,
-					3,
-				);
-				r.listDone({ name: "B", isPrivate: false, file: "", listId: "B" }, 3);
-				r.done({ lists: 2, repos: 4 });
-				return { lists: 2, reposFromLists: 4, unlisted: 2 };
-			},
-		);
-
-		await ingestCoreWith(fakeService, log, "/exports");
-
-		expect(succeedCalls).toContain("Ingest complete: 2 lists, 4 repos");
-		expect(lineCalls).toContain("Details: 4 repos via lists, 2 unlisted repos");
-	});
-
-	test("prints details line with only unlisted present (no reposFromLists)", async () => {
-		const { log, succeedCalls, lineCalls } = makeLogWithLines();
-
-		const fakeService = mock(
-			async (_src: string, r: Required<IngestReporter>) => {
-				r.start(0);
-				r.done({ lists: 0, repos: 0 });
-				return { lists: 0, unlisted: 3 }; // minimal new-shape
-			},
-		);
-
-		await ingestCoreWith(fakeService, log, "/exports");
-
-		expect(succeedCalls).toContain("Ingest complete: 0 lists, 0 repos");
-		expect(lineCalls).toContain("Details: 3 unlisted repos");
+		expect(succeedCalls).toContain("Ingest complete: 5 lists, 10 repos");
 	});
 });
