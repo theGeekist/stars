@@ -1,11 +1,12 @@
 // src/api/ingest.test.ts
-import { describe, expect, test, afterEach, mock } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { IngestReporter } from "@features/ingest/types";
 import { createDb, initSchema } from "@lib/db";
 import type { RepoInfo, StarList } from "@lib/types";
 import { makeLog, makeLogWithLines } from "../__test__/helpers/log";
 import {
-	ingestFromData,
 	ingestCoreWith,
+	ingestFromData,
 	ingestListedFromGh,
 	ingestUnlistedFromGh,
 } from "./ingest";
@@ -45,10 +46,22 @@ function makeRepo(nameWithOwner: string): RepoInfo {
 	};
 }
 
+type IngestReturn = {
+	lists: number;
+	reposFromLists?: number;
+	unlisted?: number;
+};
+
+type IngestFn = (
+	source: string,
+	reporter: Required<IngestReporter>,
+	signal?: AbortSignal,
+) => Promise<IngestReturn>;
+
 describe("ingest API coverage", () => {
 	afterEach(() => {
 		// Clean up any environment variables
-		delete process.env.EXPORTS_DIR;
+		delete Bun.env.EXPORTS_DIR;
 		mock.restore();
 	});
 
@@ -56,12 +69,14 @@ describe("ingest API coverage", () => {
 		const { log, lineCalls } = makeLogWithLines();
 
 		// Create a mock ingest function that follows the real signature
-		const mockIngestFn = async (source: string, reporter: any) => {
+		const mockIngestFn: IngestFn = async (_source, reporter) => {
 			reporter.start(2);
 			reporter.done({ lists: 2, repos: 13 });
 			return {
+				type: "lists",
+				status: "ok",
 				lists: 2,
-				reposFromLists: 10,
+				counts: { reposFromLists: 10 },
 				unlisted: 3,
 			};
 		};
@@ -77,7 +92,7 @@ describe("ingest API coverage", () => {
 	test("ingestCoreWith wires reporter and handles details output", async () => {
 		const { log, succeedCalls, lineCalls } = makeLogWithLines();
 
-		const mockIngestFn = mock(async (source: string, reporter: any) => {
+		const mockIngestFn = mock(async (_source, reporter) => {
 			reporter.start(3);
 			reporter.listStart(
 				{ name: "list1", isPrivate: false, file: "", listId: "1" },
@@ -120,7 +135,7 @@ describe("ingest API coverage", () => {
 	test("ingestCoreWith handles unlisted-only results", async () => {
 		const { log, lineCalls } = makeLogWithLines();
 
-		const mockIngestFn = async (source: string, reporter: any) => {
+		const mockIngestFn: IngestFn = async (_source, reporter) => {
 			reporter.start(0);
 			reporter.done({ lists: 0, repos: 0 });
 			return {

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, mock, afterEach } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
 import { rankAll, rankOne } from "./ranking.public";
 

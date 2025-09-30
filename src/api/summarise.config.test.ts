@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it, mock, afterEach } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
-import { summariseRepo, summariseAll } from "./summarise.public";
+import { summariseAll, summariseRepo } from "./summarise.public";
 
 describe("summarise public API modelConfig DI", () => {
 	const db = createDb(":memory:");

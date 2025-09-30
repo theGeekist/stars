@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it, mock, afterEach } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
-import { rankOne, rankAll } from "./ranking.public";
+import { rankOne } from "./ranking.public";
 
 describe("ranking public API modelConfig DI", () => {
 	const db = createDb(":memory:");
