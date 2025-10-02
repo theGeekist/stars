@@ -269,3 +269,13 @@ If you use Geekist Stars in your research or projects, please cite:
   howpublished = {\url{https://github.com/theGeekist/stars}},
 }
 ```
+<br>
+<br>
+<p align="center">
+  <sub>
+    Proudly brought to you by 
+    <a href="https://github.com/theGeekist" target="_blank">@theGeekist</a> and <a href="https://github.com/pipewrk" target="_blank">@pipewrk</a>
+  </sub>
+</p>
+
+
