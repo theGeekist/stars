@@ -282,13 +282,17 @@ New APIs throw `ConfigError` instead of calling `process.exit` when environment 
 
 ```ts
 try {
-  const lists = await starsData.fetchLists();
+  const { items: lists } = await starsData.fetchLists();
 } catch (e) {
   if (e instanceof ConfigError) {
     // handle missing config
   }
 }
 ```
+
+> ℹ️ Stars helpers now return `{ items, stats }` objects. Destructure `items` when you need raw arrays and consult `stats` for counts, page totals, and timestamps.【F:src/api/stars.public.ts†L17-L137】
+>
+> 🆕 Each list item now carries a `slug` alongside the GitHub `listId`, and `fetchReposFromList` includes `{ listSlug, listId }` metadata to aid joins with ingested data.【F:src/api/stars.public.ts†L17-L86】
 
 ## Summary Results Example
 
@@ -304,24 +308,23 @@ for (const item of res.items) {
 
 All major batch operations support progress callbacks:
 
-- `summaries.summariseAll({ onProgress })` → phase `summarising`
-- `ranking.rankAll({ onProgress })` → phase `ranking`
-- `starsData.fetchLists({ onProgress })` → phase `lists:fetch`
-- `starsData.fetchStars({ onProgress })` → phase `stars:page`
-- `ingest.ingestAll({ onProgress })`, `ingest.ingestListsOnly`, `ingest.ingestUnlistedOnly`, `ingest.ingestFromMemory` → phases prefixed with `ingest:`
+- `summaries.summariseAll({ onProgress })` → phase `summarising:repo`
+- `ranking.rankAll({ onProgress })` → phase `ranking:repo`
+- `starsData.fetchLists({ onProgress })` → phase `fetching:lists`
+- `starsData.fetchStars({ onProgress })` → phase `fetching:stars`
+- `ingest.ingestAll({ onProgress })`, `ingest.ingestListsOnly`, `ingest.ingestUnlistedOnly`, `ingest.ingestFromMemory` → phases `ingesting:*` with `detail.status = "start" | "done"`
 
 ### Phase Reference
 
-| Domain    | Phase           | Meaning                                                  |
-| --------- | --------------- | -------------------------------------------------------- |
-| summaries | summarising     | Generating a repository summary                          |
-| ranking   | ranking         | Scoring a repository against all lists & applying policy |
-| lists     | lists:fetch     | Streaming each list definition from GitHub               |
-| stars     | stars:page      | Processing a page of starred repositories                |
-| ingest    | ingest:lists    | Persisting listed repositories + lists into DB           |
-| ingest    | ingest:unlisted | Persisting starred (unlisted) repositories into DB       |
-| ingest    | ingest:topics   | Reconciling & normalising topics (if performed)          |
-| ingest    | ingest:done     | Final bookkeeping / stats persistence                    |
+| Domain    | Phase              | Meaning                                                                      |
+| --------- | ------------------ | ---------------------------------------------------------------------------- |
+| summaries | summarising:repo   | Generating a repository summary                                              |
+| ranking   | ranking:repo       | Scoring a repository against all lists & applying policy                     |
+| lists     | fetching:lists     | Streaming each list definition from GitHub                                   |
+| stars     | fetching:stars     | Processing a page of starred repositories                                    |
+| ingest    | ingesting:lists    | Persisting listed repositories + lists into DB (detail marks start/done)     |
+| ingest    | ingesting:unlisted | Persisting starred (unlisted) repositories into DB (detail marks start/done) |
+| ingest    | ingesting:memory   | Reconciling pre-fetched data into the database (detail marks start/done)     |
 
 ## Unified Dispatcher
 

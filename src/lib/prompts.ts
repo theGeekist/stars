@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "@lib/bootstrap";
-import rawPrompts from "../../prompts.yaml";
 
 export type PromptsState =
 	| { kind: "missing" }
@@ -147,14 +146,10 @@ export function ensurePromptsReadyOrExit(): void {
 	process.exit(1);
 }
 
-// Export parsed root prompts.yaml for consumers that need configuration text.
-// This import path resolves from src/lib → project root (../../prompts.yaml).
-// Keeping it centralized here ensures all features use the same source.
-export const promptsConfig = rawPrompts as {
+type PromptsConfig = {
 	scoring?: {
 		system?: string;
 		fewshot?: string;
-		/** Raw multi-line block where each line is "slug = only score if ..." */
 		criteria?: string;
 	};
 	summarise?: {
@@ -163,3 +158,196 @@ export const promptsConfig = rawPrompts as {
 		reduce?: string;
 	};
 };
+
+type SectionKey = keyof PromptsConfig;
+
+const SCORING_KEYS = new Set<keyof NonNullable<PromptsConfig["scoring"]>>([
+	"system",
+	"fewshot",
+	"criteria",
+]);
+const SUMMARISE_KEYS = new Set<keyof NonNullable<PromptsConfig["summarise"]>>([
+	"one_paragraph",
+	"map_header",
+	"reduce",
+]);
+
+type BlockState = {
+	section: SectionKey;
+	key: string;
+	indent: number;
+	lines: Array<{ raw: string; indent: number; blank: boolean }>;
+	minIndent: number | null;
+};
+
+function assignSectionValue(
+	target: PromptsConfig,
+	section: SectionKey,
+	key: string,
+	value: string,
+): void {
+	if (section === "scoring") {
+		if (!SCORING_KEYS.has(key as keyof NonNullable<PromptsConfig["scoring"]>)) {
+			return;
+		}
+		if (!target.scoring) {
+			target.scoring = {};
+		}
+		target.scoring[key as keyof PromptsConfig["scoring"]] = value;
+	} else if (section === "summarise") {
+		if (
+			!SUMMARISE_KEYS.has(key as keyof NonNullable<PromptsConfig["summarise"]>)
+		) {
+			return;
+		}
+		if (!target.summarise) {
+			target.summarise = {};
+		}
+		target.summarise[key as keyof PromptsConfig["summarise"]] = value;
+	}
+}
+
+function stripInlineComment(raw: string): string {
+	let inSingle = false;
+	let inDouble = false;
+	for (let i = 0; i < raw.length; i += 1) {
+		const ch = raw[i];
+		if (ch === "'" && !inDouble) {
+			inSingle = !inSingle;
+			continue;
+		}
+		if (ch === '"' && !inSingle) {
+			inDouble = !inDouble;
+			continue;
+		}
+		if (ch === "#" && !inSingle && !inDouble) {
+			return raw.slice(0, i).trimEnd();
+		}
+	}
+	return raw.trim();
+}
+
+function parseInlineValue(raw: string): string {
+	const trimmed = stripInlineComment(raw);
+	if (!trimmed) return "";
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	) {
+		return trimmed.slice(1, -1);
+	}
+	return trimmed;
+}
+
+function parsePromptsConfig(text: string): PromptsConfig {
+	const normalized = text.replace(/\r\n?/g, "\n");
+	const lines = normalized.split("\n");
+	const config: PromptsConfig = {};
+
+	let section: SectionKey | undefined;
+	let block: BlockState | null = null;
+
+	const flushBlock = () => {
+		if (!block) return;
+		const baseIndent = block.minIndent ?? block.indent + 2;
+		const value = block.lines
+			.map((entry) => {
+				if (entry.blank) return "";
+				const sliceFrom = Math.min(entry.raw.length, baseIndent);
+				return entry.raw.slice(sliceFrom);
+			})
+			.join("\n");
+		assignSectionValue(config, block.section, block.key, value);
+		block = null;
+	};
+
+	const processLine = (rawLine: string) => {
+		const indentMatch = /^ */.exec(rawLine);
+		const indent = indentMatch ? indentMatch[0].length : 0;
+		const trimmed = rawLine.trim();
+
+		if (block) {
+			if (!trimmed.length) {
+				block.lines.push({ raw: "", indent: block.indent + 1, blank: true });
+				return;
+			}
+			if (indent > block.indent) {
+				block.lines.push({ raw: rawLine, indent, blank: false });
+				block.minIndent =
+					block.minIndent === null ? indent : Math.min(block.minIndent, indent);
+				return;
+			}
+			flushBlock();
+			processLine(rawLine);
+			return;
+		}
+
+		if (!trimmed.length || trimmed.startsWith("#")) {
+			return;
+		}
+
+		if (indent === 0) {
+			if (trimmed.endsWith(":")) {
+				const key = trimmed.slice(0, -1).trim();
+				if (key === "scoring" || key === "summarise") {
+					section = key as SectionKey;
+				} else {
+					section = undefined;
+				}
+			}
+			return;
+		}
+
+		if (!section) return;
+
+		const colonIdx = trimmed.indexOf(":");
+		if (colonIdx === -1) return;
+		const key = trimmed.slice(0, colonIdx).trim();
+		const valuePart = trimmed.slice(colonIdx + 1).trim();
+		if (!key) return;
+
+		if (valuePart.startsWith("|") || valuePart.startsWith(">")) {
+			block = {
+				section,
+				key,
+				indent,
+				lines: [],
+				minIndent: null,
+			};
+			return;
+		}
+
+		assignSectionValue(config, section, key, parseInlineValue(valuePart));
+	};
+
+	for (const rawLine of lines) {
+		processLine(rawLine);
+	}
+	if (block) flushBlock();
+
+	return config;
+}
+
+// Export parsed root prompts.yaml for consumers that need configuration text.
+// This import path resolves from src/lib → project root (../../prompts.yaml).
+// Keeping it centralized here ensures all features use the same source.
+function loadPromptsConfig(): PromptsConfig {
+	const promptsPath = resolve(process.cwd(), "prompts.yaml");
+	if (!existsSync(promptsPath)) {
+		return {};
+	}
+
+	try {
+		const text = readFileSync(promptsPath, "utf-8");
+		const parsed = parsePromptsConfig(text);
+		if (parsed) {
+			return parsed;
+		}
+	} catch {
+		// fall through
+	}
+
+	return {};
+}
+
+export const promptsConfig = loadPromptsConfig();

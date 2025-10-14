@@ -7,6 +7,7 @@ import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import { parseStringArray, wordCount } from "@lib/utils";
+import { runSummariseRows, selectSummariseRows } from "./summarise.runner";
 import type { SummariseBatchOpts } from "./types";
 import { withSpinner } from "./utils";
 
@@ -84,34 +85,44 @@ export async function summariseBatchAllCore(
 	logger: typeof realLog,
 ): Promise<void> {
 	const svc = createSummariseService({ db: database });
-	const rows = svc.selectRepos({ limit, resummarise: !!opts?.resummarise });
+	const rows = selectSummariseRows(svc, {
+		limit,
+		resummarise: !!opts?.resummarise,
+	});
 
 	if (!rows.length) {
 		logger.info("No repos matched the criteria.");
 		return;
 	}
 
-	const total = rows.length;
-	logger.info(`Summarising ${total} repos...`);
+	logger.info(`Summarising ${rows.length} repos...`);
 
-	for (let i = 0; i < total; i++) {
-		const r = rows[i];
-		logger.header(`[${i + 1}/${total}] ${r.name_with_owner}`);
-		logger.info(`URL: ${r.url}`);
-		if (r.primary_language) logger.info(`Lang: ${r.primary_language}`);
-
-		try {
-			const { paragraph } = await generateSummaryForRow(r, deps, logger);
-			logger.line("");
-			logger.line(paragraph);
-			logger.line("");
-			saveSummaryOrDryRun(svc, r.id, paragraph, dry, logger);
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			logger.error(`${msg}\n`);
-			// continue with next row
-		}
-	}
+	await runSummariseRows(rows, {
+		svc,
+		dry,
+		deps,
+		logger,
+		hooks: {
+			beforeRow: ({ repo, index, total }) => {
+				logger.header(`[${index + 1}/${total}] ${repo.name_with_owner}`);
+				logger.info(`URL: ${repo.url}`);
+				if (repo.primary_language) {
+					logger.info(`Lang: ${repo.primary_language}`);
+				}
+			},
+			afterSuccess: ({ result }) => {
+				if (result.paragraph) {
+					logger.line("");
+					logger.line(result.paragraph);
+					logger.line("");
+				}
+			},
+			afterError: ({ error }) => {
+				logger.error(`${error}\n`);
+			},
+		},
+		database: database ? withDB(database) : undefined,
+	});
 }
 
 export async function summariseOneCore(
@@ -141,14 +152,23 @@ export async function summariseOneCore(
 
 	const svc = createSummariseService({ db: database });
 
-	try {
-		const { paragraph } = await generateSummaryForRow(row, deps, logger);
-		logger.line("");
-		logger.line(paragraph);
-		logger.line("");
-		saveSummaryOrDryRun(svc, row.id, paragraph, dry, logger);
-	} catch (e) {
-		const msg = e instanceof Error ? e.message : String(e);
-		logger.error(`${msg}\n`);
-	}
+	await runSummariseRows([row], {
+		svc,
+		dry,
+		deps,
+		logger,
+		hooks: {
+			afterSuccess: ({ result }) => {
+				if (result.paragraph) {
+					logger.line("");
+					logger.line(result.paragraph);
+					logger.line("");
+				}
+			},
+			afterError: ({ error }) => {
+				logger.error(`${error}\n`);
+			},
+		},
+		database: database ? withDB(database) : undefined,
+	});
 }

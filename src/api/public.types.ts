@@ -14,7 +14,9 @@ export type {
 	StarList,
 } from "@lib/types";
 
+import type { SummariseDeps } from "@features/summarise/types";
 // Import for local use
+import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import type { ListDef } from "@lib/types";
 
 /* -------------------------------------------------------------------------- */
@@ -48,16 +50,60 @@ export type ListDefinition = ListDef;
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Lifecycle markers for progress events.
+ * `page` covers paginated fetches, `progress` is a general counter update,
+ * and `custom` enables feature-specific extensions when paired with `code`.
+ */
+export type ProgressStatus =
+	| "start"
+	| "page"
+	| "progress"
+	| "done"
+	| "error"
+	| "custom";
+
+type ProgressDetailBase = { status: ProgressStatus } & Record<string, unknown>;
+
+/**
+ * Structured progress detail payload carried alongside phase/index metadata.
+ * - `start`/`done` mark lifecycle boundaries.
+ * - `page` reports pagination progress (current page & optional total).
+ * - `progress` is a generic counter with optional label/context.
+ * - `error` surfaces failures without throwing.
+ * - `custom` allows feature-specific extensions via `code`.
+ */
+export type ProgressDetail =
+	| (ProgressDetailBase & { status: "start" | "done" })
+	| (ProgressDetailBase & { status: "page"; page: number; pages?: number })
+	| (ProgressDetailBase & {
+			status: "progress";
+			current: number;
+			total?: number;
+			label?: string;
+	  })
+	| (ProgressDetailBase & { status: "error"; error: string })
+	| (ProgressDetailBase & { status: "custom"; code: string })
+	| ProgressDetailBase;
+
+/**
  * Progress notification emitted by long‑running batch operations.
- * Phases are domain prefixed (e.g. `summarising`, `ranking`, `lists:fetch`, `stars:page`, `ingest:*`).
+ * Phases follow a `verbing:subject` convention (e.g. `summarising:repo`, `ranking:repo`,
+ * `fetching:stars`, `ingesting:lists`) so listeners can route by verb.
  */
 export interface ProgressEvent {
 	phase: string;
 	index?: number;
 	total?: number;
 	repo?: string;
+	item?: string;
+	detail?: ProgressDetail;
 	meta?: Record<string, unknown>;
 }
+
+/** Function signature for progress emitters used across public APIs. */
+export type ProgressEmitter<TPhase extends string = string> = (
+	event: ProgressEvent & { phase: TPhase },
+) => void | Promise<void>;
 
 export type OpStatus = "ok" | "error" | "skipped";
 
@@ -143,31 +189,56 @@ export type ScoringLLMGenerate = (
 export function createScoringLLMFromConfig(cfg: ModelConfig): {
 	generatePromptAndSend: ScoringLLMGenerate;
 } {
-	// Lazy import to avoid pulling ollama if consumer provides custom llm
+	return createOllamaService({
+		model: cfg.model,
+		endpoint: cfg.host,
+		apiKey: cfg.apiKey,
+	});
+}
+
+/**
+ * Create summarisation dependencies from a `ModelConfig`.
+ * Shared helper so summarise.* exports don't duplicate adapter wiring.
+ */
+export function createSummariseDepsFromConfig(cfg: ModelConfig): SummariseDeps {
 	const { gen } = require("@lib/ollama");
 	return {
-		async generatePromptAndSend(
-			system: string,
-			user: string,
-			_opts?: { schema?: unknown },
-		) {
-			const prompt = `${system}\n\n${user}`.trim();
-			// Pass model + host + headers to underlying generator; opts.schema ignored by raw gen
+		gen: async (prompt: string, _opts?: Record<string, unknown>) => {
 			const headers = cfg.apiKey
 				? { Authorization: `Bearer ${cfg.apiKey}` }
 				: undefined;
-			const raw = await gen(prompt, {
-				model: cfg.model,
-				host: cfg.host,
-				headers,
-			});
-			// Attempt to parse JSON output since scoring expects an object with scores
-			try {
-				return JSON.parse(raw);
-			} catch {
-				return raw; // fallback; validator will error leading to clear failure
-			}
+			return gen(prompt, { model: cfg.model, host: cfg.host, headers });
 		},
+	};
+}
+
+/**
+ * Resolve a `ModelConfig` by merging overrides with environment defaults.
+ * Throws when no model is available, ensuring consistent error semantics.
+ */
+export function resolveModelConfig(
+	cfg?: ModelConfig,
+	options: { help?: string } = {},
+): ModelConfig {
+	const { help } = options;
+	const envModel = Bun.env.OLLAMA_MODEL;
+	const envHost = Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST;
+	const envKey = Bun.env.OLLAMA_API_KEY;
+	const model = cfg?.model ?? envModel;
+	if (model == null || model.trim() === "") {
+		throw new ConfigError(
+			help ??
+				"OLLAMA_MODEL missing. Provide ModelConfig.model or set env OLLAMA_MODEL.",
+		);
+	}
+	const host = cfg?.host ?? envHost;
+	const apiKey = cfg?.apiKey ?? envKey;
+	const cleanedHost = host?.trim() ?? "";
+	const cleanedKey = apiKey?.trim() ?? "";
+	return {
+		model: model.trim(),
+		host: cleanedHost ? cleanedHost : undefined,
+		apiKey: cleanedKey ? cleanedKey : undefined,
 	};
 }
 
@@ -200,4 +271,26 @@ export function getRequiredEnv(name: string, help?: string): string {
 		);
 	}
 	return v;
+}
+
+/** Resolve a GitHub token from override/env while enforcing consistent errors. */
+export function resolveGithubToken({
+	override,
+	required = true,
+	help,
+}: {
+	override?: string;
+	required?: boolean;
+	help?: string;
+} = {}): string {
+	const candidate = override ?? Bun.env.GITHUB_TOKEN ?? "";
+	if (candidate.trim().length === 0) {
+		if (required) {
+			throw new ConfigError(
+				help ?? "GITHUB_TOKEN missing. Set env or pass override.",
+			);
+		}
+		return "";
+	}
+	return candidate;
 }

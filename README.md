@@ -166,7 +166,7 @@ const summariesResult = await summaries.summariseAll({
   limit: 50,
   modelConfig: { model: "llama3:8b", host: "http://localhost:11434" },
   onProgress: (e) => {
-    if (e.phase === "summarising") {
+    if (e.phase === "summarising:repo") {
       console.log(`Summarising ${e.index}/${e.total}`);
     }
   },
@@ -200,15 +200,23 @@ const customCuration = await ranking.rankOne({
 });
 
 // Fetch lists & stars (pure data, throws ConfigError if token missing)
-const lists = await starsData.fetchLists();
-const stars = await starsData.fetchStars({
+const { items: lists } = await starsData.fetchLists();
+console.log(lists[0].slug); // stable slug derived from list name
+const { items: stars } = await starsData.fetchStars({
   onProgress: (e) => {
-    if (e.phase === "stars:page") console.log("Fetched another page");
+    if (e.phase === "fetching:stars" && e.detail?.status === "page") {
+      console.log(`Fetched page ${e.detail.page}`);
+    }
   },
 });
 
 // Ingest everything (lists + stars) into the DB
-await ingest.ingestAll({ onProgress: (e) => console.log(e.phase) });
+await ingest.ingestAll({
+  onProgress: (e) => {
+    if (e.detail?.status === "start") console.log(`Begin ${e.phase}`);
+    if (e.detail?.status === "done") console.log(`Done ${e.phase}`);
+  },
+});
 
 // Dynamic invocation via dispatcher
 await dispatchCommand("summaries:all", { args: { limit: 10 } });
@@ -220,13 +228,13 @@ For summaries and ranking, explicit `deps`/`llm` objects are used if provided, t
 
 ### Progress Phases (Overview)
 
-| Domain    | Phase       |
-| --------- | ----------- |
-| summaries | summarising |
-| ranking   | ranking     |
-| lists     | lists:fetch |
-| stars     | stars:page  |
-| ingest    | ingest:\*   |
+| Domain    | Phase            | Detail Payloads                                        |
+| --------- | ---------------- | ------------------------------------------------------ | ------- |
+| summaries | summarising:repo | `{ index, total, repo }`                               |
+| ranking   | ranking:repo     | `{ index, total, repo }`                               |
+| lists     | fetching:lists   | `detail.status = "progress"` with `{ current, label }` |
+| stars     | fetching:stars   | `detail.status = "page"` with `{ page }`               |
+| ingest    | ingesting:\*     | `detail.status = "start"                               | "done"` |
 
 ### Error Handling
 
@@ -269,6 +277,7 @@ If you use Geekist Stars in your research or projects, please cite:
   howpublished = {\url{https://github.com/theGeekist/stars}},
 }
 ```
+
 <br>
 <br>
 <p align="center">
@@ -277,5 +286,3 @@ If you use Geekist Stars in your research or projects, please cite:
     <a href="https://github.com/theGeekist" target="_blank">@theGeekist</a> and <a href="https://github.com/pipewrk" target="_blank">@pipewrk</a>
   </sub>
 </p>
-
-
