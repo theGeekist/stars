@@ -54,7 +54,7 @@ export async function fetchLists(
 	});
 	const mod = await import("@lib/lists");
 	// NOTE: streaming iteration used to emit progress events per list
-	const out: StarList[] = [];
+	const out: StarListSummary[] = [];
 	let idx = 0;
 	for await (const l of mod.getAllListsStream(token, undefined, {
 		debug: () => {},

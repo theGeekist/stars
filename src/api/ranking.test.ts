@@ -11,7 +11,6 @@ import {
 } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
 import type { RepoRow } from "@lib/types";
-import type { RankingItemResult } from "./public.types";
 
 const baseRepo = (id: number, name: string): RepoRow => ({
 	id,
@@ -32,15 +31,15 @@ const baseRepo = (id: number, name: string): RepoRow => ({
 });
 
 let repos: RepoRow[] = [baseRepo(1, "org/one"), baseRepo(2, "org/two")];
-let planResult: RankingItemResult["plannedLists"] extends string[]
-	? {
-			finalPlanned: string[];
-			changed: boolean;
-			blocked: boolean;
-			blockReason?: string | null;
-			fallbackUsed?: { list: string; score: number } | null;
-		}
-	: never = {
+type PlanResult = {
+	finalPlanned: string[];
+	changed: boolean;
+	blocked: boolean;
+	blockReason: string | null;
+	fallbackUsed: { list: string; score: number } | null;
+};
+
+let planResult: PlanResult = {
 	finalPlanned: ["alpha"],
 	changed: true,
 	blocked: false,
@@ -218,7 +217,9 @@ describe("rankAll", () => {
 			dry: true,
 			modelConfig: { model: "stub" },
 			db,
-			onProgress: (evt) => progressEvents.push(evt),
+			onProgress: (evt) => {
+				progressEvents.push(evt);
+			},
 		});
 
 		expect(scoreRepoAgainstLists).toHaveBeenCalledTimes(2);

@@ -318,7 +318,10 @@ export async function rankAll(
 		policy,
 		resume: "last",
 	});
-	const repos: RepoRow[] = runtime.scoring.selectRepos({ limit }, filterRunId);
+	const repos: RepoRow[] = runtime.scoring.selectRepos(
+		{ limit },
+		filterRunId ?? null,
+	);
 	if (!repos.length) {
 		return {
 			items: [],

@@ -19,6 +19,10 @@
 
 - Run `bun run lint` before committing to keep CI green and avoid formatting drift.
 
+## Build
+
+- Run `bun run build` locally (or at least `bun run scripts/build.ts`) to catch type generation/build regressions before pushing.
+
 ## Operational notes
 
 - CLI entry lives in `src/cli.ts`; orchestrator scripts (pm2, etc.) should call the built `dist/cli.js` after running `bun run build`.

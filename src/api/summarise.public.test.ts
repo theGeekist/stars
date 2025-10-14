@@ -89,7 +89,9 @@ describe("summariseAll", () => {
 		const result = await summariseAll({
 			dry: true,
 			modelConfig: { model: "llama3", host: "http://ollama" },
-			onProgress: (evt) => progress.push(evt),
+			onProgress: (evt) => {
+				progress.push(evt);
+			},
 		});
 
 		expect(result.items).toHaveLength(2);

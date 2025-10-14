@@ -265,6 +265,9 @@ describe("Public API Types and Utilities", () => {
 				apiKey: "secret",
 			});
 
+			if (!deps.gen) {
+				throw new Error("expected gen dependency");
+			}
 			const paragraph = await deps.gen("Explain");
 
 			expect(gen).toHaveBeenCalledWith("Explain", {
@@ -279,6 +282,9 @@ describe("Public API Types and Utilities", () => {
 			gen.mockResolvedValue("p");
 			const deps = createSummariseDepsFromConfig({ model: "stub" });
 
+			if (!deps.gen) {
+				throw new Error("expected gen dependency");
+			}
 			await deps.gen("Prompt");
 
 			expect(gen).toHaveBeenCalledWith("Prompt", {

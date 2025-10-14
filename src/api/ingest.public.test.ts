@@ -40,8 +40,9 @@ describe("ingestAll", () => {
 	it("wraps core ingest with progress events", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestAll({
-			onProgress: (evt) =>
-				events.push({ phase: evt.phase, detail: evt.detail }),
+			onProgress: (evt) => {
+				events.push({ phase: evt.phase, detail: evt.detail });
+			},
 		});
 
 		expect(result).toEqual({ lists: 1, reposFromLists: 2, unlisted: 3 });
@@ -56,8 +57,9 @@ describe("ingestListsOnly", () => {
 	it("invokes listed ingest and emits phases", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestListsOnly({
-			onProgress: (evt) =>
-				events.push({ phase: evt.phase, detail: evt.detail }),
+			onProgress: (evt) => {
+				events.push({ phase: evt.phase, detail: evt.detail });
+			},
 		});
 
 		expect(result).toEqual({ lists: 1, reposFromLists: 2, unlisted: 0 });
@@ -72,8 +74,9 @@ describe("ingestUnlistedOnly", () => {
 	it("invokes unlisted ingest and emits phases", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestUnlistedOnly({
-			onProgress: (evt) =>
-				events.push({ phase: evt.phase, detail: evt.detail }),
+			onProgress: (evt) => {
+				events.push({ phase: evt.phase, detail: evt.detail });
+			},
 		});
 
 		expect(result).toEqual({ lists: 0, reposFromLists: 0, unlisted: 5 });
@@ -88,8 +91,9 @@ describe("ingestFromMemory", () => {
 	it("delegates to ingestFromData and emits phases", () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = ingestFromMemory([], [] as RepoInfo[], {
-			onProgress: (evt) =>
-				events.push({ phase: evt.phase, detail: evt.detail }),
+			onProgress: (evt) => {
+				events.push({ phase: evt.phase, detail: evt.detail });
+			},
 		});
 
 		expect(result).toEqual({ lists: 2, reposFromLists: 4, unlisted: 1 });

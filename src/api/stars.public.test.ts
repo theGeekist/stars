@@ -9,38 +9,54 @@ import {
 } from "bun:test";
 import type { RepoInfo, StarList } from "@lib/types";
 
+type LoggerType = typeof import("@lib/bootstrap").log;
+
+const iso = new Date(0).toISOString();
+const makeRepoInfo = (
+	repoId: string,
+	nameWithOwner: string,
+	overrides: Partial<RepoInfo> = {},
+): RepoInfo => ({
+	repoId,
+	nameWithOwner,
+	url: `https://github.com/${nameWithOwner}`,
+	description: "",
+	homepageUrl: null,
+	stars: 0,
+	forks: 0,
+	watchers: 0,
+	openIssues: 0,
+	openPRs: 0,
+	defaultBranch: "main",
+	lastCommitISO: iso,
+	lastRelease: null,
+	topics: [],
+	primaryLanguage: null,
+	languages: [],
+	license: null,
+	isArchived: false,
+	isDisabled: false,
+	isFork: false,
+	isMirror: false,
+	hasIssuesEnabled: true,
+	pushedAt: iso,
+	updatedAt: iso,
+	createdAt: iso,
+	diskUsage: null,
+	updates: null,
+	...overrides,
+});
+
 const lists: StarList[] = [
 	{ listId: "1", name: "Alpha", description: "d", isPrivate: false, repos: [] },
 	{ listId: "2", name: "Beta", description: null, isPrivate: false, repos: [] },
 ];
 const reposFromList: RepoInfo[] = [
-	{
-		repoId: "R1",
-		nameWithOwner: "org/one",
-		url: "https://github.com/org/one",
-		stars: 100,
-		forks: 10,
-	},
+	makeRepoInfo("R1", "org/one", { stars: 100, forks: 10 }),
 ];
 const starsPages: RepoInfo[][] = [
-	[
-		{
-			repoId: "R2",
-			nameWithOwner: "org/two",
-			url: "https://github.com/org/two",
-			stars: 50,
-			forks: 5,
-		},
-	],
-	[
-		{
-			repoId: "R3",
-			nameWithOwner: "org/three",
-			url: "https://github.com/org/three",
-			stars: 30,
-			forks: 3,
-		},
-	],
+	[makeRepoInfo("R2", "org/two", { stars: 50, forks: 5 })],
+	[makeRepoInfo("R3", "org/three", { stars: 30, forks: 3 })],
 ];
 
 const listStream = async function* () {
@@ -63,13 +79,7 @@ const collectListMetas = mock(async () =>
 const createStarsService = mock(() => ({
 	read: {
 		getUnlistedStars: mock(async () => [
-			{
-				repoId: "R4",
-				nameWithOwner: "org/four",
-				url: "https://github.com/org/four",
-				stars: 5,
-				forks: 1,
-			},
+			makeRepoInfo("R4", "org/four", { stars: 5, forks: 1 }),
 		]),
 	},
 }));
@@ -107,7 +117,11 @@ afterEach(() => {
 describe("fetchLists", () => {
 	it("streams lists and reports progress", async () => {
 		const events: unknown[] = [];
-		const result = await fetchLists({ onProgress: (evt) => events.push(evt) });
+		const result = await fetchLists({
+			onProgress: (evt) => {
+				events.push(evt);
+			},
+		});
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items[0]).toMatchObject({ slug: "alpha" });
@@ -127,11 +141,23 @@ describe("fetchReposFromList", () => {
 	it("delegates to lists lib with spinner logger", async () => {
 		const spinnerCalls: string[] = [];
 		const logger = {
+			info: () => {},
+			success: () => {},
+			warn: () => {},
+			error: () => {},
+			debug: () => {},
+			json: () => {},
+			header: () => {},
+			subheader: () => {},
+			list: () => {},
+			line: () => {},
+			spinner: () => ({}) as unknown,
 			withSpinner: (label: string, fn: () => Promise<RepoInfo[]>) => {
 				spinnerCalls.push(label);
 				return fn();
 			},
-		} as const;
+			columns: () => {},
+		} as unknown as LoggerType;
 
 		const result = await fetchReposFromList("Alpha", { logger });
 
@@ -149,7 +175,11 @@ describe("fetchReposFromList", () => {
 describe("fetchStars", () => {
 	it("collects pages and emits progress", async () => {
 		const events: unknown[] = [];
-		const result = await fetchStars({ onProgress: (evt) => events.push(evt) });
+		const result = await fetchStars({
+			onProgress: (evt) => {
+				events.push(evt);
+			},
+		});
 
 		expect(result.items).toHaveLength(2);
 		expect(result.stats).toMatchObject({ count: 2, pages: 2 });
