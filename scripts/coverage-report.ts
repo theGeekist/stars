@@ -39,6 +39,17 @@ async function generateIndividualReports() {
 		{ name: "Main", file: "main-lcov.info" },
 	];
 
+	const availableFiles = coverageFiles.filter(({ file }) =>
+		existsSync(`${COVERAGE_DIR}/${file}`),
+	);
+
+	if (availableFiles.length === 0) {
+		console.log(
+			"  ℹ️  No per-suite coverage files detected (single run `bun test` keeps everything in coverage/lcov.info)",
+		);
+		return;
+	}
+
 	for (const { name, file } of coverageFiles) {
 		const filePath = `${COVERAGE_DIR}/${file}`;
 		if (existsSync(filePath)) {
@@ -154,6 +165,15 @@ async function generateSummaryReport() {
 		{ name: "Main Tests", file: `${COVERAGE_DIR}/main-lcov.info` },
 		{ name: "CONSOLIDATED", file: `${COVERAGE_DIR}/lcov.info` },
 	];
+
+	const available = coverageFiles.filter(({ file }) => existsSync(file));
+
+	if (available.length === 0) {
+		console.log(
+			"  ⚠️  No coverage artefacts found. Run `bun run coverage:ci` (which now just calls `bun test`) first.",
+		);
+		return;
+	}
 
 	console.log("Test Suite        Functions        Lines           ");
 	console.log("─".repeat(80));

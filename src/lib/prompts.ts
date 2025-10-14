@@ -1,7 +1,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "@lib/bootstrap";
-import rawPrompts from "../../prompts.yaml";
+import { parse } from "yaml";
+
+function resolvePromptsPath(): string {
+	return resolve(process.cwd(), "prompts.yaml");
+}
+
+function loadRawPrompts(): unknown {
+	const path = resolvePromptsPath();
+	if (!existsSync(path)) return {};
+	try {
+		const text = readFileSync(path, "utf-8");
+		return parse(text);
+	} catch {
+		return {};
+	}
+}
+
+const rawPrompts = loadRawPrompts();
 
 export type PromptsState =
 	| { kind: "missing" }
@@ -24,7 +41,7 @@ export function criteriaExamples(): string[] {
 
 /** Detect `scoring:\n  criteria: |` block and count non-comment lines. */
 export function checkPromptsState(): PromptsState {
-	const promptsPath = resolve(process.cwd(), "prompts.yaml");
+	const promptsPath = resolvePromptsPath();
 	if (!existsSync(promptsPath)) return { kind: "missing" };
 
 	let text = "";
@@ -148,7 +165,6 @@ export function ensurePromptsReadyOrExit(): void {
 }
 
 // Export parsed root prompts.yaml for consumers that need configuration text.
-// This import path resolves from src/lib → project root (../../prompts.yaml).
 // Keeping it centralized here ensures all features use the same source.
 export const promptsConfig = rawPrompts as {
 	scoring?: {
