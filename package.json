@@ -36,7 +36,7 @@
 		"serve": "bun --watch run src/server.ts",
 		"dev": "bun run src/server.ts",
 		"types": "tsc -p tsconfig.json --noEmit",
-		"check": "bun run types && echo '\u2713 typecheck ok'",
+		"check": "bun run types && echo '✓ typecheck ok'",
 		"start": "bun run src/cli.ts",
 		"build": "bun run scripts/build.ts && bun run build:types",
 		"build:types": "tsc -p tsconfig.types.json",
@@ -57,10 +57,10 @@
 	"module": "src/index.ts",
 	"private": true,
 	"devDependencies": {
-		"@biomejs/biome": "^2.2.4",
+		"@biomejs/biome": "^2.2.6",
 		"@types/bun": "latest",
 		"husky": "^9.1.7",
-		"lint-staged": "^16.2.1",
+		"lint-staged": "^16.2.4",
 		"prettier": "^3.6.2"
 	},
 	"peerDependencies": {
