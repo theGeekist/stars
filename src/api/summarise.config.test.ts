@@ -187,12 +187,12 @@ describe("summarise public API coverage", () => {
 
 			expect(progressCalls.length).toBe(2);
 			expect(progressCalls[0]).toMatchObject({
-				phase: "summarising",
+				phase: "summarising:repo",
 				index: 1,
 				total: 2,
 			});
 			expect(progressCalls[1]).toMatchObject({
-				phase: "summarising",
+				phase: "summarising:repo",
 				index: 2,
 				total: 2,
 			});

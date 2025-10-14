@@ -20,7 +20,10 @@ import {
 	buildBatchStats,
 	ConfigError,
 	createScoringLLMFromConfig,
+	createSummariseDepsFromConfig,
 	getRequiredEnv,
+	resolveGithubToken,
+	resolveModelConfig,
 	type ModelConfig,
 	type OpStatus,
 } from "@src/api/public.types";
@@ -193,134 +196,188 @@ describe("Public API Types and Utilities", () => {
 	});
 
 	describe("createScoringLLMFromConfig", () => {
-		// Mock the ollama module to test the function
-		const mockGen = jest.fn();
+		const createOllamaService = jest.fn();
 
-		// Use mock.module instead of global require mocking
 		beforeEach(() => {
 			jest.clearAllMocks();
-
-			// Mock the ollama module
-			mock.module("@lib/ollama", () => ({
-				gen: mockGen,
+			mock.module("@jasonnathan/llm-core/ollama-service", () => ({
+				createOllamaService,
 			}));
 		});
 
 		afterEach(() => {
-			// Mocks are automatically cleaned up by Bun
+			mock.restore();
+			createOllamaService.mockReset();
 		});
 
-		it("should create LLM adapter with basic config", async () => {
-			const config: ModelConfig = {
-				model: "test-model",
-			};
+		it("wraps createOllamaService with provided config", () => {
+			const llm = { generatePromptAndSend: async () => ({}) };
+			createOllamaService.mockReturnValue(llm);
 
-			mockGen.mockResolvedValue('{"result": "test"}');
+			const adapter = createScoringLLMFromConfig({
+				model: "llama3",
+				host: "http://ollama", // forwarded as endpoint
+				apiKey: "secret",
+			});
 
-			const adapter = createScoringLLMFromConfig(config);
-
-			expect(adapter).toHaveProperty("generatePromptAndSend");
-			expect(typeof adapter.generatePromptAndSend).toBe("function");
+			expect(createOllamaService).toHaveBeenCalledWith({
+				model: "llama3",
+				endpoint: "http://ollama",
+				apiKey: "secret",
+			});
+			expect(adapter).toBe(llm);
 		});
 
-		it("should call gen with correct parameters", async () => {
-			const config: ModelConfig = {
-				model: "llama3.1:8b",
-				host: "http://localhost:11434",
-			};
+		it("allows omitting optional host and apiKey", () => {
+			const llm = { generatePromptAndSend: async () => ({}) };
+			createOllamaService.mockReturnValue(llm);
 
-			mockGen.mockResolvedValue('{"scores": [{"list": "test", "score": 0.8}]}');
+			const adapter = createScoringLLMFromConfig({ model: "stub" });
 
-			const adapter = createScoringLLMFromConfig(config);
-			await adapter.generatePromptAndSend("system prompt", "user prompt");
+			expect(createOllamaService).toHaveBeenCalledWith({
+				model: "stub",
+				endpoint: undefined,
+				apiKey: undefined,
+			});
+			expect(adapter).toBe(llm);
+		});
+	});
 
-			expect(mockGen).toHaveBeenCalledWith("system prompt\n\nuser prompt", {
-				model: "llama3.1:8b",
-				host: "http://localhost:11434",
+	describe("createSummariseDepsFromConfig", () => {
+		const gen = jest.fn();
+
+		beforeEach(() => {
+			jest.clearAllMocks();
+			mock.module("@lib/ollama", () => ({
+				gen,
+			}));
+		});
+
+		afterEach(() => {
+			mock.restore();
+			gen.mockReset();
+		});
+
+		it("forwards prompts to @lib/ollama with bearer header when apiKey provided", async () => {
+			gen.mockResolvedValue("paragraph");
+			const deps = createSummariseDepsFromConfig({
+				model: "llama3",
+				host: "http://ollama",
+				apiKey: "secret",
+			});
+
+			const paragraph = await deps.gen("Explain");
+
+			expect(gen).toHaveBeenCalledWith("Explain", {
+				model: "llama3",
+				host: "http://ollama",
+				headers: { Authorization: "Bearer secret" },
+			});
+			expect(paragraph).toBe("paragraph");
+		});
+
+		it("omits Authorization header when apiKey missing", async () => {
+			gen.mockResolvedValue("p");
+			const deps = createSummariseDepsFromConfig({ model: "stub" });
+
+			await deps.gen("Prompt");
+
+			expect(gen).toHaveBeenCalledWith("Prompt", {
+				model: "stub",
+				host: undefined,
 				headers: undefined,
 			});
 		});
+	});
 
-		it("should include Authorization header when apiKey provided", async () => {
-			const config: ModelConfig = {
-				model: "gpt-4",
-				host: "https://api.openai.com",
-				apiKey: "sk-test-key",
-			};
+	describe("resolveModelConfig", () => {
+		const originalEnv = { ...Bun.env };
 
-			mockGen.mockResolvedValue('{"result": "success"}');
+		afterEach(() => {
+			Object.keys(Bun.env).forEach((key) => {
+				if (!(key in originalEnv)) {
+					delete Bun.env[key as keyof typeof Bun.env];
+				}
+			});
+			Object.assign(Bun.env, originalEnv);
+		});
 
-			const adapter = createScoringLLMFromConfig(config);
-			await adapter.generatePromptAndSend("system", "user");
+		it("normalises whitespace and uses explicit overrides", () => {
+			const cfg = resolveModelConfig({
+				model: "  llama3  ",
+				host: " http://ollama ",
+				apiKey: "  sk-test  ",
+			});
 
-			expect(mockGen).toHaveBeenCalledWith("system\n\nuser", {
-				model: "gpt-4",
-				host: "https://api.openai.com",
-				headers: { Authorization: "Bearer sk-test-key" },
+			expect(cfg).toEqual({
+				model: "llama3",
+				host: "http://ollama",
+				apiKey: "sk-test",
 			});
 		});
 
-		it("should parse JSON response correctly", async () => {
-			const config: ModelConfig = {
-				model: "test-model",
-			};
+		it("falls back to environment when fields omitted", () => {
+			Bun.env.OLLAMA_MODEL = "env-model";
+			Bun.env.OLLAMA_ENDPOINT = "http://env";
+			Bun.env.OLLAMA_API_KEY = "env-key";
 
-			const jsonResponse = { scores: [{ list: "productivity", score: 0.9 }] };
-			mockGen.mockResolvedValue(JSON.stringify(jsonResponse));
+			const cfg = resolveModelConfig();
 
-			const adapter = createScoringLLMFromConfig(config);
-			const result = await adapter.generatePromptAndSend("system", "user");
-
-			expect(result).toEqual(jsonResponse);
-		});
-
-		it("should fallback to raw string when JSON parsing fails", async () => {
-			const config: ModelConfig = {
-				model: "test-model",
-			};
-
-			const invalidJson = "not a json response";
-			mockGen.mockResolvedValue(invalidJson);
-
-			const adapter = createScoringLLMFromConfig(config);
-			const result = await adapter.generatePromptAndSend("system", "user");
-
-			expect(result).toBe(invalidJson);
-		});
-
-		it("should construct prompt correctly", async () => {
-			const config: ModelConfig = {
-				model: "test-model",
-			};
-
-			mockGen.mockResolvedValue("{}");
-
-			const adapter = createScoringLLMFromConfig(config);
-			await adapter.generatePromptAndSend(
-				"System: Score these repos",
-				"User: repo1, repo2",
-			);
-
-			expect(mockGen).toHaveBeenCalledWith(
-				"System: Score these repos\n\nUser: repo1, repo2",
-				expect.any(Object),
-			);
-		});
-
-		it("should ignore schema option (compatibility)", async () => {
-			const config: ModelConfig = {
-				model: "test-model",
-			};
-
-			mockGen.mockResolvedValue("{}");
-
-			const adapter = createScoringLLMFromConfig(config);
-			await adapter.generatePromptAndSend("system", "user", {
-				schema: { type: "object" },
+			expect(cfg).toEqual({
+				model: "env-model",
+				host: "http://env",
+				apiKey: "env-key",
 			});
+		});
 
-			// Should still work, schema is ignored as documented
-			expect(mockGen).toHaveBeenCalled();
+		it("throws ConfigError when no model available", () => {
+			delete Bun.env.OLLAMA_MODEL;
+
+			expect(() =>
+				resolveModelConfig(undefined, { help: "need model" }),
+			).toThrow(ConfigError);
+			expect(() =>
+				resolveModelConfig(undefined, { help: "need model" }),
+			).toThrow("need model");
+		});
+
+		it("throws when provided model is blank", () => {
+			expect(() => resolveModelConfig({ model: "   " })).toThrow(ConfigError);
+		});
+	});
+
+	describe("resolveGithubToken", () => {
+		const originalEnv = { ...Bun.env };
+
+		afterEach(() => {
+			Object.keys(Bun.env).forEach((key) => {
+				if (!(key in originalEnv)) {
+					delete Bun.env[key as keyof typeof Bun.env];
+				}
+			});
+			Object.assign(Bun.env, originalEnv);
+		});
+
+		it("returns override when provided", () => {
+			const token = resolveGithubToken({ override: "abc123" });
+			expect(token).toBe("abc123");
+		});
+
+		it("pulls from environment when override missing", () => {
+			Bun.env.GITHUB_TOKEN = "env-token";
+			const token = resolveGithubToken();
+			expect(token).toBe("env-token");
+		});
+
+		it("throws ConfigError when required and missing", () => {
+			delete Bun.env.GITHUB_TOKEN;
+			expect(() => resolveGithubToken()).toThrow(ConfigError);
+		});
+
+		it("returns empty string when optional and missing", () => {
+			delete Bun.env.GITHUB_TOKEN;
+			const token = resolveGithubToken({ required: false });
+			expect(token).toBe("");
 		});
 	});
 });

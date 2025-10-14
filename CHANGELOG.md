@@ -7,6 +7,9 @@
 - **Service Factory Standardization**: All service factories now use the standardized `makeCreateService` utility for consistent dependency injection
 - **Improved Developer Experience**: Services can now be created with simple `createService()` calls using sensible defaults
 - **Enhanced Type Safety**: Consolidated duplicate types across the codebase, reducing type duplication from 7% to below 3%
+- **Progress Instrumentation**: Introduced a shared `ProgressStatus` union and structured `ProgressDetail` payloads so all public APIs emit typed lifecycle metadata for listeners.【F:src/api/public.types.ts†L45-L88】【F:src/api/ingest.public.ts†L1-L86】【F:src/api/stars.public.ts†L1-L137】
+- **Stars Metadata Enrichment**: Stars helpers now return list DTOs with stable `slug` + `listId` fields and emit page-level progress counts for pagination-aware consumers.【F:src/api/stars.public.ts†L13-L137】
+- **Summarise Hook Exports**: `summarise.public.ts` re-exports execution hooks and run context types so external orchestrators can tap into before/after callbacks without internal imports.【F:src/api/summarise.public.ts†L1-L210】
 
 ### Changed
 
@@ -18,6 +21,7 @@
   - `createIngestService(database)` → `createIngestService({ db: database })` or `createIngestService()`
 - **Standardized Dependencies**: All services now receive `{ db, exec, token }` through the create-service utility
 - **Cleaner APIs**: Services no longer require empty objects `{}` - they can be called with no parameters for default behavior
+- **Progress Detail Compatibility**: Ingest progress events now send `{ status: "start" | "done" }` detail objects instead of raw strings, easing upgrades for structured listeners.【F:src/api/ingest.public.ts†L1-L86】
 
 ### Added for Testing
 
@@ -92,7 +96,7 @@ See [MIGRATION.md](MIGRATION.md#v050---service-factory-standardization-and-type-
 - **🆕 Enhanced Ingest Pipeline**: Automatic cleanup of repositories no longer starred
   - Removes repositories that are no longer in your GitHub stars during ingest
   - **Safe**: Preserves repositories with `repo_overrides` entries (manual curation protection)
-  - **Automatic**: Runs by default in all ingest operations (`ingest`, `ingest:lists`, `ingest:unlisted`)
+- **Automatic**: Runs by default in all ingest operations (`ingesting:*`)
   - **Defensive**: Gracefully handles test environments and missing GitHub tokens
   - Comprehensive test coverage with 11 new unit tests and integration tests
 - Captured preferred "what's new" surfaces during ingest and stars/list exports by enriching GraphQL payloads (releases, changelog hints, discussions, commit samples). Stored as `repo.updates_json` alongside new `RepoInfo.updates` metadata
@@ -122,7 +126,7 @@ See [MIGRATION.md](MIGRATION.md#v050---service-factory-standardization-and-type-
 - Public API modules: `summaries`, `ranking`, `starsData`, `ingest`, `setup`, plus typed `dispatchCommand`.
 - Comprehensive JSDoc coverage for all public entry points and shared types.
 - `ConfigError` for configuration failures instead of process exit.
-- Progress event hooks with consistent `phase` taxonomy (summarising, ranking, lists:fetch, stars:page, ingest:\*).
+- Progress event hooks with consistent `phase` taxonomy (`summarising:repo`, `ranking:repo`, `fetching:lists`, `fetching:stars`, `ingesting:*`).
 - Per-request model override via `modelConfig` for summaries and ranking.
 - Dispatcher with discriminated `DispatchKind` and mapped argument types (no `any`).
 - Wiki feature README and internal documentation refinements.

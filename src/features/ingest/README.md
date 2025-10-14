@@ -24,9 +24,9 @@ The ingest pipeline now automatically **removes repositories that are no longer 
 
 Cleanup is automatically performed during:
 
-- `ingest` (main ingest from exports + cleanup)
-- `ingest:lists` (GitHub lists + cleanup)
-- `ingest:unlisted` (unlisted repositories + cleanup)
+- `ingesting:lists+unlisted` (main ingest from exports + cleanup)
+- `ingesting:lists` (GitHub lists + cleanup)
+- `ingesting:unlisted` (unlisted repositories + cleanup)
 
 ### Implementation
 
@@ -93,7 +93,7 @@ createIngestService().cleanupRemovedStars(
 - **Preserves**: repositories with entries in `repo_overrides` table (manual curation protection)
 - **Ignores**: repositories with `repo_id = NULL` (manual entries)
 - **Safe**: removes list relationships before repository deletion
-- **Automatic**: runs by default during all ingest operations (`ingest`, `ingest:lists`, `ingest:unlisted`)
+- **Automatic**: runs by default during all ingest operations (`ingesting:*`)
 
 ---
 
