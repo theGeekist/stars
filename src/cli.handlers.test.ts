@@ -1,4 +1,5 @@
 import {
+	afterAll,
 	afterEach,
 	beforeAll,
 	beforeEach,
@@ -6,12 +7,10 @@ import {
 	expect,
 	it,
 	jest,
-	mock,
 } from "bun:test";
+import { createMockLogger } from "@src/__test__/helpers/mock-log";
 
 describe("CLI Command Handlers", () => {
-	// Mock variables - declared here so they're accessible in all tests
-	const mockLogError = jest.fn();
 	const mockRunListsCore = jest.fn();
 	const mockRunReposCore = jest.fn();
 	const mockRunStarsCore = jest.fn();
@@ -21,33 +20,51 @@ describe("CLI Command Handlers", () => {
 	const mockSummariseRepo = jest.fn();
 	const mockSummariseAll = jest.fn();
 
-	// Set up mocks within the describe block to isolate them
-	const mockLog = {
-		error: mockLogError,
-		info: () => {},
-		line: () => {},
-		header: () => {},
-		subheader: () => {},
-		list: () => {},
-	};
-
-	mock.module("@lib/bootstrap", () => ({
-		initBootstrap: () => {},
-		log: mockLog,
-	}));
-
-	// Import after mocks are set up
 	let _testMain: (argv: string[]) => Promise<void>;
 	let _setCliDepsImpl: (
 		overrides: Parameters<typeof import("@src/cli")._setCliDeps>[0],
 	) => void;
 	let _resetCliDepsImpl: () => void;
 
+	let bootstrapModule: typeof import("@lib/bootstrap");
+	const { log: mockLog, mocks: logMocks } = createMockLogger();
+	let restoreLog: (() => void) | undefined;
+	let initBootstrapSpy: ReturnType<typeof jest.spyOn> | undefined;
+
 	beforeAll(async () => {
+		bootstrapModule = await import("@lib/bootstrap");
+		const originalLog = {
+			header: bootstrapModule.log.header,
+			subheader: bootstrapModule.log.subheader,
+			info: bootstrapModule.log.info,
+			success: bootstrapModule.log.success,
+			warn: bootstrapModule.log.warn,
+			error: bootstrapModule.log.error,
+			debug: bootstrapModule.log.debug,
+			line: bootstrapModule.log.line,
+			list: bootstrapModule.log.list,
+			json: bootstrapModule.log.json,
+			columns: bootstrapModule.log.columns,
+			spinner: bootstrapModule.log.spinner,
+			withSpinner: bootstrapModule.log.withSpinner,
+		};
+		Object.assign(bootstrapModule.log, mockLog);
+		restoreLog = () => {
+			Object.assign(bootstrapModule.log, originalLog);
+		};
+		initBootstrapSpy = jest
+			.spyOn(bootstrapModule, "initBootstrap")
+			.mockImplementation(() => {});
+
 		const cli = await import("@src/cli");
 		_testMain = cli._testMain;
 		_setCliDepsImpl = cli._setCliDeps;
 		_resetCliDepsImpl = cli._resetCliDeps;
+	});
+
+	afterAll(() => {
+		initBootstrapSpy?.mockRestore();
+		restoreLog?.();
 	});
 
 	const originalExit = process.exit;
@@ -65,12 +82,10 @@ describe("CLI Command Handlers", () => {
 			summariseAll: mockSummariseAll,
 		});
 
-		// Mock process.exit to throw so we can test error paths without actually exiting
 		process.exit = ((code: number) => {
 			throw new Error(`Process exit with code ${code}`);
 		}) as typeof process.exit;
 
-		// Set default env
 		Bun.env.EXPORTS_DIR = "./exports";
 	});
 
@@ -87,7 +102,7 @@ describe("CLI Command Handlers", () => {
 				false,
 				undefined,
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -98,7 +113,7 @@ describe("CLI Command Handlers", () => {
 				true,
 				undefined,
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -109,7 +124,7 @@ describe("CLI Command Handlers", () => {
 				false,
 				"custom.json",
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -127,7 +142,7 @@ describe("CLI Command Handlers", () => {
 				true,
 				"output.json",
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -139,7 +154,7 @@ describe("CLI Command Handlers", () => {
 				false,
 				undefined,
 				"/custom/exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 	});
@@ -150,7 +165,7 @@ describe("CLI Command Handlers", () => {
 				await _testMain(["bun", "cli.ts", "repos"]);
 			}).toThrow("Process exit with code 1");
 
-			expect(mockLogError).toHaveBeenCalledWith("--list <name> is required");
+			expect(logMocks.error).toHaveBeenCalledWith("--list <name> is required");
 		});
 
 		it("should call runRepos with list name when --list specified", async () => {
@@ -159,7 +174,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRunReposCore).toHaveBeenCalledWith(
 				"productivity",
 				false,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -169,7 +184,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRunReposCore).toHaveBeenCalledWith(
 				"ai",
 				true,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -186,7 +201,7 @@ describe("CLI Command Handlers", () => {
 			expect(mockRunReposCore).toHaveBeenCalledWith(
 				"blockchain",
 				true,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 	});
@@ -199,7 +214,7 @@ describe("CLI Command Handlers", () => {
 				false,
 				undefined,
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -210,7 +225,7 @@ describe("CLI Command Handlers", () => {
 				true,
 				undefined,
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -221,7 +236,7 @@ describe("CLI Command Handlers", () => {
 				false,
 				"stars.json",
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -239,7 +254,7 @@ describe("CLI Command Handlers", () => {
 				true,
 				"all-stars.json",
 				"./exports",
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 	});
@@ -253,7 +268,7 @@ describe("CLI Command Handlers", () => {
 				undefined,
 				"./exports",
 				undefined,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -265,7 +280,7 @@ describe("CLI Command Handlers", () => {
 				undefined,
 				"./exports",
 				undefined,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -277,7 +292,7 @@ describe("CLI Command Handlers", () => {
 				"unlisted.json",
 				"./exports",
 				undefined,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 
@@ -296,7 +311,7 @@ describe("CLI Command Handlers", () => {
 				"unlisted-repos.json",
 				"./exports",
 				undefined,
-				expect.objectContaining({ error: mockLogError }),
+				expect.objectContaining({ error: logMocks.error }),
 			);
 		});
 	});
@@ -316,8 +331,8 @@ describe("CLI Command Handlers", () => {
 			await _testMain(["bun", "cli.ts", "score", "--all"]);
 
 			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 999999999,
 				dry: false,
+				limit: 999999999,
 				policy: {},
 			});
 		});
@@ -326,8 +341,8 @@ describe("CLI Command Handlers", () => {
 			await _testMain(["bun", "cli.ts", "score", "--all", "--limit", "50"]);
 
 			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 50,
 				dry: false,
+				limit: 50,
 				policy: {},
 			});
 		});
@@ -361,9 +376,11 @@ describe("CLI Command Handlers", () => {
 
 			expect(mockRankAll).toHaveBeenCalledWith(
 				expect.objectContaining({
-					limit: 999999999,
 					dry: false,
-					policy: expect.objectContaining({ curationRemoveThreshold: 0.8 }),
+					limit: 999999999,
+					policy: expect.objectContaining({
+						curationRemoveThreshold: 0.8,
+					}),
 				}),
 			);
 		});
@@ -371,11 +388,16 @@ describe("CLI Command Handlers", () => {
 		it("should handle --fresh flag for rank all mode", async () => {
 			await _testMain(["bun", "cli.ts", "score", "--all", "--fresh"]);
 
-			expect(mockRankAll).toHaveBeenCalledWith({
-				limit: 999999999,
-				dry: false,
-				policy: {},
-			});
+			expect(mockRankAll).toHaveBeenCalledWith(
+				expect.objectContaining({
+					dry: false,
+					limit: 999999999,
+					policy: expect.objectContaining({}),
+				}),
+			);
+			expect(logMocks.info).toHaveBeenCalledWith(
+				expect.stringContaining("fresh=true"),
+			);
 		});
 
 		it("should handle multiple flags together", async () => {
@@ -402,39 +424,33 @@ describe("CLI Command Handlers", () => {
 		it("should call summariseOne when --one flag specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--one", "owner/repo"]);
 
-			expect(mockSummariseRepo).toHaveBeenCalledWith(
-				expect.objectContaining({
-					selector: "owner/repo",
-					dry: false,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseRepo).toHaveBeenCalledWith({
+				selector: "owner/repo",
+				dry: false,
+				logger: expect.objectContaining({ error: logMocks.error }),
+			});
 		});
 
 		it("should call summariseAll when --all flag specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all"]);
 
-			expect(mockSummariseAll).toHaveBeenCalledWith(
-				expect.objectContaining({
-					limit: 999999999,
-					dry: false,
-					resummarise: false,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseAll).toHaveBeenCalledWith({
+				dry: false,
+				limit: 999999999,
+				logger: expect.objectContaining({ error: logMocks.error }),
+				resummarise: false,
+			});
 		});
 
 		it("should call summariseAll with limit when --limit specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--limit", "25"]);
 
-			expect(mockSummariseAll).toHaveBeenCalledWith(
-				expect.objectContaining({
-					limit: 25,
-					dry: false,
-					resummarise: false,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseAll).toHaveBeenCalledWith({
+				dry: false,
+				limit: 25,
+				logger: expect.objectContaining({ error: logMocks.error }),
+				resummarise: false,
+			});
 		});
 
 		it("should set dry=true when --dry flag specified", async () => {
@@ -447,39 +463,33 @@ describe("CLI Command Handlers", () => {
 				"--dry",
 			]);
 
-			expect(mockSummariseRepo).toHaveBeenCalledWith(
-				expect.objectContaining({
-					selector: "owner/repo",
-					dry: true,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseRepo).toHaveBeenCalledWith({
+				selector: "owner/repo",
+				dry: true,
+				logger: expect.objectContaining({ error: logMocks.error }),
+			});
 		});
 
 		it("should set resummarise=true when --resummarise flag specified", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--resummarise"]);
 
-			expect(mockSummariseAll).toHaveBeenCalledWith(
-				expect.objectContaining({
-					limit: 999999999,
-					dry: false,
-					resummarise: true,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseAll).toHaveBeenCalledWith({
+				dry: false,
+				limit: 999999999,
+				logger: expect.objectContaining({ error: logMocks.error }),
+				resummarise: true,
+			});
 		});
 
 		it("should handle --resummarize alias for --resummarise", async () => {
 			await _testMain(["bun", "cli.ts", "summarise", "--all", "--resummarize"]);
 
-			expect(mockSummariseAll).toHaveBeenCalledWith(
-				expect.objectContaining({
-					limit: 999999999,
-					dry: false,
-					resummarise: true,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseAll).toHaveBeenCalledWith({
+				dry: false,
+				limit: 999999999,
+				logger: expect.objectContaining({ error: logMocks.error }),
+				resummarise: true,
+			});
 		});
 
 		it("should handle multiple summarise flags together", async () => {
@@ -494,14 +504,12 @@ describe("CLI Command Handlers", () => {
 				"--resummarise",
 			]);
 
-			expect(mockSummariseAll).toHaveBeenCalledWith(
-				expect.objectContaining({
-					limit: 10,
-					dry: true,
-					resummarise: true,
-					logger: expect.objectContaining({ error: mockLogError }),
-				}),
-			);
+			expect(mockSummariseAll).toHaveBeenCalledWith({
+				dry: true,
+				limit: 10,
+				logger: expect.objectContaining({ error: logMocks.error }),
+				resummarise: true,
+			});
 		});
 	});
 });
