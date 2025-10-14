@@ -24,6 +24,8 @@ describe("CLI Routing and Handlers", () => {
 	const mockLogInfo = jest.fn();
 	const mockLogWarn = jest.fn();
 	const mockLogLine = jest.fn();
+	const mockSummariseRepo = jest.fn();
+	const mockSummariseAll = jest.fn();
 
 	// Mock all the imports
 	mock.module("@src/api/ingest", () => ({
@@ -74,8 +76,8 @@ describe("CLI Routing and Handlers", () => {
 	}));
 
 	mock.module("@src/api/summarise.public", () => ({
-		summariseRepo: () => {},
-		summariseAll: () => {},
+		summariseRepo: mockSummariseRepo,
+		summariseAll: mockSummariseAll,
 	}));
 
 	// Mock the global usage function by storing original reference
@@ -96,22 +98,34 @@ describe("CLI Routing and Handlers", () => {
 		// Set default env
 		Bun.env.EXPORTS_DIR = "./exports";
 		Bun.env.GITHUB_TOKEN = "test-token";
-	});
 
-	afterEach(() => {
-		process.exit = originalExit;
+		if (_setCliDeps) {
+			_setCliDeps({
+				summariseRepo: mockSummariseRepo,
+				summariseAll: mockSummariseAll,
+			});
+		}
 	});
 
 	// Import CLI after mocks are set up
 	let _testMain: (argv: string[]) => Promise<void>;
+	let _setCliDeps:
+		| ((overrides: Partial<Record<string, unknown>>) => void)
+		| undefined;
+	let _resetCliDeps: (() => void) | undefined;
 
 	beforeAll(async () => {
 		const cli = await import("@src/cli");
 		_testMain = cli._testMain;
+		_setCliDeps = cli._setCliDeps;
+		_resetCliDeps = cli._resetCliDeps;
 	});
 
 	afterEach(() => {
 		process.exit = originalExit;
+		if (_resetCliDeps) {
+			_resetCliDeps();
+		}
 	});
 
 	describe("CLI Routing and Additional Handlers", () => {

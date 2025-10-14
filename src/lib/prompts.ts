@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "@lib/bootstrap";
-import rawPrompts from "../../prompts.yaml";
+import { parse } from "yaml";
 
 export type PromptsState =
 	| { kind: "missing" }
@@ -147,14 +147,10 @@ export function ensurePromptsReadyOrExit(): void {
 	process.exit(1);
 }
 
-// Export parsed root prompts.yaml for consumers that need configuration text.
-// This import path resolves from src/lib → project root (../../prompts.yaml).
-// Keeping it centralized here ensures all features use the same source.
-export const promptsConfig = rawPrompts as {
+type PromptsConfig = {
 	scoring?: {
 		system?: string;
 		fewshot?: string;
-		/** Raw multi-line block where each line is "slug = only score if ..." */
 		criteria?: string;
 	};
 	summarise?: {
@@ -163,3 +159,27 @@ export const promptsConfig = rawPrompts as {
 		reduce?: string;
 	};
 };
+
+// Export parsed root prompts.yaml for consumers that need configuration text.
+// This import path resolves from src/lib → project root (../../prompts.yaml).
+// Keeping it centralized here ensures all features use the same source.
+function loadPromptsConfig(): PromptsConfig {
+	const promptsPath = resolve(process.cwd(), "prompts.yaml");
+	if (!existsSync(promptsPath)) {
+		return {};
+	}
+
+	try {
+		const text = readFileSync(promptsPath, "utf-8");
+		const parsed = parse(text);
+		if (parsed && typeof parsed === "object") {
+			return parsed as PromptsConfig;
+		}
+	} catch {
+		// fall through
+	}
+
+	return {};
+}
+
+export const promptsConfig = loadPromptsConfig();
