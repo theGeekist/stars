@@ -1,6 +1,6 @@
 // src/features/summarise/llm.ts
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
-import { gen as realGen } from "@lib/ollama";
+import { loadOllamaModule } from "@lib/ollama-loader";
 import { promptsConfig as prompts } from "@lib/prompts";
 import {
 	chunkMarkdown,
@@ -160,9 +160,10 @@ async function paraphraseAwesomeList(
 		`Rephrase the following, saying the same thing in a slightly different way, just for variability:
 ${awesomeSummary}
 `.trim();
+	const fallbackGen = loadOllamaModule().gen;
 	return deps?.gen
 		? deps.gen(prompt, { temperature: 0.2 })
-		: realGen(prompt, { temperature: 0.2 });
+		: fallbackGen(prompt, { temperature: 0.2 });
 }
 
 export async function summariseRepoOneParagraph(
@@ -182,7 +183,7 @@ export async function summariseRepoOneParagraph(
 		}
 	}
 
-	const gen = deps?.gen ?? realGen;
+	const gen = deps?.gen ?? loadOllamaModule().gen;
 	if (chunks.length === 0) {
 		const results = await generateFromMetadata(meta, baseHints, gen);
 		// console.log("-".repeat(20));

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { SummariseDeps } from "@features/summarise/types";
 import { log as realLog } from "@lib/bootstrap";
+import { loadOllamaModule } from "@lib/ollama-loader";
 import { withDB } from "@lib/db";
 import type {
 	BatchResult,
@@ -15,8 +16,7 @@ import { buildBatchStats } from "./public.types";
  * Used when the caller does not inject full `deps`.
  */
 function createSummariseDepsFromConfig(cfg: ModelConfig): SummariseDeps {
-	// Lazy require to avoid upfront cost if not used
-	const { gen } = require("@lib/ollama");
+	const { gen } = loadOllamaModule();
 	return {
 		gen: async (prompt: string, _opts?: Record<string, unknown>) => {
 			const headers = cfg.apiKey

@@ -15,6 +15,7 @@ export type {
 } from "@lib/types";
 
 // Import for local use
+import { loadOllamaModule } from "@lib/ollama-loader";
 import type { ListDef } from "@lib/types";
 
 /* -------------------------------------------------------------------------- */
@@ -143,8 +144,7 @@ export type ScoringLLMGenerate = (
 export function createScoringLLMFromConfig(cfg: ModelConfig): {
 	generatePromptAndSend: ScoringLLMGenerate;
 } {
-	// Lazy import to avoid pulling ollama if consumer provides custom llm
-	const { gen } = require("@lib/ollama");
+	const { gen } = loadOllamaModule();
 	return {
 		async generatePromptAndSend(
 			system: string,

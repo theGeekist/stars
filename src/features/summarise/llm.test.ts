@@ -1,6 +1,12 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { summariseRepoOneParagraph } from "@features/summarise/llm";
 import type { Meta } from "./types";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
+
+afterEach(() => {
+	mock.restore();
+	setOllamaModuleLoaderForTests();
+});
 
 describe("summariseRepoOneParagraph", () => {
 	it("short-circuits awesome lists based on metadata", async () => {
@@ -23,7 +29,7 @@ describe("summariseRepoOneParagraph", () => {
 			chunkMarkdown: (_: string) => [],
 		}));
 		// Mock gen to return a deterministic paragraph
-		mock.module("@lib/ollama", () => ({
+		setOllamaModuleLoaderForTests(() => ({
 			gen: async (_: string) => "This project is a tool that helps developers.",
 		}));
 
@@ -63,7 +69,7 @@ describe("summariseRepoOneParagraph", () => {
 		};
 
 		// Mock gen to return bullets for map and a final paragraph for reduce
-		mock.module("@lib/ollama", () => ({
+		setOllamaModuleLoaderForTests(() => ({
 			gen: async (prompt: string) =>
 				prompt.includes("Bullets:")
 					? "Final paragraph."
