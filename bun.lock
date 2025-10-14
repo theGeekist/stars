@@ -8,6 +8,7 @@
         "consola": "^3.4.2",
         "ollama": "^0.5.17",
         "ora": "^8.2.0",
+        "yaml": "^2.8.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.2.4",

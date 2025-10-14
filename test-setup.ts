@@ -1,25 +1,34 @@
 // test-setup.ts
-// This file is preloaded before running tests to ensure clean mock state
+// Centralised hooks to isolate tests when running the full suite together.
 
-import { mock, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, jest } from "bun:test";
 
-// Clear all mocks before each test file
+const originalEnv = new Map(Object.entries(Bun.env));
+const originalCwd = process.cwd();
+const originalExit = process.exit;
+
 beforeEach(() => {
-	mock.clearAllMocks();
+	jest.clearAllMocks();
 });
 
-// Ensure a clean module cache between test files
-// This helps prevent module mock contamination
-if (typeof global !== "undefined") {
-	// Store original module loader for cleanup
-	const originalRequire = global.require;
-
-	afterEach(() => {
-		// Reset require cache to prevent module contamination
-		if (global.require && global.require.cache) {
-			Object.keys(global.require.cache).forEach((key) => {
-				delete global.require.cache[key];
-			});
+afterEach(() => {
+	for (const key of Object.keys(Bun.env)) {
+		if (!originalEnv.has(key)) {
+			Reflect.deleteProperty(Bun.env, key);
 		}
-	});
-}
+	}
+
+	for (const [key, value] of originalEnv) {
+		if (value === undefined) {
+			Reflect.deleteProperty(Bun.env, key);
+		} else {
+			Reflect.set(Bun.env, key, value);
+		}
+	}
+
+	if (process.cwd() !== originalCwd) {
+		process.chdir(originalCwd);
+	}
+
+	process.exit = originalExit;
+});

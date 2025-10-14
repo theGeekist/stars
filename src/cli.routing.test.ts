@@ -1,4 +1,5 @@
 import {
+	afterAll,
 	afterEach,
 	beforeAll,
 	beforeEach,
@@ -6,108 +7,141 @@ import {
 	expect,
 	it,
 	jest,
-	mock,
 } from "bun:test";
+import { createMockLogger } from "@src/__test__/helpers/mock-log";
 
 describe("CLI Routing and Handlers", () => {
-	// Mock external dependencies
 	const mockIngest = jest.fn();
 	const mockEnrichAllRepoTopics = jest.fn();
 	const mockGeneratePromptsYaml = jest.fn();
 	const mockTestOllamaReady = jest.fn();
-	const _mockUsage = jest.fn();
 	const mockShowSetupHintIfNotReady = jest.fn();
 	const mockCheckPromptsState = jest.fn();
 	const mockPrintSetupStatus = jest.fn();
 	const mockCriteriaExamples = jest.fn();
-	const mockLogError = jest.fn();
-	const mockLogInfo = jest.fn();
-	const mockLogWarn = jest.fn();
-	const mockLogLine = jest.fn();
+	const mockSummariseRepo = jest.fn();
+	const mockSummariseAll = jest.fn();
 
-	// Mock all the imports
-	mock.module("@src/api/ingest", () => ({
-		default: mockIngest,
-	}));
+	let _testMain: (argv: string[]) => Promise<void>;
 
-	mock.module("@src/api/topics", () => ({
-		enrichAllRepoTopics: mockEnrichAllRepoTopics,
-	}));
+	const { log: mockLog, mocks: logMocks } = createMockLogger();
+	let bootstrapModule: typeof import("@lib/bootstrap");
+	let restoreLog: (() => void) | undefined;
+	let initBootstrapSpy: ReturnType<typeof jest.spyOn> | undefined;
+	let resetCliDeps: (() => void) | undefined;
 
-	mock.module("@features/setup", () => ({
-		generatePromptsYaml: mockGeneratePromptsYaml,
-		testOllamaReady: mockTestOllamaReady,
-	}));
+	beforeAll(async () => {
+		bootstrapModule = await import("@lib/bootstrap");
+		const originalLog = {
+			header: bootstrapModule.log.header,
+			subheader: bootstrapModule.log.subheader,
+			info: bootstrapModule.log.info,
+			success: bootstrapModule.log.success,
+			warn: bootstrapModule.log.warn,
+			error: bootstrapModule.log.error,
+			debug: bootstrapModule.log.debug,
+			line: bootstrapModule.log.line,
+			list: bootstrapModule.log.list,
+			json: bootstrapModule.log.json,
+			columns: bootstrapModule.log.columns,
+			spinner: bootstrapModule.log.spinner,
+			withSpinner: bootstrapModule.log.withSpinner,
+		};
+		Object.assign(bootstrapModule.log, mockLog);
+		restoreLog = () => {
+			Object.assign(bootstrapModule.log, originalLog);
+		};
+		initBootstrapSpy = jest
+			.spyOn(bootstrapModule, "initBootstrap")
+			.mockImplementation(() => {});
 
-	mock.module("@lib/prompts", () => ({
-		showSetupHintIfNotReady: mockShowSetupHintIfNotReady,
-		checkPromptsState: mockCheckPromptsState,
-		printSetupStatus: mockPrintSetupStatus,
-		criteriaExamples: mockCriteriaExamples,
-		ensurePromptsReadyOrExit: () => {},
-	}));
+		const ingestModule = await import("@src/api/ingest");
+		jest.spyOn(ingestModule, "default").mockImplementation(mockIngest);
 
-	mock.module("@lib/bootstrap", () => ({
-		initBootstrap: () => {},
-		log: {
-			error: mockLogError,
-			info: mockLogInfo,
-			warn: mockLogWarn,
-			line: mockLogLine,
-			header: () => {},
-			subheader: () => {},
-			list: () => {},
-		},
-	}));
+		const topicsModule = await import("@src/api/topics");
+		jest
+			.spyOn(topicsModule, "enrichAllRepoTopics")
+			.mockImplementation(mockEnrichAllRepoTopics);
 
-	mock.module("@src/api/stars", () => ({
-		runListsCore: () => {},
-		runReposCore: () => {},
-		runStarsCore: () => {},
-		runUnlistedCore: () => {},
-	}));
+		const setupModule = await import("@features/setup");
+		jest
+			.spyOn(setupModule, "generatePromptsYaml")
+			.mockImplementation(mockGeneratePromptsYaml);
+		jest
+			.spyOn(setupModule, "testOllamaReady")
+			.mockImplementation(mockTestOllamaReady);
 
-	mock.module("@src/api/ranking.public", () => ({
-		rankOne: () => {},
-		rankAll: () => {},
-		DEFAULT_POLICY: {},
-	}));
+		const promptsModule = await import("@lib/prompts");
+		jest
+			.spyOn(promptsModule, "showSetupHintIfNotReady")
+			.mockImplementation(mockShowSetupHintIfNotReady);
+		jest
+			.spyOn(promptsModule, "checkPromptsState")
+			.mockImplementation(mockCheckPromptsState);
+		jest
+			.spyOn(promptsModule, "printSetupStatus")
+			.mockImplementation(mockPrintSetupStatus);
+		jest
+			.spyOn(promptsModule, "criteriaExamples")
+			.mockImplementation(mockCriteriaExamples);
+		jest
+			.spyOn(promptsModule, "ensurePromptsReadyOrExit")
+			.mockImplementation(() => {});
 
-	mock.module("@src/api/summarise.public", () => ({
-		summariseRepo: () => {},
-		summariseAll: () => {},
-	}));
+		const starsModule = await import("@src/api/stars");
+		jest.spyOn(starsModule, "runListsCore").mockImplementation(() => {});
+		jest.spyOn(starsModule, "runReposCore").mockImplementation(() => {});
+		jest.spyOn(starsModule, "runStarsCore").mockImplementation(() => {});
+		jest.spyOn(starsModule, "runUnlistedCore").mockImplementation(() => {});
 
-	// Mock the global usage function by storing original reference
-	let _originalUsage: (() => void) | undefined;
+		const rankingModule = await import("@src/api/ranking.public");
+		jest.spyOn(rankingModule, "rankOne").mockImplementation(() => {});
+		jest.spyOn(rankingModule, "rankAll").mockImplementation(() => {});
 
-	// Mock process.exit
+		const summariseModule = await import("@src/api/summarise.public");
+		jest
+			.spyOn(summariseModule, "summariseRepo")
+			.mockImplementation(() => Promise.resolve());
+		jest
+			.spyOn(summariseModule, "summariseAll")
+			.mockImplementation(() => Promise.resolve());
+
+		const cli = await import("@src/cli");
+		_testMain = cli._testMain;
+		cli._setCliDeps({
+			summariseRepo: mockSummariseRepo,
+			summariseAll: mockSummariseAll,
+		});
+		resetCliDeps = cli._resetCliDeps;
+	});
+
+	afterAll(() => {
+		jest.restoreAllMocks();
+		restoreLog?.();
+		resetCliDeps?.();
+	});
+
 	const originalExit = process.exit;
-	const _mockProcessExit = jest.fn();
 
 	beforeEach(() => {
 		jest.clearAllMocks();
-
-		// Mock process.exit
+		mockIngest.mockReset();
+		mockEnrichAllRepoTopics.mockReset();
+		mockGeneratePromptsYaml.mockReset();
+		mockTestOllamaReady.mockReset();
+		mockShowSetupHintIfNotReady.mockReset();
+		mockCheckPromptsState.mockReset();
+		mockPrintSetupStatus.mockReset();
+		mockCriteriaExamples.mockReset();
+		mockSummariseRepo.mockReset();
+		mockSummariseAll.mockReset();
 		process.exit = ((code: number) => {
 			throw new Error(`Process exit with code ${code}`);
 		}) as typeof process.exit;
 
-		// Set default env
 		Bun.env.EXPORTS_DIR = "./exports";
 		Bun.env.GITHUB_TOKEN = "test-token";
-	});
-
-	afterEach(() => {
-		process.exit = originalExit;
-	});
-
-	// Import CLI after mocks are set up
-	let _testMain: (argv: string[]) => Promise<void>;
-
-	beforeAll(async () => {
-		const cli = await import("@src/cli");
-		_testMain = cli._testMain;
+		mockCriteriaExamples.mockReturnValue([]);
 	});
 
 	afterEach(() => {
@@ -134,7 +168,7 @@ describe("CLI Routing and Handlers", () => {
 			it("should call enrichAllRepoTopics with default options", async () => {
 				await _testMain(["bun", "cli.ts", "topics:enrich"]);
 
-				expect(mockLogInfo).toHaveBeenCalledWith(
+				expect(logMocks.info).toHaveBeenCalledWith(
 					"Enrich topics: onlyActive=false ttlDays=(default)",
 				);
 				expect(mockEnrichAllRepoTopics).toHaveBeenCalledWith({
@@ -146,7 +180,7 @@ describe("CLI Routing and Handlers", () => {
 			it("should call enrichAllRepoTopics with --active flag", async () => {
 				await _testMain(["bun", "cli.ts", "topics:enrich", "--active"]);
 
-				expect(mockLogInfo).toHaveBeenCalledWith(
+				expect(logMocks.info).toHaveBeenCalledWith(
 					"Enrich topics: onlyActive=true ttlDays=(default)",
 				);
 				expect(mockEnrichAllRepoTopics).toHaveBeenCalledWith({
@@ -158,7 +192,7 @@ describe("CLI Routing and Handlers", () => {
 			it("should call enrichAllRepoTopics with --ttl flag", async () => {
 				await _testMain(["bun", "cli.ts", "topics:enrich", "--ttl", "7"]);
 
-				expect(mockLogInfo).toHaveBeenCalledWith(
+				expect(logMocks.info).toHaveBeenCalledWith(
 					"Enrich topics: onlyActive=false ttlDays=7",
 				);
 				expect(mockEnrichAllRepoTopics).toHaveBeenCalledWith({
@@ -177,7 +211,7 @@ describe("CLI Routing and Handlers", () => {
 					"14",
 				]);
 
-				expect(mockLogInfo).toHaveBeenCalledWith(
+				expect(logMocks.info).toHaveBeenCalledWith(
 					"Enrich topics: onlyActive=true ttlDays=14",
 				);
 				expect(mockEnrichAllRepoTopics).toHaveBeenCalledWith({
@@ -195,7 +229,7 @@ describe("CLI Routing and Handlers", () => {
 					await _testMain(["bun", "cli.ts", "setup"]);
 				}).toThrow("Process exit with code 1");
 
-				expect(mockLogError).toHaveBeenCalledWith("GITHUB_TOKEN missing");
+				expect(logMocks.error).toHaveBeenCalledWith("GITHUB_TOKEN missing");
 			});
 
 			it("should generate prompts when Ollama is ready", async () => {
@@ -222,12 +256,12 @@ describe("CLI Routing and Handlers", () => {
 
 				await _testMain(["bun", "cli.ts", "setup"]);
 
-				expect(mockLogWarn).toHaveBeenCalledWith(
+				expect(logMocks.warn).toHaveBeenCalledWith(
 					"Ollama not ready to generate criteria:",
 					"connection failed",
 				);
 				expect(mockGeneratePromptsYaml).toHaveBeenCalledWith("test-token");
-				expect(mockLogWarn).toHaveBeenCalledWith(
+				expect(logMocks.warn).toHaveBeenCalledWith(
 					"prompts.yaml contains 3 placeholder criteria — edit them before running scoring.",
 				);
 			});
@@ -241,7 +275,7 @@ describe("CLI Routing and Handlers", () => {
 
 				await _testMain(["bun", "cli.ts", "setup"]);
 
-				expect(mockLogWarn).toHaveBeenCalledWith(
+				expect(logMocks.warn).toHaveBeenCalledWith(
 					"prompts.yaml contains 2 placeholder criteria — edit them before running scoring.",
 				);
 			});
@@ -275,7 +309,6 @@ describe("CLI Routing and Handlers", () => {
 			it("should handle summarize alias for summarise", async () => {
 				await _testMain(["bun", "cli.ts", "summarize", "--all"]);
 
-				// Should not throw an error and should handle the command
 				expect(mockShowSetupHintIfNotReady).not.toHaveBeenCalled();
 			});
 
@@ -286,8 +319,6 @@ describe("CLI Routing and Handlers", () => {
 			});
 
 			it("should handle error in main and exit", async () => {
-				// This is tricky to test since it's in the main execution block
-				// We'll verify the error handling structure exists
 				expect(typeof _testMain).toBe("function");
 			});
 		});
