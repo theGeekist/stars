@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
-import type { ScoringLLM, ScoreItem } from "@features/scoring/llm";
+import type { ScoreItem, ScoringLLM } from "@features/scoring/llm";
 import { scoreRepoAgainstLists } from "@features/scoring/llm";
 import type {
 	ApplyPolicy,

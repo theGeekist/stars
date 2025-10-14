@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it, mock } from "bun:test";
-import type { RepoInfo, StarList } from "@lib/types";
+import type { RepoInfo } from "@lib/types";
 
 const ingestCore = mock(async () => ({
 	lists: 1,

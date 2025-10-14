@@ -1,11 +1,11 @@
+import type { Database } from "bun:sqlite";
+import type { createSummariseService } from "@features/summarise/service";
 import type { SummariseDeps } from "@features/summarise/types";
 import type { log as realLog } from "@lib/bootstrap";
 import { getDefaultDb, setDefaultDb, withDB } from "@lib/db";
 import type { RepoRow } from "@lib/types";
 import type { ProgressEmitter, SummaryItemResult } from "./public.types";
 import { generateSummaryForRow, saveSummaryOrDryRun } from "./summarise";
-import type { createSummariseService } from "@features/summarise/service";
-import type { Database } from "bun:sqlite";
 
 type SummariseService = ReturnType<typeof createSummariseService>;
 

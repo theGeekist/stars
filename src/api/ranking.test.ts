@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import {
 	afterAll,
 	afterEach,
@@ -8,9 +9,8 @@ import {
 	it,
 	mock,
 } from "bun:test";
-import type { Database } from "bun:sqlite";
-import type { RepoRow } from "@lib/types";
 import { createDb, initSchema } from "@lib/db";
+import type { RepoRow } from "@lib/types";
 import type { RankingItemResult } from "./public.types";
 
 const baseRepo = (id: number, name: string): RepoRow => ({
@@ -95,7 +95,7 @@ const scoringService = {
 			persistCalls.push({ runId, repoId, scores });
 		},
 	),
-	planMembership: mock((repo: RepoRow) => ({
+	planMembership: mock((_repo: RepoRow) => ({
 		finalPlanned: planResult.finalPlanned,
 		changed: planResult.changed,
 		blocked: planResult.blocked,

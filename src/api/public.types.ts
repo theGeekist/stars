@@ -14,9 +14,9 @@ export type {
 	StarList,
 } from "@lib/types";
 
+import type { SummariseDeps } from "@features/summarise/types";
 // Import for local use
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
-import type { SummariseDeps } from "@features/summarise/types";
 import type { ListDef } from "@lib/types";
 
 /* -------------------------------------------------------------------------- */

@@ -22,10 +22,9 @@ import {
 	createScoringLLMFromConfig,
 	createSummariseDepsFromConfig,
 	getRequiredEnv,
+	type OpStatus,
 	resolveGithubToken,
 	resolveModelConfig,
-	type ModelConfig,
-	type OpStatus,
 } from "@src/api/public.types";
 
 describe("Public API Types and Utilities", () => {

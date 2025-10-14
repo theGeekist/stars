@@ -1,13 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { log as realLog } from "@lib/bootstrap";
 import type { RepoInfo, StarList } from "@lib/types";
-import type { ProgressDetail, ProgressEmitter } from "./public.types";
 import {
 	ingestCore,
 	ingestFromData,
 	ingestListedFromGh,
 	ingestUnlistedFromGh,
 } from "./ingest";
+import type { ProgressDetail, ProgressEmitter } from "./public.types";
 import type { IngestReturn } from "./types";
 
 type IngestPhase =

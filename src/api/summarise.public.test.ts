@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import {
 	afterAll,
 	afterEach,
@@ -8,9 +9,8 @@ import {
 	it,
 	mock,
 } from "bun:test";
-import type { Database } from "bun:sqlite";
-import type { RepoRow } from "@lib/types";
 import { createDb, initSchema } from "@lib/db";
+import type { RepoRow } from "@lib/types";
 
 const makeRow = (id: number, name: string): RepoRow => ({
 	id,

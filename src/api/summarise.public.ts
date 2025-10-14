@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { SummariseDeps } from "@features/summarise/types";
 import { createSummariseService } from "@features/summarise/service";
+import type { SummariseDeps } from "@features/summarise/types";
 import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import type {

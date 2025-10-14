@@ -1,35 +1,47 @@
-# Framework Accessibility & API Surface Audit (2025 Refresh)
+# Framework Accessibility & Extensibility Audit
 
-## Scope & method
+_Last reviewed: 2025-10-14_
 
-We reviewed the public API modules (`summarise.public.ts`, `ranking.public.ts`, `stars.public.ts`, `ingest.public.ts`), the shared types/utilities in `public.types.ts`, and the dynamic dispatcher. The analysis focuses on developer-accessibility: naming consistency, option surfaces, error semantics, composability, and refactor readiness.
+## Scope & approach
 
-## Current strengths
+- Surveyed the public API layer (`summarise`, `ranking`, `stars`, `ingest`) and supporting utilities to judge naming, dependency injection, and runtime ergonomics.
+- Inspected shared contracts (`ProgressEmitter`, `ModelConfig`, `ConfigError`) to understand how external callers hook into long-running workflows.
+- Focused on extensibility and composability opportunities that would keep the surfaces future-proof while avoiding unnecessary churn.
 
-- **Shared summarise runner.** `runSummariseRows` centralises iteration, persistence, and hook support so the public API and CLI reuse the same pipeline while emitting the standard `summarising:repo` progress events.【F:src/api/summarise.runner.ts†L1-L94】【F:src/api/summarise.public.ts†L18-L110】【F:src/api/summarise.ts†L77-L152】
-- **Modular ranking apply flow.** Dedicated helpers for score persistence, membership planning, and GitHub updates now power `runRankingForRepo`, making unit tests lighter and error handling clearer.【F:src/api/ranking.public.ts†L68-L212】
-- **Verb-centric progress vocabulary.** Ingest, stars, ranking, and summarise modules emit `verbing:subject` phases with optional `detail` statuses, aligning telemetry filters and orchestration scripts.【F:src/api/public.types.ts†L45-L71】【F:src/api/ingest.public.ts†L9-L86】【F:src/api/ranking.public.ts†L24-L193】【F:src/api/stars.public.ts†L13-L146】
-- **Typed progress detail payloads.** A shared `ProgressStatus` union and structured `ProgressDetail` replace ad-hoc strings, so listeners can exhaustively handle lifecycle changes across ingest, lists, and stars.【F:src/api/public.types.ts†L45-L88】【F:src/api/ingest.public.ts†L1-L86】【F:src/api/stars.public.ts†L1-L137】
-- **Normalised stars DTOs.** All stars fetchers now return `{ items, stats }` payloads with counts and timestamps, with each list item exposing a stable `slug` and optional `listId` for downstream joins.【F:src/api/stars.public.ts†L13-L86】
-- **Summarise hooks exported.** `summarise.public.ts` re-exports `SummariseExecutionHooks` and the run context so orchestrators can subscribe to before/after callbacks without reaching into private modules.【F:src/api/summarise.public.ts†L1-L210】【F:src/api/summarise.runner.ts†L1-L129】
-- **Documented option precedence.** Public interfaces call out the override order between injected dependencies, per-call configs, and environment fallbacks, reducing ambiguity when wiring new consumers.【F:src/api/summarise.public.ts†L18-L60】【F:src/api/ranking.public.ts†L21-L85】
-- **Centralised environment and model resolution.** `resolveModelConfig`, `resolveGithubToken`, and `getRequiredEnv` encapsulate Bun env access, trimming inputs and surfacing actionable `ConfigError`s for missing credentials, which keeps option interfaces clean and future proofs alternative env providers.【F:src/api/public.types.ts†L101-L205】
-- **Data-driven dispatcher.** `dispatchCommand` routes through a typed handler table, eliminating downcasts and documenting extension steps inline, which makes CLI and orchestration scripts safer to evolve.【F:src/api/dispatch.ts†L1-L108】
+## Architectural touchpoints
 
-## Remaining risks
+- Public options expose consistent verb-forward naming (`summariseAll`, `rankOne`, etc.) and typed progress hooks that report `verbing:subject` phases, enabling uniform orchestration across features.【F:src/api/public.types.ts†L52-L107】【F:src/api/dispatch.ts†L1-L76】
+- Batch runners encapsulate side-effects: summarisation iterates rows with injectable hooks and DB overrides, while ranking composes a runtime that mediates scoring, list services, and GitHub side-effects in one place.【F:src/api/summarise.runner.ts†L12-L129】【F:src/api/ranking.public.ts†L35-L200】
+- Environment and model resolution helpers centralise token/model precedence, trim unsafe input, and throw typed `ConfigError`s instead of exiting—making the APIs resilient when embedded elsewhere.【F:src/api/public.types.ts†L26-L43】【F:src/api/public.types.ts†L215-L296】
 
-- **List metadata lookup duplicates network work.** `fetchReposFromList` now enriches responses with `listId`, but it requires an extra `collectListMetas` pass per invocation. Without caching or DI, repeated calls may re-fetch the entire list catalog.【F:src/api/stars.public.ts†L49-L86】
-- **Summaries DB injection lacks integration coverage.** `runSummariseRows` respects injected databases for README caching, but the new hooks remain untested in an end-to-end scenario, so regressions could slip past unit suites.【F:src/api/summarise.runner.ts†L60-L125】
-- **Ranking helper exports still indirect.** `persistScores`, `planMembershipChange`, and `applyMembership` ship as shared ops, yet only batch flows exercise them, making error messaging changes risky without direct unit tests.【F:src/api/ranking.public.ts†L125-L205】
+## Consistency & naming
 
-## Opportunities for composability & extensibility
+- Functions favour `verbAll`/`verbOne` patterns for batch vs. targeted operations, matching dispatcher keys and reducing mental overhead when wiring CLI or orchestration layers.【F:src/api/dispatch.ts†L25-L76】
+- Options interfaces group shared concerns (`db`, `logger`, `onProgress`, `modelConfig`) in predictable positions, though comments occasionally carry behavioural nuance (e.g., precedence rules) that might be better codified in types.
+- Progress payloads deliver structured detail with status enums rather than free-form strings, lowering the risk of consumer breakage when phases expand.【F:src/api/public.types.ts†L52-L107】
 
-- **Cache list metadata.** Allow callers to inject pre-fetched list metas (or memoise internally) so `fetchReposFromList` can reuse `listId` lookups across invocations without re-querying GitHub.【F:src/api/stars.public.ts†L49-L86】
-- **Ship summarise integration tests.** Add a focused suite that runs `summariseAll` with an injected database and hooks to confirm README caching respects the provided connection and emits expected events.【F:src/api/summarise.runner.ts†L60-L125】
-- **Directly test ranking helpers.** Extract lightweight unit tests for `persistScores`, `planMembershipChange`, and `applyMembership` to lock down error semantics and blocked-plan scenarios.【F:src/api/ranking.public.ts†L125-L205】
+## Accessibility & composability
+
+- Dependency injection is available at every entry point (custom LLMs, DB handles, execution hooks), which keeps surfaces testable and adaptable for future engines or storage changes.【F:src/api/summarise.runner.ts†L37-L129】【F:src/api/ranking.public.ts†L35-L131】
+- Dispatcher table converts string keys into strongly typed handler invocations, enabling scripting interfaces or RPC layers without compromising type safety.【F:src/api/dispatch.ts†L1-L93】
+- The shared `ProgressEmitter` and result DTOs give downstream tooling (CLI, PM2 scripts, dashboards) predictable shapes for logging, retries, or UI updates.【F:src/api/public.types.ts†L52-L162】
+
+## Complexity & future-proofness
+
+- Batch runners currently stitch together orchestration logic inline (looping, error handling, persistence). Extracting reusable primitives (e.g., generic `runBatch`) could further reduce duplication as new workflows appear.
+- Ranking’s runtime builder already separates data gathering, scoring, and side-effects, making it a good template for future features that need staged preparation before iteration.【F:src/api/ranking.public.ts†L85-L200】
+- Reliance on environment variables is shielded by helpers, but coordinating env discovery across CLI, server, and workers would benefit from documented precedence tables or configuration objects to avoid drift.【F:src/api/public.types.ts†L215-L296】
+
+## Risks & friction points
+
+- Progress phases remain stringly-typed beyond the union `ProgressStatus`; if additional verbs are introduced, consumers will need up-to-date mapping. Publishing a canonical list or helper constants would de-risk this.
+- Comments communicate critical behaviour (e.g., “Provide either `llm` or `modelConfig`”), leaving room for misuse without compile-time enforcement.【F:src/api/ranking.public.ts†L28-L60】
+- Summarise runner temporarily rebinds the global DB connection when a custom handle is passed, which could surprise concurrent consumers if shared in multi-tenant contexts.【F:src/api/summarise.runner.ts†L55-L129】
 
 ## Actionable next steps
 
-1. **Memoise list metadata.** Add an optional `metas` cache parameter (or internal memo) to `fetchReposFromList` so repeated calls don’t trigger full `collectListMetas` re-fetches.【F:src/api/stars.public.ts†L49-L86】
-2. **Exercise summarise hooks end-to-end.** Build an integration test that injects hooks and a temp database to ensure README caching and hook payloads behave under concurrent runs.【F:src/api/summarise.runner.ts†L60-L125】
-3. **Unit-test ranking repo ops.** Cover the exported repo operations with isolated tests (persist success/failure, apply blocked plans) to freeze behaviour ahead of future policy tweaks.【F:src/api/ranking.public.ts†L125-L205】
+1. **Codify option precedence in types** – Introduce discriminated unions for mutually exclusive fields like `llm` vs. `modelConfig` to prevent invalid combinations at compile time.【F:src/api/ranking.public.ts†L35-L116】
+2. **Publish progress phase constants** – Export string literal helpers (`PROGRESS_PHASES`) so orchestration layers can avoid typo-prone string comparisons.【F:src/api/public.types.ts†L52-L107】
+3. **Factor reusable batch executor** – Extract an iterator helper that accepts `select`, `process`, and `persist` callbacks to remove duplicate control flow between summarise, ranking, and future ingest operations.【F:src/api/summarise.runner.ts†L55-L129】【F:src/api/ranking.public.ts†L133-L200】
+4. **Centralise configuration manifests** – Provide a documented config builder (JSON/YAML schema) for env discovery so PM2/server scripts can validate inputs before spawning long-running jobs.【F:src/api/public.types.ts†L215-L296】
+5. **Document multi-tenant DB handling** – Clarify expectations when swapping databases in summarise/ingest flows, and consider scoped contexts instead of global mutation for safer concurrency.【F:src/api/summarise.runner.ts†L55-L129】

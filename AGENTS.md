@@ -15,6 +15,10 @@
 - Each suite writes to `coverage/`—the merge step overwrites `coverage/lcov.info`. Clean the directory if switching between coverage and plain runs.
 - Race conditions arise when multiple suites share sqlite fixtures; avoid invoking a monolithic `bun test` or the coverage scripts in parallel.
 
+## Linting
+
+- Run `bun run lint` before committing to keep CI green and avoid formatting drift.
+
 ## Operational notes
 
 - CLI entry lives in `src/cli.ts`; orchestrator scripts (pm2, etc.) should call the built `dist/cli.js` after running `bun run build`.

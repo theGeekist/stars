@@ -10,18 +10,18 @@
  * This pattern keeps dynamic invocation free of `any` by mapping keys → concrete option shapes.
  */
 import {
-	ingestAll,
-	ingestListsOnly,
-	ingestUnlistedOnly,
 	type IngestListsOptions,
 	type IngestOptions,
 	type IngestUnlistedOptions,
+	ingestAll,
+	ingestListsOnly,
+	ingestUnlistedOnly,
 } from "./ingest.public";
 import {
-	rankAll,
-	rankOne,
 	type RankAllOptions,
 	type RankOneOptions,
+	rankAll,
+	rankOne,
 } from "./ranking.public";
 import {
 	fetchLists,
@@ -31,10 +31,10 @@ import {
 	type StarsFetchOptions,
 } from "./stars.public";
 import {
-	summariseAll,
-	summariseRepo,
 	type SummariseAllOptions,
 	type SummariseOneOptions,
+	summariseAll,
+	summariseRepo,
 } from "./summarise.public";
 
 /** Enumerates all string keys accepted by the dispatcher. */
