@@ -36,24 +36,17 @@
 		"serve": "bun --watch run src/server.ts",
 		"dev": "bun run src/server.ts",
 		"types": "tsc -p tsconfig.json --noEmit",
-		"check": "bun run types && echo '✓ typecheck ok'",
+		"check": "bun run types && echo '\u2713 typecheck ok'",
 		"start": "bun run src/cli.ts",
 		"build": "bun run scripts/build.ts && bun run build:types",
 		"build:types": "tsc -p tsconfig.types.json",
 		"prepare": "husky",
 		"prepublishOnly": "bun run build",
-		"test": "bun run test:cli && bun run test:lib && bun run test:main",
-		"test:main": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*')",
-		"test:cli": "bun test src/cli.handlers.test.ts src/cli.routing.test.ts",
-		"test:lib": "bun test src/lib/*.test.ts",
-		"test:cli:cov": "bun test src/cli.handlers.test.ts src/cli.routing.test.ts && mv coverage/lcov.info coverage/cli-lcov.info",
-		"test:lib:cov": "bun test src/lib/*.test.ts && mv coverage/lcov.info coverage/lib-lcov.info",
-		"test:main:cov": "bun test $(find src -name '*.test.ts' ! -name 'cli.handlers.test.ts' ! -name 'cli.routing.test.ts' ! -path '*/lib/*') && mv coverage/lcov.info coverage/main-lcov.info",
-		"coverage:merge": "npx -y lcov-result-merger 'coverage/*-lcov.info' > coverage/lcov.info",
+		"test": "bun test",
 		"coverage:html": "npx -y genhtml coverage/lcov.info --output-directory coverage/html",
 		"coverage:report": "bun run scripts/coverage-report.ts",
 		"coverage:test-codecov": "bun run scripts/test-codecov.ts",
-		"coverage:ci": "bun run test:cli:cov && bun run test:lib:cov && bun run test:main:cov && bun run coverage:merge",
+		"coverage:ci": "bun test",
 		"coverage:full": "bun run coverage:ci && bun run coverage:report",
 		"lint": "biome check src",
 		"format": "biome format --write src README.md usage.md src/features/**/README.md .github/workflows/ci.yml"
@@ -79,7 +72,8 @@
 		"@jasonnathan/llm-core": "^1.9.1",
 		"consola": "^3.4.2",
 		"ollama": "^0.5.18",
-		"ora": "^8.2.0"
+		"ora": "^8.2.0",
+		"yaml": "^2.8.1"
 	},
 	"lint-staged": {
 		"*.{ts,tsx,js,jsx,cjs,mjs,json}": [
