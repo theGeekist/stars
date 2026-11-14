@@ -43,7 +43,7 @@ The tool generates concise, factual summaries for each repository by analyzing R
 
 It manages your starred repositories by syncing with GitHub, efficiently handling thousands of stars, and providing ways to compare and reconcile local and remote data. You get access to rich metadata and can flexibly query and analyze your collection. See the [Stars Management guide](src/features/stars/README.md).
 
-For ingestion, Geekist Stars imports and organizes your GitHub Lists and stars, keeping your local database synchronized and clean. It automatically removes repositories that are no longer starred (unless you specify overrides), and computes useful health metrics like popularity and activeness. Read more in the [Ingestion documentation](src/features/ingest/README.md).
+For ingestion, Geekist Stars imports and organizes your GitHub Lists and stars, keeping your local database synchronized and clean. Complete file exports can remove repositories absent from the export unless protected by overrides; partial file and in-memory imports do not perform cleanup. It also computes useful health metrics like popularity and activeness. A pair of files is not proof of a fresh, complete snapshot; validate the fetch before importing. Read more in the [Ingestion documentation](src/features/ingest/README.md).
 
 The system enriches and normalizes repository topics by parsing local data from `github/explore`, ensuring topics are standardized, canonicalized, and mapped with relationships and aliases for deeper analysis. More on this in the [Topics documentation](src/features/topics/README.md).
 
@@ -269,6 +269,7 @@ If you use Geekist Stars in your research or projects, please cite:
   howpublished = {\url{https://github.com/theGeekist/stars}},
 }
 ```
+
 <br>
 <br>
 <p align="center">
@@ -277,5 +278,3 @@ If you use Geekist Stars in your research or projects, please cite:
     <a href="https://github.com/theGeekist" target="_blank">@theGeekist</a> and <a href="https://github.com/pipewrk" target="_blank">@pipewrk</a>
   </sub>
 </p>
-
-

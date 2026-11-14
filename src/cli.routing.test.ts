@@ -199,6 +199,15 @@ describe("CLI Routing and Handlers", () => {
 		});
 
 		describe("handleTopicsEnrich", () => {
+			it("propagates asynchronous topic enrichment failures", async () => {
+				mockEnrichAllRepoTopics.mockRejectedValueOnce(
+					new Error("topic failure"),
+				);
+				await expect(
+					_testMain(["bun", "cli.ts", "topics:enrich"]),
+				).rejects.toThrow("topic failure");
+			});
+
 			it("should call enrichAllRepoTopics with default options", async () => {
 				await _testMain(["bun", "cli.ts", "topics:enrich"]);
 

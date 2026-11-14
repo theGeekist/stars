@@ -233,7 +233,7 @@ async function handleIngest(_args: string[]): Promise<void> {
 	await ingest(dir);
 }
 
-function handleTopicsEnrich(args: string[]): void {
+async function handleTopicsEnrich(args: string[]): Promise<void> {
 	const onlyActive = args.includes("--active");
 	const ttlIdx = args.indexOf("--ttl");
 	const ttl =
@@ -241,7 +241,7 @@ function handleTopicsEnrich(args: string[]): void {
 	log.info(
 		`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
 	);
-	enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
+	await enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
 }
 
 // topics:report command removed
