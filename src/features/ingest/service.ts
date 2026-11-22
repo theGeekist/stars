@@ -638,6 +638,11 @@ export const createIngestService = makeCreateService(({ db }) => {
 			let removed = 0;
 			let preserved = 0;
 
+			const discoveryExists = !!db
+				.query(
+					"SELECT 1 FROM sqlite_master WHERE type='table' AND name='discovery_target'",
+				)
+				.get();
 			for (const repo of reposToCheck) {
 				// Check if repo has overrides (manual curation protection)
 				const hasOverrides = db
@@ -647,6 +652,21 @@ export const createIngestService = makeCreateService(({ db }) => {
 					.get(repo.id);
 
 				if (hasOverrides && hasOverrides.count > 0) {
+					preserved++;
+					continue;
+				}
+
+				// Keep previously discovered research even after its last source disappears.
+				// An absent export is still authoritative for direct List membership.
+				const discovered =
+					discoveryExists &&
+					db
+						.query(
+							`SELECT 1 FROM discovery_target d JOIN repo r ON r.repo_id=d.repo_node_id WHERE r.id=? LIMIT 1`,
+						)
+						.get(repo.id);
+				if (discovered) {
+					db.query("DELETE FROM list_repo WHERE repo_id=?").run(repo.id);
 					preserved++;
 					continue;
 				}

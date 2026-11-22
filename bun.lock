@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "@geekist/stars",
@@ -8,13 +9,16 @@
         "consola": "^3.4.2",
         "ollama": "^0.5.18",
         "ora": "^8.2.0",
+        "remark-gfm": "^4.0.1",
+        "remark-parse": "^11.0.0",
+        "unified": "^11.0.5",
         "yaml": "^2.8.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.2.4",
+        "@biomejs/biome": "^2.2.6",
         "@types/bun": "latest",
         "husky": "^9.1.7",
-        "lint-staged": "^16.2.1",
+        "lint-staged": "^16.2.4",
         "prettier": "^3.6.2",
       },
       "peerDependencies": {
