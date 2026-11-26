@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { inTempDir, promptsYaml } from "@src/__test__/helpers/fs";
 import { withCapturedLog } from "@src/__test__/helpers/log";
 import {
 	checkPromptsState,
 	criteriaExamples,
 	ensurePromptsReadyOrExit,
+	getPromptsConfig,
 	printSetupStatus,
 	showSetupHintIfNotReady,
 } from "./prompts";
@@ -50,21 +52,26 @@ describe("checkPromptsState", () => {
 			},
 		));
 
-	it("invalid when criteria is not a block", () =>
+	it("invalid when criteria is not a string", () =>
 		inTempDir(
 			{
 				"prompts.yaml": [
 					"scoring:",
-					"  criteria: not-a-block",
+					'  system: "x"',
+					'  fewshot: "y"',
+					"  criteria: []",
 					"summarise:",
 					'  one_paragraph: "x"',
+					'  map_header: "x"',
+					'  reduce: "x"',
 					"",
 				].join("\n"),
 			},
 			() => {
 				const s = checkPromptsState();
 				expect(s.kind).toBe("invalid");
-				if (s.kind === "invalid") expect(s.reason).toContain("block string");
+				if (s.kind === "invalid")
+					expect(s.reason).toContain("scoring.criteria");
 			},
 		));
 
@@ -121,11 +128,15 @@ describe("checkPromptsState", () => {
 			{
 				"prompts.yaml": [
 					"scoring:",
+					'  system: "system"',
+					'  fewshot: "examples"',
 					"  criteria: |",
 					"    productivity = saves time\r",
 					"    ai = primary focus is AI\r",
 					"summarise:",
 					'  one_paragraph: "x"',
+					'  map_header: "x"',
+					'  reduce: "x"',
 					"",
 				].join("\n"),
 			},
@@ -135,6 +146,39 @@ describe("checkPromptsState", () => {
 				if (s.kind === "ready") expect(s.criteriaLines).toBe(2);
 			},
 		));
+});
+
+describe("getPromptsConfig", () => {
+	it("distinguishes missing configuration", async () =>
+		inTempDir(null, () => {
+			expect(() => getPromptsConfig()).toThrow("prompts.yaml not found");
+		}));
+
+	it("reports malformed and empty YAML as invalid", async () =>
+		inTempDir({ "prompts.yaml": "scoring: [" }, () => {
+			expect(checkPromptsState().kind).toBe("invalid");
+			expect(() => getPromptsConfig()).toThrow("prompts.yaml invalid:");
+		}));
+
+	it("rejects an empty YAML document", async () =>
+		inTempDir({ "prompts.yaml": "" }, () => {
+			expect(checkPromptsState()).toEqual({
+				kind: "invalid",
+				reason: "prompts.yaml must contain a YAML mapping",
+			});
+		}));
+
+	it("returns valid configuration and sees changes in a long-lived process", async () =>
+		inTempDir({ "prompts.yaml": promptsYaml("first = criterion") }, () => {
+			expect(getPromptsConfig().scoring?.criteria).toContain(
+				"first = criterion",
+			);
+			writeFileSync("prompts.yaml", promptsYaml("second = updated criterion"));
+			expect(getPromptsConfig().scoring?.criteria).toContain(
+				"second = updated criterion",
+			);
+			expect(checkPromptsState()).toEqual({ kind: "ready", criteriaLines: 1 });
+		}));
 });
 
 describe("print + UX", () => {

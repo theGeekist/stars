@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { generatePromptsYaml, testOllamaReady } from "@features/setup/service";
 import { log } from "@lib/bootstrap";
-import { checkPromptsState, promptsConfig } from "@lib/prompts";
+import { checkPromptsState, getPromptsConfig } from "@lib/prompts";
 
 // NOTE: location of persisted local model configuration
 const MODEL_RC = resolve(process.cwd(), ".modelrc.json");
@@ -13,9 +13,9 @@ export type ModelConfig = {
 	host?: string;
 };
 
-/** Return the static prompts configuration object loaded at startup. */
+/** Return the current prompts configuration from prompts.yaml. */
 export function getPrompts() {
-	return promptsConfig;
+	return getPromptsConfig();
 }
 
 /** Evaluate the current prompts directory state (missing, outdated, etc.). */

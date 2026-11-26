@@ -1,7 +1,7 @@
 // src/features/summarise/llm.ts
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import { loadOllamaModule } from "@lib/ollama-loader";
-import { promptsConfig as prompts } from "@lib/prompts";
+import { getPromptsConfig, type PromptsConfig } from "@lib/prompts";
 import {
 	chunkMarkdown,
 	cleanMarkdown,
@@ -102,6 +102,7 @@ async function generateFromMetadata(
 	meta: Meta,
 	baseHints: string,
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
+	prompts: PromptsConfig,
 ): Promise<string> {
 	const prompt = `${prompts?.summarise?.one_paragraph}
 
@@ -116,6 +117,7 @@ Hints: ${baseHints || "(none)"}
 async function mapChunksToBullets(
 	picked: string[],
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
+	prompts: PromptsConfig,
 ): Promise<string[]> {
 	const mapHeader = prompts?.summarise?.map_header;
 	const bullets: string[] = [];
@@ -140,6 +142,7 @@ async function reduceBulletsToParagraph(
 	bullets: string[],
 	baseHints: string,
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
+	prompts: PromptsConfig,
 ): Promise<string> {
 	if (baseHints) bullets.push(`- ${baseHints}`);
 	const reducePrompt = `
@@ -183,9 +186,10 @@ export async function summariseRepoOneParagraph(
 		}
 	}
 
+	const prompts = getPromptsConfig();
 	const gen = deps?.gen ?? loadOllamaModule().gen;
 	if (chunks.length === 0) {
-		const results = await generateFromMetadata(meta, baseHints, gen);
+		const results = await generateFromMetadata(meta, baseHints, gen, prompts);
 		// console.log("-".repeat(20));
 		// console.log(results);
 		// console.log("-".repeat(20));
@@ -194,9 +198,9 @@ export async function summariseRepoOneParagraph(
 
 	const picked = await selectContentChunks(clean, chunks, deps);
 	// console.log({ picked });
-	const bullets = await mapChunksToBullets(picked, gen);
+	const bullets = await mapChunksToBullets(picked, gen, prompts);
 	// console.log({ bullets });
-	return reduceBulletsToParagraph(bullets, baseHints, gen);
+	return reduceBulletsToParagraph(bullets, baseHints, gen, prompts);
 }
 
 /**
@@ -223,10 +227,11 @@ export async function summariseRepoOneParagraphWithCustomGen(
 			return awesomeSummary;
 		}
 	}
+	const prompts = getPromptsConfig();
 	if (chunks.length === 0)
-		return generateFromMetadata(meta, baseHints, genMain);
+		return generateFromMetadata(meta, baseHints, genMain, prompts);
 
 	const picked = await selectContentChunks(clean, chunks, deps);
-	const bullets = await mapChunksToBullets(picked, genMain);
-	return reduceBulletsToParagraph(bullets, baseHints, genReduce);
+	const bullets = await mapChunksToBullets(picked, genMain, prompts);
+	return reduceBulletsToParagraph(bullets, baseHints, genReduce, prompts);
 }

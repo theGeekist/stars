@@ -73,7 +73,6 @@
 		"consola": "^3.4.2",
 		"ollama": "^0.5.18",
 		"ora": "^8.2.0",
-		"yaml": "^2.8.1",
 		"remark-gfm": "^4.0.1",
 		"remark-parse": "^11.0.0",
 		"unified": "^11.0.5"

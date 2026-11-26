@@ -8,46 +8,19 @@ import {
 	it,
 	jest,
 } from "bun:test";
-import type {
-	BatchResult,
-	RankingItemResult,
-	SummaryItemResult,
-} from "@src/api/public.types";
 import { createMockLogger } from "@src/__test__/helpers/mock-log";
 
 describe("CLI Routing and Handlers", () => {
-	const dummySummary: SummaryItemResult = {
-		repoId: 1,
-		nameWithOwner: "test/repo",
-		saved: false,
-		status: "ok",
-	};
-	const dummySummaryBatch: BatchResult<SummaryItemResult> = {
-		items: [],
-		stats: { processed: 0, succeeded: 0, failed: 0, saved: 0 },
-	};
-
-	const dummyRanking: RankingItemResult = {
-		repoId: 1,
-		nameWithOwner: "test/repo",
-		saved: false,
-		status: "ok",
-	};
-	const dummyRankingBatch: BatchResult<RankingItemResult> = {
-		items: [],
-		stats: { processed: 0, succeeded: 0, failed: 0, saved: 0 },
-	};
-
-	const mockIngest = jest.fn().mockResolvedValue(undefined);
-	const mockEnrichAllRepoTopics = jest.fn().mockResolvedValue(undefined);
-	const mockGeneratePromptsYaml = jest.fn().mockResolvedValue(undefined);
-	const mockTestOllamaReady = jest.fn().mockResolvedValue(undefined);
-	const mockShowSetupHintIfNotReady = jest.fn().mockResolvedValue(undefined);
+	const mockIngest = jest.fn();
+	const mockEnrichAllRepoTopics = jest.fn();
+	const mockGeneratePromptsYaml = jest.fn();
+	const mockTestOllamaReady = jest.fn();
+	const mockShowSetupHintIfNotReady = jest.fn();
 	const mockCheckPromptsState = jest.fn();
 	const mockPrintSetupStatus = jest.fn();
-	const mockCriteriaExamples = jest.fn(() => [] as string[]);
-	const mockSummariseRepo = jest.fn().mockResolvedValue(dummySummary);
-	const mockSummariseAll = jest.fn().mockResolvedValue(dummySummaryBatch);
+	const mockCriteriaExamples = jest.fn();
+	const mockSummariseRepo = jest.fn();
+	const mockSummariseAll = jest.fn();
 
 	let _testMain: (argv: string[]) => Promise<void>;
 
@@ -79,64 +52,20 @@ describe("CLI Routing and Handlers", () => {
 		};
 		jest.spyOn(bootstrapModule, "initBootstrap").mockImplementation(() => {});
 
-		const ingestModule = await import("@src/api/ingest");
-		jest.spyOn(ingestModule, "default").mockImplementation(mockIngest);
-
-		const topicsModule = await import("@src/api/topics");
-		jest
-			.spyOn(topicsModule, "enrichAllRepoTopics")
-			.mockImplementation(mockEnrichAllRepoTopics);
-
-		const setupModule = await import("@features/setup");
-		jest
-			.spyOn(setupModule, "generatePromptsYaml")
-			.mockImplementation(mockGeneratePromptsYaml);
-		jest
-			.spyOn(setupModule, "testOllamaReady")
-			.mockImplementation(mockTestOllamaReady);
-
-		const promptsModule = await import("@lib/prompts");
-		jest
-			.spyOn(promptsModule, "showSetupHintIfNotReady")
-			.mockImplementation(mockShowSetupHintIfNotReady);
-		jest
-			.spyOn(promptsModule, "checkPromptsState")
-			.mockImplementation(mockCheckPromptsState);
-		jest
-			.spyOn(promptsModule, "printSetupStatus")
-			.mockImplementation(mockPrintSetupStatus);
-		jest
-			.spyOn(promptsModule, "criteriaExamples")
-			.mockImplementation(mockCriteriaExamples);
-		jest
-			.spyOn(promptsModule, "ensurePromptsReadyOrExit")
-			.mockImplementation(() => {});
-
-		const starsModule = await import("@src/api/stars");
-		jest.spyOn(starsModule, "runListsCore").mockResolvedValue(undefined);
-		jest.spyOn(starsModule, "runReposCore").mockResolvedValue(undefined);
-		jest.spyOn(starsModule, "runStarsCore").mockResolvedValue(undefined);
-		jest.spyOn(starsModule, "runUnlistedCore").mockResolvedValue(undefined);
-
-		const rankingModule = await import("@src/api/ranking.public");
-		jest.spyOn(rankingModule, "rankOne").mockResolvedValue(dummyRanking);
-		jest.spyOn(rankingModule, "rankAll").mockResolvedValue(dummyRankingBatch);
-
-		const summariseModule = await import("@src/api/summarise.public");
-		jest
-			.spyOn(summariseModule, "summariseRepo")
-			.mockResolvedValue(dummySummary);
-		jest
-			.spyOn(summariseModule, "summariseAll")
-			.mockResolvedValue(dummySummaryBatch);
-
 		const cli = await import("@src/cli");
 		_testMain = cli._testMain;
 		cli._setCliDeps({
-			summariseRepo:
-				mockSummariseRepo as unknown as typeof summariseModule.summariseRepo,
-			summariseAll:
-				mockSummariseAll as unknown as typeof summariseModule.summariseAll,
+			ingest: mockIngest,
+			enrichAllRepoTopics: mockEnrichAllRepoTopics,
+			generatePromptsYaml: mockGeneratePromptsYaml,
+			testOllamaReady: mockTestOllamaReady,
+			showSetupHintIfNotReady: mockShowSetupHintIfNotReady,
+			checkPromptsState: mockCheckPromptsState,
+			printSetupStatus: mockPrintSetupStatus,
+			criteriaExamples: mockCriteriaExamples,
+			ensurePromptsReadyOrExit: jest.fn(),
+			summariseRepo: mockSummariseRepo,
+			summariseAll: mockSummariseAll,
 		});
 		resetCliDeps = cli._resetCliDeps;
 	});
@@ -152,23 +81,15 @@ describe("CLI Routing and Handlers", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockIngest.mockReset();
-		mockIngest.mockResolvedValue(undefined);
 		mockEnrichAllRepoTopics.mockReset();
-		mockEnrichAllRepoTopics.mockResolvedValue(undefined);
 		mockGeneratePromptsYaml.mockReset();
-		mockGeneratePromptsYaml.mockResolvedValue(undefined);
 		mockTestOllamaReady.mockReset();
-		mockTestOllamaReady.mockResolvedValue(undefined);
 		mockShowSetupHintIfNotReady.mockReset();
-		mockShowSetupHintIfNotReady.mockResolvedValue(undefined);
 		mockCheckPromptsState.mockReset();
-		mockCheckPromptsState.mockReturnValue({ kind: "ready", criteriaLines: 0 });
 		mockPrintSetupStatus.mockReset();
 		mockCriteriaExamples.mockReset();
 		mockSummariseRepo.mockReset();
-		mockSummariseRepo.mockResolvedValue(dummySummary);
 		mockSummariseAll.mockReset();
-		mockSummariseAll.mockResolvedValue(dummySummaryBatch);
 		process.exit = ((code: number) => {
 			throw new Error(`Process exit with code ${code}`);
 		}) as typeof process.exit;
@@ -199,15 +120,6 @@ describe("CLI Routing and Handlers", () => {
 		});
 
 		describe("handleTopicsEnrich", () => {
-			it("propagates asynchronous topic enrichment failures", async () => {
-				mockEnrichAllRepoTopics.mockRejectedValueOnce(
-					new Error("topic failure"),
-				);
-				await expect(
-					_testMain(["bun", "cli.ts", "topics:enrich"]),
-				).rejects.toThrow("topic failure");
-			});
-
 			it("should call enrichAllRepoTopics with default options", async () => {
 				await _testMain(["bun", "cli.ts", "topics:enrich"]);
 

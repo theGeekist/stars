@@ -144,6 +144,7 @@ export type ScoringLLMGenerate = (
 export function createScoringLLMFromConfig(cfg: ModelConfig): {
 	generatePromptAndSend: ScoringLLMGenerate;
 } {
+	// Lazy import to avoid pulling ollama if consumer provides custom llm
 	const { gen } = loadOllamaModule();
 	return {
 		async generatePromptAndSend(

@@ -1,6 +1,7 @@
 // src/cli.ts
 // Unified CLI entry with subcommands: lists, stars, unlisted, score, summarise, ingest, topics:enrich, setup
 
+import { generatePromptsYaml, testOllamaReady } from "@features/setup";
 import { initBootstrap, log } from "@lib/bootstrap";
 import { parseSimpleArgs } from "@lib/cli";
 import { parseCommonCliOptions, parseListOption } from "@lib/cli-utils";
@@ -23,6 +24,15 @@ import { summariseAll, summariseRepo } from "@src/api/summarise.public";
 import { enrichAllRepoTopics } from "@src/api/topics";
 
 type CliDeps = {
+	ingest: typeof ingest;
+	enrichAllRepoTopics: typeof enrichAllRepoTopics;
+	generatePromptsYaml: typeof generatePromptsYaml;
+	testOllamaReady: typeof testOllamaReady;
+	checkPromptsState: typeof checkPromptsState;
+	criteriaExamples: typeof criteriaExamples;
+	ensurePromptsReadyOrExit: typeof ensurePromptsReadyOrExit;
+	printSetupStatus: typeof printSetupStatus;
+	showSetupHintIfNotReady: typeof showSetupHintIfNotReady;
 	runLists: typeof runListsCore;
 	runRepos: typeof runReposCore;
 	runStars: typeof runStarsCore;
@@ -34,6 +44,15 @@ type CliDeps = {
 };
 
 const defaultDeps: CliDeps = {
+	ingest,
+	enrichAllRepoTopics,
+	generatePromptsYaml,
+	testOllamaReady,
+	checkPromptsState,
+	criteriaExamples,
+	ensurePromptsReadyOrExit,
+	printSetupStatus,
+	showSetupHintIfNotReady,
 	runLists: runListsCore,
 	runRepos: runReposCore,
 	runStars: runStarsCore,
@@ -150,7 +169,7 @@ async function handleUnlisted(args: string[]): Promise<void> {
 }
 
 async function handleScore(argv: string[], args: string[]): Promise<void> {
-	ensurePromptsReadyOrExit();
+	cliDeps.ensurePromptsReadyOrExit();
 	const s = parseSimpleArgs(argv);
 	let resume: number | "last" | undefined;
 	let _notes: string | undefined;
@@ -204,7 +223,7 @@ async function handleScore(argv: string[], args: string[]): Promise<void> {
 }
 
 async function handleSummarise(argv: string[], args: string[]): Promise<void> {
-	ensurePromptsReadyOrExit();
+	cliDeps.ensurePromptsReadyOrExit();
 	const s = parseSimpleArgs(argv);
 	let resummarise = false;
 	let dry = s.dry;
@@ -230,7 +249,7 @@ async function handleSummarise(argv: string[], args: string[]): Promise<void> {
 
 async function handleIngest(_args: string[]): Promise<void> {
 	const dir = Bun.env.EXPORTS_DIR ?? "./exports";
-	await ingest(dir);
+	await cliDeps.ingest(dir);
 }
 
 async function handleTopicsEnrich(args: string[]): Promise<void> {
@@ -241,7 +260,7 @@ async function handleTopicsEnrich(args: string[]): Promise<void> {
 	log.info(
 		`Enrich topics: onlyActive=${onlyActive} ttlDays=${ttl ?? "(default)"}`,
 	);
-	await enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
+	await cliDeps.enrichAllRepoTopics({ onlyActive, ttlDays: ttl });
 }
 
 // topics:report command removed
@@ -252,10 +271,7 @@ async function handleSetup(): Promise<void> {
 		log.error("GITHUB_TOKEN missing");
 		process.exit(1);
 	}
-	const { generatePromptsYaml, testOllamaReady } = await import(
-		"@features/setup"
-	);
-	const ready = await testOllamaReady();
+	const ready = await cliDeps.testOllamaReady();
 	if (!ready.ok) {
 		log.warn(
 			"Ollama not ready to generate criteria:",
@@ -271,18 +287,18 @@ async function handleSetup(): Promise<void> {
 		);
 		log.line("");
 		log.info("Continuing with placeholders. Fill criteria manually. Examples:");
-		for (const ex of criteriaExamples()) log.line(`  ${ex}`);
-		await generatePromptsYaml(token);
+		for (const ex of cliDeps.criteriaExamples()) log.line(`  ${ex}`);
+		await cliDeps.generatePromptsYaml(token);
 	} else {
-		await generatePromptsYaml(token);
+		await cliDeps.generatePromptsYaml(token);
 	}
-	const state = checkPromptsState();
+	const state = cliDeps.checkPromptsState();
 	if (state.kind === "incomplete") {
 		log.warn(
 			`prompts.yaml contains ${state.placeholderCount} placeholder criteria — edit them before running scoring.`,
 		);
 	} else {
-		printSetupStatus(state);
+		cliDeps.printSetupStatus(state);
 	}
 }
 
@@ -297,7 +313,7 @@ async function main(argv: string[]) {
 		case "--help":
 		case "-h":
 			usage();
-			return showSetupHintIfNotReady();
+			return cliDeps.showSetupHintIfNotReady();
 
 		case "lists":
 			return handleLists(args);
@@ -331,7 +347,7 @@ async function main(argv: string[]) {
 
 		default:
 			usage();
-			return showSetupHintIfNotReady();
+			return cliDeps.showSetupHintIfNotReady();
 	}
 }
 

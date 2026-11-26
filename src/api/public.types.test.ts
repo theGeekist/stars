@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 import type {
 	BatchSelector,
 	RepoInfo,
@@ -16,7 +17,6 @@ import {
 	type ModelConfig,
 	type OpStatus,
 } from "@src/api/public.types";
-import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 
 describe("Public API Types and Utilities", () => {
 	describe("ConfigError", () => {
@@ -186,6 +186,7 @@ describe("Public API Types and Utilities", () => {
 	});
 
 	describe("createScoringLLMFromConfig", () => {
+		// Mock the ollama module to test the function
 		const mockGen = jest.fn();
 
 		beforeEach(() => {

@@ -28,6 +28,8 @@ export async function inTempDir<T>(
 export function promptsYaml(criteriaBlock: string, extra?: string): string {
 	return [
 		"scoring:",
+		'  system: "scoring system"',
+		'  fewshot: "scoring examples"',
 		`  criteria: |`,
 		criteriaBlock
 			.split("\n")
@@ -35,6 +37,8 @@ export function promptsYaml(criteriaBlock: string, extra?: string): string {
 			.join("\n"),
 		"summarise:",
 		'  one_paragraph: "x"',
+		'  map_header: "map"',
+		'  reduce: "reduce"',
 		extra ? extra : "",
 		"",
 	].join("\n");
