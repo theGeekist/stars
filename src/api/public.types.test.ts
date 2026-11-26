@@ -1,12 +1,5 @@
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	jest,
-	mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 import type {
 	BatchSelector,
 	RepoInfo,
@@ -196,18 +189,15 @@ describe("Public API Types and Utilities", () => {
 		// Mock the ollama module to test the function
 		const mockGen = jest.fn();
 
-		// Use mock.module instead of global require mocking
 		beforeEach(() => {
 			jest.clearAllMocks();
-
-			// Mock the ollama module
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				gen: mockGen,
 			}));
 		});
 
 		afterEach(() => {
-			// Mocks are automatically cleaned up by Bun
+			setOllamaModuleLoaderForTests();
 		});
 
 		it("should create LLM adapter with basic config", async () => {

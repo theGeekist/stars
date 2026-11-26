@@ -26,7 +26,7 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Test (sharded) with coverage
+      - name: Test with coverage
         run: bun run coverage:ci
 
       - name: Validate coverage format

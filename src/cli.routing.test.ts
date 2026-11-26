@@ -27,7 +27,6 @@ describe("CLI Routing and Handlers", () => {
 	const { log: mockLog, mocks: logMocks } = createMockLogger();
 	let bootstrapModule: typeof import("@lib/bootstrap");
 	let restoreLog: (() => void) | undefined;
-	let initBootstrapSpy: ReturnType<typeof jest.spyOn> | undefined;
 	let resetCliDeps: (() => void) | undefined;
 
 	beforeAll(async () => {
@@ -51,64 +50,20 @@ describe("CLI Routing and Handlers", () => {
 		restoreLog = () => {
 			Object.assign(bootstrapModule.log, originalLog);
 		};
-		initBootstrapSpy = jest
-			.spyOn(bootstrapModule, "initBootstrap")
-			.mockImplementation(() => {});
-
-		const ingestModule = await import("@src/api/ingest");
-		jest.spyOn(ingestModule, "default").mockImplementation(mockIngest);
-
-		const topicsModule = await import("@src/api/topics");
-		jest
-			.spyOn(topicsModule, "enrichAllRepoTopics")
-			.mockImplementation(mockEnrichAllRepoTopics);
-
-		const setupModule = await import("@features/setup");
-		jest
-			.spyOn(setupModule, "generatePromptsYaml")
-			.mockImplementation(mockGeneratePromptsYaml);
-		jest
-			.spyOn(setupModule, "testOllamaReady")
-			.mockImplementation(mockTestOllamaReady);
-
-		const promptsModule = await import("@lib/prompts");
-		jest
-			.spyOn(promptsModule, "showSetupHintIfNotReady")
-			.mockImplementation(mockShowSetupHintIfNotReady);
-		jest
-			.spyOn(promptsModule, "checkPromptsState")
-			.mockImplementation(mockCheckPromptsState);
-		jest
-			.spyOn(promptsModule, "printSetupStatus")
-			.mockImplementation(mockPrintSetupStatus);
-		jest
-			.spyOn(promptsModule, "criteriaExamples")
-			.mockImplementation(mockCriteriaExamples);
-		jest
-			.spyOn(promptsModule, "ensurePromptsReadyOrExit")
-			.mockImplementation(() => {});
-
-		const starsModule = await import("@src/api/stars");
-		jest.spyOn(starsModule, "runListsCore").mockImplementation(() => {});
-		jest.spyOn(starsModule, "runReposCore").mockImplementation(() => {});
-		jest.spyOn(starsModule, "runStarsCore").mockImplementation(() => {});
-		jest.spyOn(starsModule, "runUnlistedCore").mockImplementation(() => {});
-
-		const rankingModule = await import("@src/api/ranking.public");
-		jest.spyOn(rankingModule, "rankOne").mockImplementation(() => {});
-		jest.spyOn(rankingModule, "rankAll").mockImplementation(() => {});
-
-		const summariseModule = await import("@src/api/summarise.public");
-		jest
-			.spyOn(summariseModule, "summariseRepo")
-			.mockImplementation(() => Promise.resolve());
-		jest
-			.spyOn(summariseModule, "summariseAll")
-			.mockImplementation(() => Promise.resolve());
+		jest.spyOn(bootstrapModule, "initBootstrap").mockImplementation(() => {});
 
 		const cli = await import("@src/cli");
 		_testMain = cli._testMain;
 		cli._setCliDeps({
+			ingest: mockIngest,
+			enrichAllRepoTopics: mockEnrichAllRepoTopics,
+			generatePromptsYaml: mockGeneratePromptsYaml,
+			testOllamaReady: mockTestOllamaReady,
+			showSetupHintIfNotReady: mockShowSetupHintIfNotReady,
+			checkPromptsState: mockCheckPromptsState,
+			printSetupStatus: mockPrintSetupStatus,
+			criteriaExamples: mockCriteriaExamples,
+			ensurePromptsReadyOrExit: jest.fn(),
 			summariseRepo: mockSummariseRepo,
 			summariseAll: mockSummariseAll,
 		});

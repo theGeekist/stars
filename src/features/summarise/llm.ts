@@ -1,7 +1,7 @@
 // src/features/summarise/llm.ts
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
-import { gen as realGen } from "@lib/ollama";
-import { promptsConfig as prompts } from "@lib/prompts";
+import { loadOllamaModule } from "@lib/ollama-loader";
+import { getPromptsConfig } from "@lib/prompts";
 import {
 	chunkMarkdown,
 	cleanMarkdown,
@@ -103,6 +103,7 @@ async function generateFromMetadata(
 	baseHints: string,
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string> {
+	const prompts = getPromptsConfig();
 	const prompt = `${prompts?.summarise?.one_paragraph}
 
 Project: ${meta.nameWithOwner}
@@ -117,6 +118,7 @@ async function mapChunksToBullets(
 	picked: string[],
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string[]> {
+	const prompts = getPromptsConfig();
 	const mapHeader = prompts?.summarise?.map_header;
 	const bullets: string[] = [];
 	const MAX_MAP_CHARS = 7000;
@@ -141,6 +143,7 @@ async function reduceBulletsToParagraph(
 	baseHints: string,
 	gen: (p: string, o?: Record<string, unknown>) => Promise<string>,
 ): Promise<string> {
+	const prompts = getPromptsConfig();
 	if (baseHints) bullets.push(`- ${baseHints}`);
 	const reducePrompt = `
 ${prompts?.summarise?.reduce}
@@ -160,9 +163,10 @@ async function paraphraseAwesomeList(
 		`Rephrase the following, saying the same thing in a slightly different way, just for variability:
 ${awesomeSummary}
 `.trim();
+	const fallbackGen = loadOllamaModule().gen;
 	return deps?.gen
 		? deps.gen(prompt, { temperature: 0.2 })
-		: realGen(prompt, { temperature: 0.2 });
+		: fallbackGen(prompt, { temperature: 0.2 });
 }
 
 export async function summariseRepoOneParagraph(
@@ -182,7 +186,7 @@ export async function summariseRepoOneParagraph(
 		}
 	}
 
-	const gen = deps?.gen ?? realGen;
+	const gen = deps?.gen ?? loadOllamaModule().gen;
 	if (chunks.length === 0) {
 		const results = await generateFromMetadata(meta, baseHints, gen);
 		// console.log("-".repeat(20));

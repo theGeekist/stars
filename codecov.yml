@@ -45,17 +45,3 @@ comment:
   require_changes: false
   require_base: false
   require_head: true
-
-# Flag configuration for sharded tests
-flags:
-  cli:
-    paths:
-      - src/cli.ts
-      - src/lib/cli-utils.ts
-  lib:
-    paths:
-      - src/lib/
-  main:
-    paths:
-      - src/features/
-      - src/api/

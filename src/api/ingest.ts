@@ -5,7 +5,7 @@ import type { IngestReporter } from "@features/ingest/types";
 import { createStarsService } from "@features/stars";
 import { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
-import { getAllListsStream } from "@lib/lists";
+import { loadListsModule } from "@lib/lists-loader";
 import type { RepoInfo, StarList } from "@lib/types";
 import type { IngestReturn, TestLoggerLike } from "./types";
 import {
@@ -119,6 +119,7 @@ export async function ingestListedFromGh(
 	const s = log.spinner("Fetching lists...").start();
 	let total = 0;
 	try {
+		const { getAllListsStream } = loadListsModule();
 		for await (const l of getAllListsStream(
 			token,
 			undefined,
