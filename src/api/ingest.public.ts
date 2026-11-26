@@ -7,55 +7,88 @@ import {
 	ingestListedFromGh,
 	ingestUnlistedFromGh,
 } from "./ingest";
+import type { ProgressDetail, ProgressEmitter } from "./public.types";
 import type { IngestReturn } from "./types";
 
-/** Options for full list + unlisted ingestion from remote sources. */
-export interface IngestOptions {
+type IngestPhase =
+	| "ingesting:lists+unlisted"
+	| "ingesting:lists"
+	| "ingesting:unlisted"
+	| "ingesting:memory";
+
+type IngestProgress = ProgressEmitter<IngestPhase>;
+
+const startDetail: ProgressDetail = { status: "start" };
+const doneDetail: ProgressDetail = { status: "done" };
+
+interface IngestBaseOptions {
 	db?: Database;
+	logger?: typeof realLog;
+	onProgress?: IngestProgress;
+	deps?: Partial<IngestPublicDependencies>;
+}
+
+export interface IngestPublicDependencies {
+	ingestCore: typeof ingestCore;
+	ingestListedFromGh: typeof ingestListedFromGh;
+	ingestUnlistedFromGh: typeof ingestUnlistedFromGh;
+	ingestFromData: typeof ingestFromData;
+}
+
+/** Options for full list + unlisted ingestion from remote sources. */
+export interface IngestOptions extends IngestBaseOptions {
 	// NOTE: optional export directory if ingesting from prior on-disk export
 	dir?: string;
-	logger?: typeof realLog;
-	onProgress?: (e: { phase: string; detail?: string }) => void;
 }
+
+/** Options for ingesting only list-backed repositories. */
+export interface IngestListsOptions extends IngestBaseOptions {}
+
+/** Options for ingesting only unlisted repositories. */
+export interface IngestUnlistedOptions extends IngestBaseOptions {}
+
+/** Options for ingesting data from memory without remote fetches. */
+export interface IngestFromMemoryOptions extends IngestBaseOptions {}
 
 /** Ingest both list-based and unlisted repositories (network + DB writes). */
 export async function ingestAll(
 	options: IngestOptions = {},
 ): Promise<IngestReturn> {
-	const { db, dir, logger = realLog, onProgress } = options;
-	onProgress?.({ phase: "ingest:lists+unlisted:start" });
-	const res = await ingestCore(db, logger, dir);
-	onProgress?.({ phase: "ingest:lists+unlisted:done" });
+	const { db, dir, logger = realLog, onProgress, deps } = options;
+	await onProgress?.({
+		phase: "ingesting:lists+unlisted",
+		detail: startDetail,
+	});
+	const res = await (deps?.ingestCore ?? ingestCore)(db, logger, dir);
+	await onProgress?.({ phase: "ingesting:lists+unlisted", detail: doneDetail });
 	return res;
 }
 
 /** Ingest only repositories that appear inside GitHub Lists (no unlisted diff). */
 export async function ingestListsOnly(
-	options: {
-		db?: Database;
-		logger?: typeof realLog;
-		onProgress?: (e: { phase: string; detail?: string }) => void;
-	} = {},
+	options: IngestListsOptions = {},
 ): Promise<IngestReturn> {
-	const { db, logger = realLog, onProgress } = options;
-	onProgress?.({ phase: "ingest:lists:start" });
-	const res = await ingestListedFromGh(db, logger);
-	onProgress?.({ phase: "ingest:lists:done" });
+	const { db, logger = realLog, onProgress, deps } = options;
+	await onProgress?.({ phase: "ingesting:lists", detail: startDetail });
+	const res = await (deps?.ingestListedFromGh ?? ingestListedFromGh)(
+		db,
+		logger,
+	);
+	await onProgress?.({ phase: "ingesting:lists", detail: doneDetail });
 	return res;
 }
 
 /** Ingest only repositories that are starred but not present in any List. */
 export async function ingestUnlistedOnly(
-	options: {
-		db?: Database;
-		logger?: typeof realLog;
-		onProgress?: (e: { phase: string; detail?: string }) => void;
-	} = {},
+	options: IngestUnlistedOptions = {},
 ): Promise<IngestReturn> {
-	const { db, logger = realLog, onProgress } = options;
-	onProgress?.({ phase: "ingest:unlisted:start" });
-	const res = await ingestUnlistedFromGh(db, logger);
-	onProgress?.({ phase: "ingest:unlisted:done" });
+	const { db, logger = realLog, onProgress, deps } = options;
+	await onProgress?.({ phase: "ingesting:unlisted", detail: startDetail });
+	const res = await (deps?.ingestUnlistedFromGh ?? ingestUnlistedFromGh)(
+		db,
+		logger,
+	);
+	await onProgress?.({ phase: "ingesting:unlisted", detail: doneDetail });
 	return res;
 }
 
@@ -63,16 +96,17 @@ export async function ingestUnlistedOnly(
 export function ingestFromMemory(
 	lists: StarList[],
 	unlisted?: RepoInfo[],
-	options: {
-		db?: Database;
-		logger?: typeof realLog;
-		onProgress?: (e: { phase: string; detail?: string }) => void;
-	} = {},
+	options: IngestFromMemoryOptions = {},
 ) {
-	const { db, logger = realLog, onProgress } = options;
-	onProgress?.({ phase: "ingest:memory:start" });
-	const res = ingestFromData(lists, unlisted, db, logger);
-	onProgress?.({ phase: "ingest:memory:done" });
+	const { db, logger = realLog, onProgress, deps } = options;
+	void onProgress?.({ phase: "ingesting:memory", detail: startDetail });
+	const res = (deps?.ingestFromData ?? ingestFromData)(
+		lists,
+		unlisted,
+		db,
+		logger,
+	);
+	void onProgress?.({ phase: "ingesting:memory", detail: doneDetail });
 	return res;
 }
 

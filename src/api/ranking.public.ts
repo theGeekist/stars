@@ -1,10 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { createListsService } from "@features/lists";
 import { createScoringService, DEFAULT_POLICY } from "@features/scoring";
-import type { ScoringLLM } from "@features/scoring/llm";
+import type { ScoreItem, ScoringLLM } from "@features/scoring/llm";
 import { scoreRepoAgainstLists } from "@features/scoring/llm";
-import type { ApplyPolicy } from "@features/scoring/types";
-import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
+import type {
+	ApplyPolicy,
+	PlanMembershipResult,
+} from "@features/scoring/types";
 import type { log as realLog } from "@lib/bootstrap";
 import { withDB } from "@lib/db";
 import * as listsLib from "@lib/lists";
@@ -13,16 +15,22 @@ import { parseStringArray } from "@lib/utils";
 import type {
 	BatchResult,
 	ModelConfig,
-	ProgressEvent,
+	ProgressEmitter,
 	RankingItemResult,
 } from "./public.types";
-import { buildBatchStats, getRequiredEnv } from "./public.types";
+import {
+	buildBatchStats,
+	createScoringLLMFromConfig,
+	resolveGithubToken,
+	resolveModelConfig,
+} from "./public.types";
 
 /**
  * Options for `rankAll` batch operation.
  * - Provide either a custom `llm` or a lightweight `modelConfig` (not both) to override environment defaults.
+ * - Dependency precedence: explicit `llm` overrides `modelConfig`, which overrides env (`OLLAMA_*`).
  * - When `dry` is false (default) the function persists scores and (if policy allows) applies membership updates to GitHub Lists.
- * - `onProgress` receives phase `ranking` with incremental index + total.
+ * - `onProgress` receives phase `ranking:repo` with incremental index + total.
  */
 export interface RankAllOptions {
 	limit?: number;
@@ -32,11 +40,14 @@ export interface RankAllOptions {
 	modelConfig?: ModelConfig;
 	db?: Database;
 	logger?: typeof realLog;
-	onProgress?: (e: ProgressEvent) => void;
+	onProgress?: ProgressEmitter<"ranking:repo">;
 	policy?: ApplyPolicy; // NEW: curation policy support
 }
 
-/** Options for ranking a single repository by `owner/name`. */
+/**
+ * Options for ranking a single repository by `owner/name`.
+ * `llm` → `modelConfig` → env precedence mirrors `RankAllOptions`.
+ */
 export interface RankOneOptions {
 	selector: string;
 	dry?: boolean;
@@ -46,6 +57,239 @@ export interface RankOneOptions {
 	db?: Database;
 	logger?: typeof realLog;
 	policy?: ApplyPolicy; // NEW: curation policy support
+}
+
+type RankingRuntime = {
+	apply: boolean;
+	scoring: ReturnType<typeof createScoringService>;
+	listsSvc: ReturnType<typeof createListsService>;
+	lists: Array<{ slug: string; name: string; description?: string }>;
+	llm: ScoringLLM;
+	token: string;
+	runId: number | null;
+	policy: ApplyPolicy;
+};
+
+type ListRow = { slug: string; name: string; description?: string | null };
+
+function mapListRows(
+	listRows: Array<ListRow>,
+): Array<{ slug: string; name: string; description?: string }> {
+	return listRows.map((l) => ({
+		slug: l.slug,
+		name: l.name,
+		description: l.description ?? undefined,
+	}));
+}
+
+async function prepareRankingRuntime(
+	database: Database,
+	opts: {
+		apply: boolean;
+		llm?: ScoringLLM;
+		modelConfig?: ModelConfig;
+		policy?: ApplyPolicy;
+		resume?: "last";
+	},
+): Promise<{ runtime: RankingRuntime; filterRunId?: number | null }> {
+	const { apply, llm, modelConfig, policy, resume } = opts;
+	const scoring = createScoringService({ db: database });
+	const runContext = scoring.resolveRunContext({ dry: !apply, resume });
+	const listsSvc = createListsService(listsLib, database);
+	const listRows = await listsSvc.read.getListDefs();
+	const lists = mapListRows(listRows);
+	const token = resolveGithubToken({
+		required: apply,
+		help: "GITHUB_TOKEN missing. Required to apply ranking changes.",
+	});
+	if (apply) {
+		await listsSvc.apply.ensureListGhIds(token);
+	}
+	let effectiveLlm: ScoringLLM;
+	if (llm) {
+		effectiveLlm = llm;
+	} else {
+		effectiveLlm = createScoringLLMFromConfig(
+			resolveModelConfig(modelConfig, {
+				help: "Set OLLAMA_MODEL or pass options.modelConfig.model for ranking.",
+			}),
+		);
+	}
+	return {
+		runtime: {
+			apply,
+			scoring,
+			listsSvc,
+			lists,
+			llm: effectiveLlm,
+			token,
+			runId: runContext.runId,
+			policy: policy ?? DEFAULT_POLICY,
+		},
+		filterRunId: runContext.filterRunId ?? undefined,
+	};
+}
+
+export async function persistScores(
+	runtime: RankingRuntime,
+	repoId: number,
+	scores: ScoreItem[],
+): Promise<boolean> {
+	if (!runtime.apply || runtime.runId == null) return false;
+	await runtime.scoring.persistScores(runtime.runId, repoId, scores);
+	return true;
+}
+
+export async function planMembershipChange(
+	runtime: RankingRuntime,
+	repo: RepoRow,
+	scores: ScoreItem[],
+): Promise<PlanMembershipResult> {
+	const currentSlugs = await runtime.listsSvc.read.currentMembership(repo.id);
+	return runtime.scoring.planMembership(
+		repo,
+		currentSlugs,
+		scores,
+		runtime.policy,
+	);
+}
+
+export async function applyMembership(
+	runtime: RankingRuntime,
+	repo: RepoRow,
+	plan: PlanMembershipResult,
+): Promise<{ applied: boolean; error?: string }> {
+	if (!runtime.apply || runtime.runId == null) return { applied: false };
+	if (plan.blocked || !plan.changed) return { applied: false };
+	try {
+		const repoGlobalId = await runtime.listsSvc.apply.ensureRepoGhId(
+			runtime.token,
+			repo.id,
+		);
+		const targetListIds = await runtime.listsSvc.read.mapSlugsToGhIds(
+			plan.finalPlanned,
+		);
+		await runtime.listsSvc.apply.updateOnGitHub(
+			runtime.token,
+			repoGlobalId,
+			targetListIds,
+		);
+		await runtime.listsSvc.apply.reconcileLocal(repo.id, plan.finalPlanned);
+		return { applied: true };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return { applied: false, error: message };
+	}
+}
+
+interface RankingRepoOps {
+	persistScores: (
+		runtime: RankingRuntime,
+		repoId: number,
+		scores: ScoreItem[],
+	) => Promise<boolean>;
+	planMembership: (
+		runtime: RankingRuntime,
+		repo: RepoRow,
+		scores: ScoreItem[],
+	) => Promise<PlanMembershipResult>;
+	applyMembership: (
+		runtime: RankingRuntime,
+		repo: RepoRow,
+		plan: PlanMembershipResult,
+	) => Promise<{ applied: boolean; error?: string }>;
+}
+
+const defaultRepoOps: RankingRepoOps = {
+	persistScores,
+	planMembership: planMembershipChange,
+	applyMembership,
+};
+
+async function runRankingForRepo(
+	repo: RepoRow,
+	runtime: RankingRuntime,
+	behaviour: { reportPlanChange: boolean; includePlanOnApplyError: boolean },
+	ops: RankingRepoOps = defaultRepoOps,
+): Promise<RankingItemResult> {
+	try {
+		const facts = {
+			nameWithOwner: repo.name_with_owner,
+			url: repo.url,
+			summary: repo.summary ?? undefined,
+			description: repo.description ?? undefined,
+			primaryLanguage: repo.primary_language ?? undefined,
+			topics: parseStringArray(repo.topics),
+		};
+		const result = await scoreRepoAgainstLists(
+			runtime.lists,
+			facts,
+			runtime.llm,
+		);
+
+		const scoresPersisted = await ops.persistScores(
+			runtime,
+			repo.id,
+			result.scores,
+		);
+		const plan = await ops.planMembership(runtime, repo, result.scores);
+		const applyResult = await ops.applyMembership(runtime, repo, plan);
+
+		if (applyResult.error) {
+			if (behaviour.includePlanOnApplyError) {
+				return {
+					repoId: repo.id,
+					nameWithOwner: repo.name_with_owner,
+					status: "error",
+					saved: false,
+					error: applyResult.error,
+					scores: result.scores,
+					plannedLists: plan.finalPlanned,
+					blocked: plan.blocked,
+					blockReason: plan.blockReason ?? null,
+					fallbackUsed: plan.fallbackUsed ?? null,
+					scoresPersisted,
+					membershipApplied: false,
+					changed: behaviour.reportPlanChange ? plan.changed : false,
+				};
+			}
+			return {
+				repoId: repo.id,
+				nameWithOwner: repo.name_with_owner,
+				status: "error",
+				saved: false,
+				error: applyResult.error,
+			};
+		}
+
+		const membershipApplied = applyResult.applied;
+		const changed = behaviour.reportPlanChange
+			? plan.changed
+			: plan.changed && membershipApplied;
+
+		return {
+			repoId: repo.id,
+			nameWithOwner: repo.name_with_owner,
+			status: "ok",
+			saved: scoresPersisted && (!plan.changed || membershipApplied),
+			plannedLists: plan.finalPlanned,
+			changed,
+			scores: result.scores,
+			blocked: plan.blocked,
+			blockReason: plan.blockReason ?? null,
+			fallbackUsed: plan.fallbackUsed ?? null,
+			scoresPersisted,
+			membershipApplied,
+		};
+	} catch (error) {
+		return {
+			repoId: repo.id,
+			nameWithOwner: repo.name_with_owner,
+			status: "error",
+			saved: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
 }
 
 /**
@@ -67,128 +311,38 @@ export async function rankAll(
 	} = options;
 	const apply = !dry;
 	const database = withDB(db);
-	const scoring = createScoringService({ db: database });
-	const { runId, filterRunId } = scoring.resolveRunContext({
-		dry,
+	const { runtime, filterRunId } = await prepareRankingRuntime(database, {
+		apply,
+		llm,
+		modelConfig,
+		policy,
 		resume: "last",
 	});
-	// Select repos (mirrors core logic)
-	const repos: RepoRow[] = scoring.selectRepos({ limit }, filterRunId);
-	if (!repos.length)
+	const repos: RepoRow[] = runtime.scoring.selectRepos(
+		{ limit },
+		filterRunId ?? null,
+	);
+	if (!repos.length) {
 		return {
 			items: [],
 			stats: { processed: 0, succeeded: 0, failed: 0, saved: 0 },
 		};
-
-	const listsSvc = createListsService(listsLib, database);
-	const listRows = await listsSvc.read.getListDefs();
-	const lists = listRows.map((l) => ({
-		slug: l.slug,
-		name: l.name,
-		description: l.description ?? undefined,
-	}));
-	const token = apply
-		? getRequiredEnv("GITHUB_TOKEN", "Required to apply ranking changes.")
-		: (Bun.env.GITHUB_TOKEN ?? "");
-	if (apply) await listsSvc.apply.ensureListGhIds(token);
-
-	const svc: ScoringLLM = llm
-		? llm
-		: createOllamaService(
-				modelConfig ?? {
-					model: Bun.env.OLLAMA_MODEL ?? "",
-					endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
-					apiKey: Bun.env.OLLAMA_API_KEY ?? "",
-				},
-			);
+	}
 
 	const items: RankingItemResult[] = [];
 	for (let i = 0; i < repos.length; i++) {
 		const repo = repos[i];
-		onProgress?.({
-			phase: "ranking",
+		await onProgress?.({
+			phase: "ranking:repo",
 			index: i + 1,
 			total: repos.length,
 			repo: repo.name_with_owner,
 		});
-		try {
-			// Facts
-			const facts = {
-				nameWithOwner: repo.name_with_owner,
-				url: repo.url,
-				summary: repo.summary ?? undefined,
-				description: repo.description ?? undefined,
-				primaryLanguage: repo.primary_language ?? undefined,
-				topics: parseStringArray(repo.topics),
-			};
-			const result = await scoreRepoAgainstLists(lists, facts, svc);
-			// Persist scores
-			let scoresPersisted = false;
-			if (apply && runId != null) {
-				await scoring.persistScores(runId, repo.id, result.scores);
-				scoresPersisted = true;
-			}
-			// Plan membership
-			const currentSlugs = await listsSvc.read.currentMembership(repo.id);
-			const plan = scoring.planMembership(
-				repo,
-				currentSlugs,
-				result.scores,
-				policy ?? DEFAULT_POLICY,
-			);
-			let changed = false;
-			let membershipApplied = false;
-			if (apply && runId != null && !plan.blocked && plan.changed) {
-				try {
-					const repoGlobalId = await listsSvc.apply.ensureRepoGhId(
-						token,
-						repo.id,
-					);
-					const targetListIds = await listsSvc.read.mapSlugsToGhIds(
-						plan.finalPlanned,
-					);
-					await listsSvc.apply.updateOnGitHub(
-						token,
-						repoGlobalId,
-						targetListIds,
-					);
-					await listsSvc.apply.reconcileLocal(repo.id, plan.finalPlanned);
-					changed = true;
-					membershipApplied = true;
-				} catch (e) {
-					items.push({
-						repoId: repo.id,
-						nameWithOwner: repo.name_with_owner,
-						status: "error",
-						saved: false,
-						error: e instanceof Error ? e.message : String(e),
-					});
-					continue;
-				}
-			}
-			items.push({
-				repoId: repo.id,
-				nameWithOwner: repo.name_with_owner,
-				status: "ok",
-				saved: scoresPersisted && (!plan.changed || membershipApplied),
-				plannedLists: plan.finalPlanned,
-				changed,
-				scores: result.scores,
-				blocked: plan.blocked,
-				blockReason: plan.blockReason ?? null,
-				fallbackUsed: plan.fallbackUsed ?? null,
-				scoresPersisted,
-				membershipApplied,
-			});
-		} catch (e) {
-			items.push({
-				repoId: repo.id,
-				nameWithOwner: repo.name_with_owner,
-				status: "error",
-				saved: false,
-				error: e instanceof Error ? e.message : String(e),
-			});
-		}
+		const result = await runRankingForRepo(repo, runtime, {
+			reportPlanChange: false,
+			includePlanOnApplyError: false,
+		});
+		items.push(result);
 	}
 	return { items, stats: buildBatchStats(items) };
 }
@@ -200,11 +354,10 @@ export async function rankOne(
 	const { selector, dry = false, llm, modelConfig, db, policy } = options;
 	const apply = !dry;
 	const database = withDB(db);
-	// Fetch repo
 	const row = database
 		.query<RepoRow, [string]>(
 			`SELECT id, name_with_owner, url, description, primary_language, topics, summary,
-			 stars, forks, popularity, freshness, activeness FROM repo WHERE name_with_owner = ?`,
+                         stars, forks, popularity, freshness, activeness FROM repo WHERE name_with_owner = ?`,
 		)
 		.get(selector);
 	if (!row) {
@@ -217,98 +370,23 @@ export async function rankOne(
 		};
 	}
 	try {
-		const scoring = createScoringService({ db: database });
-		const { runId } = scoring.resolveRunContext({ dry });
-		const listsSvc = createListsService(listsLib, database);
-		const listRows = await listsSvc.read.getListDefs();
-		const lists = listRows.map((l) => ({
-			slug: l.slug,
-			name: l.name,
-			description: l.description ?? undefined,
-		}));
-		const token = apply
-			? getRequiredEnv("GITHUB_TOKEN", "Required to apply ranking changes.")
-			: (Bun.env.GITHUB_TOKEN ?? "");
-		if (apply) await listsSvc.apply.ensureListGhIds(token);
-		const svc: ScoringLLM = llm
-			? llm
-			: createOllamaService(
-					modelConfig ?? {
-						model: Bun.env.OLLAMA_MODEL ?? "",
-						endpoint: Bun.env.OLLAMA_ENDPOINT ?? Bun.env.OLLAMA_HOST ?? "",
-						apiKey: Bun.env.OLLAMA_API_KEY ?? "",
-					},
-				);
-		const facts = {
-			nameWithOwner: row.name_with_owner,
-			url: row.url,
-			summary: row.summary ?? undefined,
-			description: row.description ?? undefined,
-			primaryLanguage: row.primary_language ?? undefined,
-			topics: parseStringArray(row.topics),
-		};
-		const result = await scoreRepoAgainstLists(lists, facts, svc);
-		let scoresPersisted = false;
-		let membershipApplied = false;
-		if (apply && runId != null) {
-			await scoring.persistScores(runId, row.id, result.scores);
-			scoresPersisted = true;
-		}
-		const currentSlugs = await listsSvc.read.currentMembership(row.id);
-		const plan = scoring.planMembership(
-			row,
-			currentSlugs,
-			result.scores,
-			policy ?? DEFAULT_POLICY,
-		);
-		if (apply && runId != null && !plan.blocked && plan.changed) {
-			try {
-				const repoGlobalId = await listsSvc.apply.ensureRepoGhId(token, row.id);
-				const targetListIds = await listsSvc.read.mapSlugsToGhIds(
-					plan.finalPlanned,
-				);
-				await listsSvc.apply.updateOnGitHub(token, repoGlobalId, targetListIds);
-				await listsSvc.apply.reconcileLocal(row.id, plan.finalPlanned);
-				membershipApplied = true;
-			} catch (e) {
-				return {
-					repoId: row.id,
-					nameWithOwner: row.name_with_owner,
-					status: "error",
-					saved: false,
-					error: e instanceof Error ? e.message : String(e),
-					scores: result.scores,
-					plannedLists: plan.finalPlanned,
-					blocked: plan.blocked,
-					blockReason: plan.blockReason ?? null,
-					fallbackUsed: plan.fallbackUsed ?? null,
-					scoresPersisted,
-					membershipApplied,
-					changed: plan.changed,
-				};
-			}
-		}
-		return {
-			repoId: row.id,
-			nameWithOwner: row.name_with_owner,
-			status: "ok",
-			saved: scoresPersisted && (!plan.changed || membershipApplied),
-			scores: result.scores,
-			plannedLists: plan.finalPlanned,
-			blocked: plan.blocked,
-			blockReason: plan.blockReason ?? null,
-			fallbackUsed: plan.fallbackUsed ?? null,
-			scoresPersisted,
-			membershipApplied,
-			changed: plan.changed,
-		};
-	} catch (e) {
+		const { runtime } = await prepareRankingRuntime(database, {
+			apply,
+			llm,
+			modelConfig,
+			policy,
+		});
+		return await runRankingForRepo(row, runtime, {
+			reportPlanChange: true,
+			includePlanOnApplyError: true,
+		});
+	} catch (error) {
 		return {
 			repoId: row.id,
 			nameWithOwner: row.name_with_owner,
 			status: "error",
 			saved: false,
-			error: e instanceof Error ? e.message : String(e),
+			error: error instanceof Error ? error.message : String(error),
 		};
 	}
 }

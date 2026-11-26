@@ -152,8 +152,9 @@ export async function ingestUnlistedFromGh(
 	db?: Database,
 	log: Logger | TestLoggerLike = realLog,
 	signal?: AbortSignal,
+	createStars: typeof createStarsService = createStarsService,
 ): Promise<IngestReturn> {
-	const svc = createStarsService({ db: withDB(db) });
+	const svc = createStars({ db: withDB(db) });
 	const s = log.spinner("Computing unlisted stars...").start();
 	let unlisted: RepoInfo[] = [];
 	try {

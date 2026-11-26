@@ -1,6 +1,7 @@
 // src/api/ingest.test.ts
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { IngestReporter } from "@features/ingest/types";
+import type { createStarsService } from "@features/stars";
 import { createDb, initSchema } from "@lib/db";
 import { setListsModuleLoaderForTests } from "@lib/lists-loader";
 import type { RepoInfo, StarList } from "@lib/types";
@@ -64,7 +65,6 @@ describe("ingest API coverage", () => {
 		// Clean up any environment variables
 		delete Bun.env.EXPORTS_DIR;
 		setListsModuleLoaderForTests();
-		mock.restore();
 	});
 
 	test("ingestCore uses dependency injection properly", async () => {
@@ -214,11 +214,13 @@ describe("ingest API coverage", () => {
 			},
 		};
 
-		mock.module("@features/stars", () => ({
-			createStarsService: () => mockStarsService,
-		}));
-
-		const result = await ingestUnlistedFromGh(db, log);
+		const result = await ingestUnlistedFromGh(
+			db,
+			log,
+			undefined,
+			() =>
+				mockStarsService as unknown as ReturnType<typeof createStarsService>,
+		);
 
 		expect(mockStarsService.read.getUnlistedStars).toHaveBeenCalledWith(
 			undefined,
