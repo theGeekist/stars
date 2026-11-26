@@ -17,6 +17,20 @@ import type {
 	StarList,
 } from "./types.js";
 
+/** Resolve documented list-specific controls, with legacy generic fallbacks. */
+export function resolveListPagingConfig(
+	env: Record<string, string | undefined> = Bun.env,
+) {
+	return resolvePagingConfig(
+		{
+			...env,
+			LISTS_PAGE_SIZE: env.LISTS_PAGE_SIZE ?? env.PAGE_SIZE,
+			LISTS_CONCURRENCY: env.LISTS_CONCURRENCY ?? env.CONCURRENCY,
+		},
+		{ pageSizeVar: "LISTS_PAGE_SIZE", concurrencyVar: "LISTS_CONCURRENCY" },
+	);
+}
+
 /* Reporter interface */
 
 export type ListsReporter = Reporter;
@@ -209,7 +223,7 @@ export async function getAllLists(
 	reporter: ListsReporter = NoopReporter,
 	signal?: AbortSignal,
 ): Promise<StarList[]> {
-	const cfg = resolvePagingConfig();
+	const cfg = resolveListPagingConfig();
 	const { debug } = reporter;
 	debugEnv("lists", cfg, reporter);
 
@@ -305,7 +319,7 @@ export async function* getAllListsStream(
 	reporter: ListsReporter = NoopReporter,
 	signal?: AbortSignal,
 ): AsyncGenerator<StarList, void, void> {
-	const cfg = resolvePagingConfig();
+	const cfg = resolveListPagingConfig();
 
 	let after: string | null = null;
 	let previousEdgeCursor: string | null = null;
@@ -357,7 +371,7 @@ export async function getReposFromList(
 	reporter: ListsReporter = NoopReporter,
 	signal?: AbortSignal,
 ): Promise<RepoInfo[]> {
-	const cfg = resolvePagingConfig();
+	const cfg = resolveListPagingConfig();
 	const { debug } = reporter;
 
 	const target: string = listName.toLowerCase();

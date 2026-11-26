@@ -7,11 +7,26 @@ import {
 	getReposFromList,
 	LIST_ITEMS_AT_EDGE,
 	LISTS_EDGES_PAGE,
+	resolveListPagingConfig,
 } from "./lists";
 import { mapListRepoNodeToRepoInfo } from "./mapper";
 import type { ListItemsAtEdge, ListsEdgesPage } from "./types";
 
 describe("lists lib", () => {
+	it("uses documented list paging controls with legacy fallbacks", () => {
+		expect(
+			resolveListPagingConfig({
+				LISTS_PAGE_SIZE: "10",
+				LISTS_CONCURRENCY: "1",
+				PAGE_SIZE: "50",
+				CONCURRENCY: "4",
+			}),
+		).toMatchObject({ pageSize: 10, concurrency: 1 });
+		expect(
+			resolveListPagingConfig({ PAGE_SIZE: "50", CONCURRENCY: "4" }),
+		).toMatchObject({ pageSize: 50, concurrency: 4 });
+	});
+
 	it("mapRepoNodeToRepoInfo maps fields safely", () => {
 		const node: ListItemsAtEdge["viewer"]["lists"]["nodes"][number]["items"]["nodes"][number] =
 			{

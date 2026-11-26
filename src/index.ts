@@ -1,5 +1,6 @@
 export { dispatchCommand } from "./api/dispatch";
 export * as ingest from "./api/ingest.public";
+export * as discovery from "./api/discovery.public";
 // Shared public types & errors
 export * from "./api/public.types";
 export * as ranking from "./api/ranking.public";

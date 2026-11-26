@@ -254,3 +254,26 @@ gk-stars ingest --dir ./exports  # ingest into SQLite
 - **Utils**: `slugify`, `isObject`
 - **Statements** prepared lazily in `prepareStatements(database)`
 - **Transactions** wrap per-list and per-batch operations for atomicity.
+
+## Discovery provenance
+
+The ingest public API exposes `createProvenanceService({ db })`. It records collection-derived discovery observations in the existing `recovery_provenance` table, keyed by source. Existing recovery details and unrelated JSON properties are preserved. Each observation must identify its `target`; it can carry `context_topics` and additional JSON fields such as a source revision, path or line.
+
+```ts
+import { ingest } from "@geekist/stars";
+
+const provenance = ingest.createProvenanceService({ db });
+provenance.record("https://example.org/collection", {
+  target: "https://github.com/example/project",
+  context_topics: ["music"],
+  path: "README.md",
+  line: 21,
+});
+const sourceItems = provenance.forSource("https://example.org/collection");
+const targetSources = provenance.forTarget(
+  "https://github.com/example/project",
+);
+const topicItems = provenance.forTopic("music");
+```
+
+`record` appends a distinct observation and returns `true`, or returns `false` for an exact JSON replay regardless of object-key order. Changed observations are retained separately. Writes are atomic. `forTarget` and `forTopic` return each matching observation with its source; they scan the source rows. This metadata does not assert GitHub List membership or alter a target's own topics, and it does not by itself enqueue or research targets.

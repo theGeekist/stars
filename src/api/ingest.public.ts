@@ -109,3 +109,7 @@ export function ingestFromMemory(
 	void onProgress?.({ phase: "ingesting:memory", detail: doneDetail });
 	return res;
 }
+
+export type { DiscoveryObservation } from "@features/ingest/provenance";
+// Independent, source-aware discovery observations.
+export { createProvenanceService } from "@features/ingest/provenance";

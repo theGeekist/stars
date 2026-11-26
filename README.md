@@ -1,288 +1,221 @@
 <div align="center">
   <img src="logo.jpg" alt="Geekist Stars Logo" width="600" />
   <h1>Geekist Stars</h1>
-
-  <p>A Local, Auditable Pipeline for Curating your Starred GitHub Repositories</p>
-
-  <p>      
-    <a href="https://app.codecov.io/gh/theGeekist/stars">
-      <img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" />
-    </a>
-    <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars">
-      <img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&metric=alert_status" />
-    </a>
-    <a href="USAGE.md">
-      <img alt="Docs" src="https://img.shields.io/badge/docs-usage-blue" />
-    </a>
-    <img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg" />
+  <p>A local, auditable toolset for GitHub Stars, Lists and collection discovery</p>
+  <p>
+    <a href="https://app.codecov.io/gh/theGeekist/stars"><img alt="Coverage" src="https://codecov.io/gh/theGeekist/stars/branch/main/graph/badge.svg" /></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=theGeekist_stars"><img alt="Quality Gate Status" src="https://sonarcloud.io/api/project_badges/measure?project=theGeekist_stars&amp;metric=alert_status" /></a>
+    <a href="USAGE.md"><img alt="Usage documentation" src="https://img.shields.io/badge/docs-usage-blue" /></a>
+    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg" />
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Ready-blue.svg" />
-    <img alt="Bun" src="https://img.shields.io/badge/bun-%E2%89%A51.0-ff69b4.svg" />
+    <img alt="Bun 1.1 or later" src="https://img.shields.io/badge/bun-%E2%89%A51.1-ff69b4.svg" />
   </p>
-
 </div>
 
-## Quickstart
+Stars collects your GitHub Stars and Lists into SQLite, computes repository signals, prepares summaries, and scores repositories against your list criteria. The current checkout also includes collection discovery: it extracts resource mentions from repository READMEs, preserves their source context and makes them available for independent research.
 
-```bash
-bun install && bun run build && gks setup
+Your directly curated Stars and Lists, a collection's mention of a resource, a repository summary and a research result are separate records. A resource mentioned in a README does not become a member of one of your GitHub Lists.
+
+This README is the inventory of the implemented toolset. Read [the pipeline guide](docs/pipeline.md) for the stages in plain English and worked examples. [USAGE.md](USAGE.md) contains additional command usage; the linked feature guides and source files below define the current boundaries.
+
+## Getting started
+
+This is a private Bun and TypeScript package. The checkout declares Bun 1.1 or later and contains the `gks` executable entry point. From this checkout you can invoke the same commands with `bun start`.
+
+```sh
+bun install
+bun run build
+bun start help
 ```
 
-If you plan to use **summaries** or **ranking (categorise)** features you must also install local LLM peer packages (now externalised to keep bundles tiny):
+Set configuration in your shell or a local `.env` file, which Bun loads. Keep credentials out of committed files.
 
-```bash
-bun add @jasonnathan/llm-core
+| Setting                           | Used for                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GITHUB_TOKEN`                    | Reading GitHub Stars and Lists; applying ranking changes; fetching discovery sources and resolving GitHub targets. The discovery script also accepts `GH_TOKEN` as a fallback. |
+| `DB_FILE`                         | SQLite file; defaults to `repolists.db` in the working directory outside tests. Set it before starting the process.                                                            |
+| `EXPORTS_DIR`                     | Export directory used by the main CLI; defaults to `./exports`.                                                                                                                |
+| `OLLAMA_MODEL`                    | Model used by the default summary, scoring and setup generation paths.                                                                                                         |
+| `OLLAMA_ENDPOINT` / `OLLAMA_HOST` | Endpoint settings used by model adapters; exact precedence depends on the API. See [summaries](src/api/summarise.public.ts) and [ranking](src/api/ranking.public.ts).          |
+| `GH_EXPLORE_PATH`                 | Local `github/explore` checkout used to look up topic metadata.                                                                                                                |
+| `TOPIC_TTL_DAYS`                  | Topic metadata refresh interval; defaults to 30 days.                                                                                                                          |
+
+The shared [database module](src/lib/db.ts) opens its default SQLite connection when imported. A caller injecting its own database should set `DB_FILE=:memory:` before loading the library if it also needs to isolate that default connection. The discovery and research commands do this themselves and require an explicit existing `--db` path.
+
+The package currently declares `@jasonnathan/llm-core` and `ollama` as dependencies and peer dependencies. The build externalises them, so the emitted JavaScript still needs these packages at runtime. The default model paths use Ollama; programmatic callers can inject generation or scoring implementations.
+
+## Commands available now
+
+The command router is [src/cli.ts](src/cli.ts). These are the implemented main CLI commands; discovery and research are separate scripts rather than `gks` subcommands. The `lists`, `stars` and `unlisted` handlers always supply an export directory, so their core functions' `--json`/`--out` alternatives are not reached through the current router.
+
+| Command                                | What it does                                                                          | Main inputs and effects                                                                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun start lists`                      | Fetches GitHub Lists and their repository metadata.                                   | Reads GitHub and writes the list index and per-list JSON exports to `EXPORTS_DIR`.                                                                                                    |
+| `bun start repos --list "List name"`   | Fetches the repositories in one named GitHub List.                                    | Reads GitHub; displays results or prints JSON with `--json`.                                                                                                                          |
+| `bun start stars`                      | Fetches all starred repositories with pagination.                                     | Reads GitHub and writes page files and a Stars index to `EXPORTS_DIR`; use a directory separate from List exports.                                                                    |
+| `bun start unlisted`                   | Computes starred repositories absent from locally ingested List membership.           | Reads GitHub and local membership; writes `unlisted.json` to `EXPORTS_DIR`. Local List state therefore affects the result.                                                            |
+| `bun start ingest`                     | Imports the existing list and unlisted exports into SQLite.                           | Reads `EXPORTS_DIR`; upserts repositories and Lists, computes signals and may reconcile removals for a complete export. It does not invoke a model.                                   |
+| `bun start setup`                      | Generates `prompts.yaml` from GitHub Lists and the internal template.                 | Reads GitHub and writes configuration. It attempts criteria generation when Ollama is ready and otherwise leaves placeholders to edit.                                                |
+| `bun start summarise --all --limit 20` | Generates repository summaries. `summarize` is an alias.                              | Selects repositories without summaries by default; `--resummarise` includes existing summaries. `--one owner/repo` targets one repository.                                            |
+| `bun start score --all --limit 20`     | Scores summarised repositories against configured List criteria and plans membership. | Apply mode is the default: it can persist scores and change GitHub List membership. `--one owner/repo`, `--dry` and `--curation-threshold` are supported.                             |
+| `bun start topics:enrich`              | Reconciles repository topics and fills topic metadata, aliases and related topics.    | Reads repository topics from SQLite and metadata from the local Explore checkout; writes topic tables. `--active` selects non-archived repositories; `--ttl N` overrides refresh age. |
+| `bun start help`                       | Prints the main usage banner.                                                         | The banner is general help; the router does not implement separate help pages for each command.                                                                                       |
+
+Examples that preview model-backed work:
+
+```sh
+bun start summarise --one facebook/react --dry
+bun start score --one facebook/react --dry
 ```
 
-Without those peers only the non-LLM features (lists, stars data export, ingest, topics) are usable.
+`--dry` prevents the final summary save or ranking application. It does not mean that the whole process is free of local writes: summary preparation can fetch and cache a README. The summary and score CLI handlers also check that prompts configuration is ready.
 
-## What it does
+The `stars` command writes an `index.json` object for paginated Stars; `lists` writes an `index.json` array of Lists. They are different formats and overwrite the same filename if pointed at the same directory. Ingest and discovery expect the List index plus `unlisted.json`, not the paginated Stars index.
 
-Geekist Stars provides a local pipeline that helps you organize, analyze, and curate your starred GitHub repositories and lists. Using local AI models, it can score and categorize repositories based on customizable criteria, providing explainable rationales for every decision. You can review, accept, or adjust these categorizations as needed. Learn more in the [Scoring documentation](src/features/scoring/README.md).
+A complete export is a data-authority decision, not merely a pair of present files. Validate that the fetch produced the whole current curation snapshot before ingesting it. Partial file imports and the public in-memory import do not prune absent repositories. Complete export cleanup retains repository overrides and discovered research; it removes ordinary absent repositories and reconciles absent direct memberships according to those protections. See [ingestion](src/features/ingest/README.md) and the [cleanup implementation](src/features/ingest/service.ts).
 
-The tool generates concise, factual summaries for each repository by analyzing README files, metadata, and activity signals. These summaries are designed for quick recall and triage, making it easier to remember why you starred a project. Details are in the [Summarization documentation](src/features/summarise/README.md).
+## Collection discovery added in this checkout
 
-It manages your starred repositories by syncing with GitHub, efficiently handling thousands of stars, and providing ways to compare and reconcile local and remote data. You get access to rich metadata and can flexibly query and analyze your collection. See the [Stars Management guide](src/features/stars/README.md).
+The [discovery command](scripts/discover.ts) reads `index.json`, every listed export file and `unlisted.json`. It deduplicates the directly exported repositories by their GitHub IDs and inspects each one's README at a pinned commit. This currently scans all directly exported repositories; it does not first classify which ones are collection repositories.
 
-For ingestion, Geekist Stars imports and organizes your GitHub Lists and stars, keeping your local database synchronized and clean. It automatically removes repositories that are no longer starred (unless you specify overrides), and computes useful health metrics like popularity and activeness. Read more in the [Ingestion documentation](src/features/ingest/README.md).
-
-The system enriches and normalizes repository topics by parsing local data from `github/explore`, ensuring topics are standardized, canonicalized, and mapped with relationships and aliases for deeper analysis. More on this in the [Topics documentation](src/features/topics/README.md).
-
-Finally, it integrates with GitHub Lists, enabling bidirectional syncing, membership management, and batch operations for organizing repositories into meaningful groups. Conflicts are handled intelligently to preserve manual curation. Learn about this in the [Lists documentation](src/features/lists/README.md).
-
-### What you get
-
-**At a glance outputs (typical run):**
-
-```
-• Summary (60–90 words):
-  react — A declarative UI library focusing on composition and unidirectional data flow…
-
-• Plan (categorise):
-  + add   react to “Frontend Frameworks” (score 0.92, rationale: virtual DOM, JSX)
-  - remove lodash from “Frontend Frameworks” (score 0.07, rationale: utility library)
-  ~ review htmx (score 0.58, borderline)
-
-• Topics report:
-  142 topics, 97% canonicalised, 38 aliases, 121 related edges
+```sh
+bun run scripts/discover.ts \
+  --db /absolute/path/to/repolists.db \
+  --exports /absolute/path/to/complete-current-exports
 ```
 
-**Peek into the DB** (fully auditable):
+The command requires GitHub credentials and an existing database. It reports source and target-resolution failures, returns a non-zero exit status when failures remain, and can be repeated to retry. No schedule or orchestrator stage is installed by this command.
 
-```sql
--- Top 10 repos by activeness last 90 days
-SELECT name_with_owner, activeness
-FROM repo
-ORDER BY activeness DESC
-LIMIT 10;
+The discovery implementation currently provides:
+
+- Markdown list and GFM table extraction, including reference links, source lines, heading sections, table columns and row context.
+- Separate roles for author links and item links. Author URLs remain in row context; ambiguous non-author links remain eligible as unverified targets.
+- Stable GitHub repository identity resolution through the existing GraphQL mapper and ingestion service. Files and subdirectories remain separate research targets while their parent repository is stored once.
+- URL identities for external resources, including non-software resources.
+- Historical source observations in `recovery_provenance.details_json`, current relationships in `discovery_edge`, target state in `discovery_target` and retained successful research results in `discovery_research`.
+- Work selection independent of `repo.summary`, with current source observations attached to each work item. A research consumer can process items, retain results and retry individual failures. The supplied `createFetchConsumer` fetches bounded target evidence through an existing external safe-fetch command.
+- Reconciliation of changed or removed sources without discarding previous research. Targets with no current source remain stored but are not selected for new work.
+
+The [discovery guide](src/features/discovery/README.md) explains the exact states and source-removal policy. Discovery does not enumerate a repository's recipe or data archive, parse Cooklang files, or generate a finished research report. These operations are not wired into the main CLI, HTTP task runner, dispatcher or sequential orchestrator.
+
+### Fetching independent target evidence
+
+The [research command](scripts/research.ts) runs the current work list with [createFetchConsumer](src/features/discovery/consumer.ts):
+
+```sh
+bun run scripts/research.ts \
+  --db /absolute/path/to/repolists.db \
+  --fetcher /absolute/path/to/existing/safe_fetch.py
 ```
 
-## Abstract
+`--fetcher` points to an existing external Python safe-fetch implementation; that script is not bundled into Stars. The command requires the database and fetcher paths to exist. It processes all currently selected work, prints processed/done/retry counts and returns a non-zero status if any item remains retryable. It closes its database on success and failure.
 
-Geekist Stars is a Bun and TypeScript toolkit for turning your GitHub Lists and starred repositories into an auditable, local-first corpus. It computes health signals, generates local summaries, provides explainable categorization, and enriches topics using offline metadata.
+The supplied consumer invokes `python3` by default, allows up to 200,000 response bytes and has a 60-second child-process timeout. Programmatic options can override the Python executable, byte bound (up to 5,000,000) and timeout. Each fetch uses a temporary directory that is removed on success or failure. The consumer checks the external fetcher's receipt against the downloaded bytes, then retains the requested and returned URLs, observation time, content type, byte count, SHA-256 hash and text for textual content. It marks source content as untrusted. The service stores successful results in the research history; failed items remain retryable.
 
-### Models (Mac quick-pick)
+A fetched response is evidence of what a source returned. This consumer does not verify the page's claims, perform model synthesis or produce a finished report. This section describes the implementation; it does not establish that a live research run has succeeded.
 
-For 16 GB RAM, use `llama3.1:8b` for summaries and `qwen2.5:7b` or `llama3.1:8b` (slower) for ranking. With 32 GB+ RAM, use `qwen2.5:7b` for summaries and either `llama3.1:8b` or `qwen2.5:7b` for ranking. Prefer quantized models such as `:Q4_K_M` for speed, and set `OLLAMA_NUM_PARALLEL=1` to avoid system thrashing.
+## Existing parsing and processing tools
 
-The CLI offers structured help, examples, and detailed flag descriptions. Use `--help` on any command for guidance.
+These components already serve different parts of the toolset. Their outputs are not interchangeable.
 
-See [USAGE.md](USAGE.md) for CLI usage and examples.
+| Tool                                              | Existing use and output                                                                                                                                                   | Source                                                                                                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `@jasonnathan/llm-core` Markdown splitter         | Uses Remark and GFM to split Markdown into text chunks for summary preparation. The splitter returns strings rather than an exposed link/table AST with source positions. | [README preparation](src/lib/readme.ts), [package manifest](package.json)                                         |
+| Remark, `remark-parse`, `remark-gfm`, `unified`   | Parse Markdown and GFM tables. Discovery adds a collection-specific AST walker for link roles and source attribution; it uses these existing libraries.                   | [discovery extraction](src/features/discovery/parser.ts)                                                          |
+| README fetch/cache helpers                        | Fetch GitHub READMEs, retain ETags and fetch times, clean text, chunk it and select informative chunks. Cached text can be reused after fetch failures.                   | [readme.ts](src/lib/readme.ts)                                                                                    |
+| Awesome List detection and summary path           | Recognise likely directory repositories and produce a generic collection summary; this path does not itself extract and resolve each entry.                               | [utilities](src/lib/utils.ts), [summary generation](src/features/summarise/llm.ts)                                |
+| GitHub GraphQL/REST transport and mappers         | Fetch repository/List data, handle pagination and retries where implemented, and map GitHub fields to `RepoInfo`.                                                         | [transport](src/lib/github.ts), [mapper](src/lib/mapper.ts), [Lists](src/lib/lists.ts), [Stars](src/lib/stars.ts) |
+| SQLite schema, migrations and prepared statements | Persist the catalogue, relationships, overrides, summaries, scores, topic metadata and source evidence. SQLite FTS supports repository search.                            | [schema](sql/schema.sql), [database helpers](src/lib/db.ts)                                                       |
+| YAML prompt configuration                         | Stores summary prompts, scoring criteria and thresholds; setup can generate its initial content.                                                                          | [prompt loading](src/lib/prompts.ts), [setup](src/features/setup/README.md)                                       |
+| Ollama adapters and injectable model dependencies | Supply generation and embeddings for summaries and list scoring. Programmatic overrides can replace selected model operations.                                            | [summary API](src/api/summarise.public.ts), [ranking API](src/api/ranking.public.ts)                              |
 
-## Motivation
+There is no `@wpkernel/pipeline` dependency in this checkout. The orchestration remains the existing Bun runner and service/API boundaries.
 
-Developers often accumulate hundreds or thousands of starred repositories, making it difficult to recall their significance or organize them over time. Existing tools offer basic search and browsing, but rarely combine list curation, concise summaries, explainable categorization, and topic enrichment in a private and extensible way. Geekist Stars fills this gap with a local-first pipeline.
+## Library APIs
 
-SaaS stars managers often fall short on privacy, auditability, and composability. Geekist Stars is private by default (no repo content leaves your machine), every decision is auditable in SQLite, and you can build your own reports with SQL.
+The root module [src/index.ts](src/index.ts) exports the following namespaces. Services beneath `src/features` provide lower-level database and GitHub operations, including List mutation helpers, but they are not all exported as root package namespaces.
 
-## Problem Statement
+| Root export       | Available operations                                                                                                                                                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `starsData`       | `fetchLists`, `fetchReposFromList`, `fetchStars`, `fetchUnlistedStars`. The first three return fetched data; unlisted selection also needs local List membership.                                                                             |
+| `ingest`          | `ingestAll` imports exports despite its remote-oriented API comment; `ingestListsOnly` and `ingestUnlistedOnly` fetch GitHub data directly; `ingestFromMemory` imports supplied data without pruning. Also exposes `createProvenanceService`. |
+| `summaries`       | `summariseAll` and `summariseRepo`, with injected database, generation dependencies, model configuration and batch progress where supported.                                                                                                  |
+| `ranking`         | `rankAll`, `rankOne` and curation policy exports. Apply mode can persist scores and update GitHub List membership.                                                                                                                            |
+| `setup`           | Prompt state and template updates, `.modelrc.json` reads/writes and model connectivity checks. Saving `.modelrc.json` does not itself select a model for every API.                                                                           |
+| `discovery`       | `backfillCollections`, `createDiscoveryService`, `githubDiscovery` and `createFetchConsumer`, with their input types. `work()` selects current targets; `research(consumer)` runs a consumer with item-level outcomes.                        |
+| `dispatchCommand` | Typed dispatch for summaries, ranking, Stars/List reads and ingest operations. Discovery, topics and setup do not currently have dispatcher keys.                                                                                             |
 
-Given a user's GitHub Lists and starred repositories, the goal is to build a local system that summarizes each repository for engineers, categorizes repositories for user-defined lists, enriches them with offline topic metadata, and stores everything in a relational database for reproducibility and auditing.
-
-## Contributions
-
-Geekist Stars uses local LLMs (via Ollama), an editable prompt schema, explainable categorization, robust summarization, offline topic enrichment, and auditable storage in SQLite.
-
-## System Overview
-
-The pipeline consists of four independent stages: ingest (imports and cleans up repositories and lists, computes metrics, normalizes topics), summarize (generates one-paragraph summaries), categorize (scores repositories for lists and proposes actions), and topics (enriches and normalizes topics from local data).
-
-## Data Model (Summary)
-
-Data is organized into lists and memberships, repositories and computed signals, repository overrides, a text index for search, model audit tables, topics and their relationships, and reconciled repo-to-topic mappings.
-
-### Signals (glossary)
-
-Popularity is based on log-scaled stars and forks (decays with age), freshness is based on recent commits, and activeness measures commit/issue/PR velocity normalized for repo size.
-
-## Methods
-
-Summarization produces factual, present-tense summaries of 60-90 words. Categorization uses structured prompts and explicit policies to propose list changes. Topic enrichment parses local `github/explore` data to provide metadata, aliases, and related topics.
-
-## Reproducibility
-
-Prompts are versioned in YAML and editable. Each categorization run is uniquely identified, with all scores stored. The database evolves via additive migrations and can be re-run to verify outputs. Progress is persisted for long runs, and commands support resuming.
-
-## Current Scope and Non-Goals
-
-Search is basic (SQLite FTS), and human review is expected for categorization. The system does not attempt to infer beyond prompts and metrics.
-
-## Limitations
-
-Summary quality depends on repository metadata. Categorization depends on clear list criteria. Topic coverage is limited to what's available in `github/explore`.
-
-## Future Work
-
-Planned improvements include advanced search, graph export, historical diffing, and assisted criteria authoring.
-
-## Ethics and Privacy
-
-All inference is local via Ollama. The database remains on disk and is fully inspectable and removable. No repo data, summaries, or scores are sent to third parties. List updates to GitHub require explicit user action.
-
-## Conclusion
-
-### Automation (nightly)
-
-Schedule the orchestrator to run nightly (e.g., at 1 am), then review the results in the morning.
-
-```bash
-0 1 * * *  bun /path/to/stars/scripts/orchestrator.ts --only=lists,ingest,summarise,score >> /path/to/stars/logs/cron.out 2>&1
-```
-
-## Programmatic API
-
-You can use Geekist Stars as a library in addition to the CLI. All batch and single operations use options objects, support progress hooks, and allow per-request model overrides.
+For example, inspect one repository without applying ranking changes:
 
 ```ts
-import {
-  summaries,
-  ranking,
-  starsData,
-  ingest,
-  dispatchCommand,
-} from "@geekist/stars"; // install @jasonnathan/llm-core + ollama for summaries/ranking
+import { ranking } from "@geekist/stars";
 
-// Summarise a batch with a temporary model override and progress
-const summariesResult = await summaries.summariseAll({
-  limit: 50,
-  modelConfig: { model: "llama3:8b", host: "http://localhost:11434" },
-  onProgress: (e) => {
-    if (e.phase === "summarising:repo") {
-      console.log(`Summarising ${e.index}/${e.total}`);
-    }
-  },
-});
-
-// Rank a single repository, applying list membership
-const ranked = await ranking.rankOne({
+const result = await ranking.rankOne({
   selector: "facebook/react",
-  dry: false,
-  modelConfig: { model: "llama3:custom" },
+  dry: true,
 });
-if (ranked.status === "ok") {
-  console.log(ranked.plannedLists, ranked.changed);
-}
-
-// Use curation mode to preserve manual list curation
-const curatedRanking = await ranking.rankAll({
-  limit: 100,
-  dry: false,
-  policy: ranking.DEFAULT_POLICY,
-});
-
-// Custom curation threshold
-const customCuration = await ranking.rankOne({
-  selector: "microsoft/vscode",
-  dry: false,
-  policy: {
-    respectManualCuration: true,
-    curationRemoveThreshold: 0.15,
-  },
-});
-
-// Fetch lists & stars (pure data, throws ConfigError if token missing)
-const { items: lists } = await starsData.fetchLists();
-console.log(lists[0].slug); // stable slug derived from list name
-const { items: stars } = await starsData.fetchStars({
-  onProgress: (e) => {
-    if (e.phase === "fetching:stars" && e.detail?.status === "page") {
-      console.log(`Fetched page ${e.detail.page}`);
-    }
-  },
-});
-
-// Ingest everything (lists + stars) into the DB
-await ingest.ingestAll({
-  onProgress: (e) => {
-    if (e.detail?.status === "start") console.log(`Begin ${e.phase}`);
-    if (e.detail?.status === "done") console.log(`Done ${e.phase}`);
-  },
-});
-
-// Dynamic invocation via dispatcher
-await dispatchCommand("summaries:all", { args: { limit: 10 } });
+console.log(result);
 ```
 
-### Model Precedence
+Summaries prefer explicit `deps` over `modelConfig`, then use environment defaults. Ranking prefers an explicit `llm` over `modelConfig`, then environment defaults. An injected implementation may send content to a remote provider; privacy depends on the selected consumer, model and endpoint.
 
-For summaries and ranking, explicit `deps`/`llm` objects are used if provided, then `modelConfig`, then environment variables as fallback.
+## Local web interface and HTTP API
 
-### Progress Phases (Overview)
+`bun run dev` starts [src/server.ts](src/server.ts) on port 8787 and serves the assets in `public`. `bun run serve` runs the same server in watch mode. The server source contains no authentication layer, so access control belongs to its deployment.
 
-| Domain    | Phase            | Detail Payloads                                        |
-| --------- | ---------------- | ------------------------------------------------------ | ------- |
-| summaries | summarising:repo | `{ index, total, repo }`                               |
-| ranking   | ranking:repo     | `{ index, total, repo }`                               |
-| lists     | fetching:lists   | `detail.status = "progress"` with `{ current, label }` |
-| stars     | fetching:stars   | `detail.status = "page"` with `{ page }`               |
-| ingest    | ingesting:\*     | `detail.status = "start"                               | "done"` |
+| Route                                  | Purpose                                                                                                                             |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/health`                              | Returns health status.                                                                                                              |
+| `/dashboard`                           | Returns export counts and SQLite counts for Lists, repositories, summaries and scores.                                              |
+| `/lists`, `/list/:slug`                | Read Lists and repositories assigned to a List.                                                                                     |
+| `/search?q=...`                        | Searches repository FTS, with a name/description fallback if the FTS query fails; results are capped at 100.                        |
+| `/logs`                                | Streams task logs using server-sent events.                                                                                         |
+| `POST /run/:task`                      | Starts `lists`, `ingest`, `summarise`, `score` or `topics:enrich`. Only one in-process task runs at a time.                         |
+| `/run/status`, `POST /run/cancel/:pid` | Report running tasks or request cancellation. Cancellation is cooperative and depends on the task passing the abort signal through. |
 
-### Error Handling
+The server's `ingest` task fetches GitHub Lists and unlisted Stars directly, unlike the main CLI's export-based `ingest`. Server summaries and scoring run in apply mode. The server has no discovery task or research-work endpoint.
 
-Missing configuration raises `ConfigError`. Ranking JSON parse issues are surfaced per item, but batches continue. See `MIGRATION.md` for details.
+## Sequential runner and development tools
 
-Geekist Stars demonstrates that local-first tooling can turn a noisy GitHub star collection into a structured, auditable, and navigable resource. By combining editable prompts, simple metrics, explainable categorization, and local topic enrichment, it helps you maintain control over your personal repository corpus.
+[scripts/orchestrator.ts](scripts/orchestrator.ts) runs these stages in order: `lists`, `unlisted`, `ingest`, `git-pull`, `topics-enrich`, `summarise`, `score`. It supports `--only=...` and `--skip=...`, writes per-step logs under `logs/steps`, reports non-zero step exits in those logs, and implements no retries or timeouts. The non-zero-exit branch ends a log sink rather than explicitly throwing, so do not rely on fail-fast behaviour without verifying it. Its `git-pull` target is currently a hard-coded macOS Explore path that must be checked before using that stage on another host. It is a runner, not an installed schedule; discovery and research are not among its stages.
 
-## Bundle Size & Externals
+The package also provides build/declaration generation, TypeScript checking, Biome lint/format commands, Bun tests with configured coverage, coverage reporting and a Codecov diagnostic script. See [package.json](package.json), [build script](scripts/build.ts), [coverage report](scripts/coverage-report.ts) and [test configuration](bunfig.toml).
 
-The LLM stack (`@jasonnathan/llm-core`, `ollama`) is externalized to keep published bundles small:
+Before committing, the repository's [AGENTS.md](AGENTS.md) requires:
 
-```
-index.js            ~225 KB
-cli.js              ~231 KB
-summarise.public.js ~174 KB
-ranking.public.js   ~183 KB
-setup.public.js     ~175 KB
-stars.public.js     ~174 KB
-```
-
-Add peer dependencies only if you need LLM-powered features:
-
-```bash
-bun add @jasonnathan/llm-core ollama
+```sh
+CI=1 bun run build
+CI=1 bun lint --fix
+CI=1 bun test
 ```
 
-Set `OLLAMA_MODEL` and run `gks summarise` or `gks score` as usual. If peers are missing and you attempt to use LLM features, you'll get a runtime error with installation instructions.
+## Stored signals and limits
+
+Repository signals are deterministic heuristics in [metrics.ts](src/lib/metrics.ts): popularity combines log-scaled Stars, forks and watchers; freshness uses the selected repository timestamp; activeness blends open issue/PR counts and push freshness with penalties for archived repositories or disabled issues. They are useful sorting signals, not measurements of project quality or verified maintenance health.
+
+Summaries are generated interpretations of available repository material. Ranking depends on your List criteria and curation policy. Topic metadata depends on the local Explore data. Collection extraction establishes that a source mentioned a target; independent research is still needed to verify claims about that target. The checkout contains neither a general fact-checker nor an automatic publishing stage.
+
+## Feature documentation
+
+- [Pipeline stages and examples](docs/pipeline.md)
+- [Command usage](USAGE.md)
+- [Stars exports](src/features/stars/README.md)
+- [Ingestion and cleanup](src/features/ingest/README.md)
+- [Collection discovery and research work](src/features/discovery/README.md)
+- [Summaries](src/features/summarise/README.md)
+- [Scoring and curation policy](src/features/scoring/README.md)
+- [Lists services](src/features/lists/README.md)
+- [Topics](src/features/topics/README.md)
 
 ## Citation
 
-If you use Geekist Stars in your research or projects, please cite:
-
 ```bibtex
 @software{nathan_geekist_stars_2025,
-  author       = {Jason Joseph Nathan},
-  title        = {Geekist Stars},
-  year         = {2025},
-  publisher    = {GitHub},
-  journal      = {GitHub repository},
+  author = {Jason Joseph Nathan},
+  title = {Geekist Stars},
+  year = {2025},
+  publisher = {GitHub},
+  journal = {GitHub repository},
   howpublished = {\url{https://github.com/theGeekist/stars}},
 }
 ```
-
-<br>
-<br>
-<p align="center">
-  <sub>
-    Proudly brought to you by 
-    <a href="https://github.com/theGeekist" target="_blank">@theGeekist</a> and <a href="https://github.com/pipewrk" target="_blank">@pipewrk</a>
-  </sub>
-</p>

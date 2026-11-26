@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { parseSimpleArgs } from "./cli";
 import {
+	handleStandardMode,
 	hasBooleanFlag,
 	parseCommonCliOptions,
 	parseListOption,
 	parseNumericOption,
+	parseStandardCommandArgs,
 	parseStringOption,
 } from "./cli-utils";
 
@@ -161,6 +163,79 @@ describe("CLI Utilities", () => {
 		it("returns false when flag is not present", () => {
 			const hasFlag = hasBooleanFlag(["cmd", "--other", "arg"], "verbose");
 			expect(hasFlag).toBe(false);
+		});
+	});
+
+	describe("parseStandardCommandArgs", () => {
+		it("combines parseSimpleArgs result with additional flags", () => {
+			const argv = ["node", "cli", "--one", "owner/repo"];
+			const args = ["cli", "--dry", "--limit", "25", "--resummarise"];
+			const { s, dry, extraFlags } = parseStandardCommandArgs(argv, args);
+
+			expect(s.mode).toBe("one");
+			expect(s.one).toBe("owner/repo");
+			expect(dry).toBe(true);
+			expect(extraFlags).toEqual({ limit: "25", resummarise: true });
+		});
+
+		it("records boolean flags without values", () => {
+			const argv = ["node", "cli", "--all"];
+			const args = ["cli", "--dry", "--fresh", "--limit", "5"];
+			const { dry, extraFlags } = parseStandardCommandArgs(argv, args);
+
+			expect(dry).toBe(true);
+			expect(extraFlags).toEqual({ fresh: true, limit: "5" });
+		});
+	});
+
+	describe("handleStandardMode", () => {
+		it("runs the one handler when selector present", async () => {
+			const calls: string[] = [];
+			await handleStandardMode(
+				{ mode: "one", one: "owner/repo", limit: undefined, dry: false },
+				{ dry: false },
+				{
+					onOne: async (selector) => {
+						calls.push(`one:${selector}`);
+					},
+					onAll: async () => {
+						calls.push("all");
+					},
+				},
+			);
+
+			expect(calls).toEqual(["one:owner/repo"]);
+		});
+
+		it("runs the all handler with a minimum limit of 1", async () => {
+			const limits: number[] = [];
+			await handleStandardMode(
+				{ mode: "all", one: undefined, limit: 0, dry: true },
+				{ dry: true },
+				{
+					onOne: async () => {
+						limits.push(-1);
+					},
+					onAll: async (limit) => {
+						limits.push(limit);
+					},
+				},
+			);
+
+			expect(limits).toEqual([1]);
+		});
+
+		it("throws when --one is missing its selector", () => {
+			expect(() =>
+				handleStandardMode(
+					{ mode: "one", one: undefined, limit: undefined, dry: false },
+					{ dry: false },
+					{
+						onOne: async () => {},
+						onAll: async () => {},
+					},
+				),
+			).toThrow("--one requires a value");
 		});
 	});
 });

@@ -1,31 +1,18 @@
-# Project Guidance for Agents
+Before committing, run and ensure all of these commands succeed (set `CI=1` in your shell first to avoid session interruptions):
 
-## Repository structure highlights
+- CI=1 bun run build
+- CI=1 bun lint --fix
+- CI=1 bun test
 
-- `src/api/*` exposes public entry points that orchestrate the feature services.
-- `src/features/*` contains domain services (summaries, scoring, ingest) that expect injected deps for testability.
-- `src/lib/*` holds shared adapters (database, environment helpers, logging, Ollama bindings).
-- `scripts/*` includes coverage helpers (`coverage-report.ts`, `test-codecov.ts`) and operational wrappers.
-- `sql/` provides schema migrations consumed by the ingest pipelines.
+Testing notes:
 
-## Testing & coverage workflow
+- `bunfig.toml` enables coverage collection and preloads `test-setup.ts`, which automatically resets `Bun.env`, `process.cwd()`, and `process.exit` between tests.
+- Coverage reporters are `text` and `lcov`; test files, mocks, and the `src/__test__` helpers directory are excluded via `coveragePathIgnorePatterns`.
 
-- Use `CI=1 bun test` for the complete suite. `bunfig.toml` enables coverage collection and preloads `test-setup.ts` to restore process and environment state between tests.
-- Bun writes consolidated text and LCOV coverage to `coverage/`; tests, mocks, and `src/__test__/helpers` are excluded from coverage.
-- Use `bun run coverage:report` to summarize the current unified run. Do not merge per-suite LCOV files.
+## Host CLI and operational MCP access
 
-## Linting
+Follow `/home/jasonjn/Repos/AGENTS.md` and `/srv/AGENTS.md` for existing authenticated host CLIs, WP-CLI and operational MCP servers. Check the relevant connector and authorised host environment before concluding that sandbox restrictions mean a tool, service or login is unavailable. Verify the intended identity and access without revealing credentials.
 
-- Run `CI=1 bun lint --fix` before committing to keep CI green and avoid formatting drift.
+## Git hook integrity
 
-## Build
-
-- Run `CI=1 bun run build` and `CI=1 bun run check` to catch build and type regressions before pushing.
-
-## Operational notes
-
-- CLI entry lives in `src/cli.ts`; orchestrator scripts (pm2, etc.) should call the built `dist/cli.js` after running `bun run build`.
-- Long-running APIs emit typed progress events (`ProgressEmitter` in `src/api/public.types.ts`)—tests typically stub these rather than asserting on console output.
-- Environment access goes through `resolveModelConfig` / `resolveGithubToken` / `getRequiredEnv`; prefer these helpers to direct `Bun.env` reads when adding surfaces.
-
-Keep additions consistent with the current option interfaces and favour dependency injection over singleton imports.
+Never bypass, disable, skip, suppress, or work around a Git hook or required check for a commit or push unless the user explicitly approves that specific bypass. A request to commit or push does not grant bypass approval. When a hook or check fails, fix the underlying issue and rerun it with the hook enabled. If the hook cannot be made to pass, stop before committing or pushing and report the failure for user direction.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { createDb, initSchema } from "@lib/db";
+import { createDb, getDefaultDb, initSchema } from "@lib/db";
 import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 import { summariseAll, summariseRepo } from "./summarise.public";
 
@@ -9,9 +9,19 @@ function makeDb(): ReturnType<typeof createDb> {
 	db.exec(`
 		INSERT INTO repo(id, repo_id, name_with_owner, url, description, primary_language, topics, popularity, freshness, activeness, summary)
 		VALUES
-			(1, 'R_1', 'org/one', 'https://github.com/org/one', 'First repo', 'TypeScript', '[]', 0.8, 0.7, 0.9, NULL),
-			(2, 'R_2', 'org/two', 'https://github.com/org/two', 'Second repo', 'TypeScript', '[]', 0.6, 0.8, 0.5, 'Existing summary');
+			(1, 'R_1', 'org/one', 'https://github.com/org/one', 'Awesome list of first projects', 'TypeScript', '[]', 0.8, 0.7, 0.9, NULL),
+			(2, 'R_2', 'org/two', 'https://github.com/org/two', 'Awesome list of second projects', 'TypeScript', '[]', 0.6, 0.8, 0.5, 'Existing summary');
 	`);
+	return db;
+}
+
+function makeAwesomeDb(name: string): ReturnType<typeof createDb> {
+	const db = createDb(":memory:");
+	initSchema(db);
+	db.query(
+		`INSERT INTO repo(id, repo_id, name_with_owner, url, description, primary_language, topics, popularity, freshness, activeness)
+		 VALUES (1, ?, ?, 'https://github.com/example/awesome', 'Awesome list', 'Markdown', '["awesome"]', 0.5, 0.5, 0.5)`,
+	).run(name, name);
 	return db;
 }
 
@@ -95,23 +105,76 @@ describe("summarise public API", () => {
 		});
 	});
 
-	it("returns an error for a missing repo or generation failure", async () => {
+	it("keeps concurrent operations on their explicit databases", async () => {
+		const defaultDb = getDefaultDb();
+		const firstDb = makeAwesomeDb("org/awesome-first");
+		const secondDb = makeAwesomeDb("org/awesome-second");
+		let releaseGeneration!: () => void;
+		const generationGate = new Promise<void>((resolve) => {
+			releaseGeneration = resolve;
+		});
+		let started = 0;
+		let markBothStarted!: () => void;
+		const bothStarted = new Promise<void>((resolve) => {
+			markBothStarted = resolve;
+		});
+		const deps = {
+			gen: async () => {
+				started++;
+				if (started === 2) markBothStarted();
+				await generationGate;
+				return "A concise summary.";
+			},
+		};
+
+		const first = summariseRepo({
+			selector: "org/awesome-first",
+			dry: true,
+			deps,
+			db: firstDb,
+		});
+		const second = summariseRepo({
+			selector: "org/awesome-second",
+			dry: true,
+			deps,
+			db: secondDb,
+		});
+		await bothStarted;
+
+		expect(getDefaultDb()).toBe(defaultDb);
+		releaseGeneration();
+		const results = await Promise.all([first, second]);
+		expect(results.map((result) => result.status)).toEqual(["ok", "ok"]);
+	});
+
+	it("reports summary persistence failures instead of success", async () => {
+		const db = makeDb();
+		db.exec(`
+			CREATE TRIGGER reject_summary_write
+			BEFORE UPDATE OF summary ON repo
+			BEGIN
+				SELECT RAISE(ABORT, 'summary write rejected');
+			END;
+		`);
+
+		const result = await summariseRepo({
+			selector: "org/one",
+			deps: { gen: async () => "Generated but not saved." },
+			db,
+		});
+
+		expect(result.status).toBe("error");
+		expect(result.saved).toBe(false);
+		expect(result.error).toBe("summary write rejected");
+		expect(db.query("SELECT summary FROM repo WHERE id = 1").get()).toEqual({
+			summary: null,
+		});
+	});
+
+	it("returns an error for a missing repo", async () => {
 		const db = makeDb();
 		const missing = await summariseRepo({ selector: "unknown/repo", db });
 		expect(missing.status).toBe("error");
 		expect(missing.error).toBe("repo not found");
-
-		const failed = await summariseRepo({
-			selector: "org/one",
-			deps: {
-				gen: async () => {
-					throw new Error("LLM unavailable");
-				},
-			},
-			dry: true,
-			db,
-		});
-		expect(failed.status).toBe("error");
-		expect(failed.error).toBe("LLM unavailable");
 	});
 });

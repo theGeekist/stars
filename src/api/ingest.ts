@@ -78,7 +78,7 @@ export default async function ingest(dir?: string): Promise<void> {
 	await ingestCore(undefined, realLog, dir);
 }
 
-/** Ingest from in-memory data (lists + optional unlisted) with automatic cleanup. */
+/** Ingest in-memory data without deleting repositories absent from the input. */
 export function ingestFromData(
 	lists: StarList[],
 	unlisted?: RepoInfo[],

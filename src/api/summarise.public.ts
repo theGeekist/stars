@@ -81,7 +81,8 @@ export async function summariseAll(
 		logger = realLog,
 		onProgress,
 	} = options;
-	const svc = createSummariseService({ db });
+	const database = withDB(db);
+	const svc = createSummariseService({ db: database });
 	const rows = selectSummariseRows(svc, { limit, resummarise });
 	if (!rows.length) {
 		return {
@@ -96,7 +97,7 @@ export async function summariseAll(
 		deps: effectiveDeps,
 		logger,
 		onProgress,
-		database: db ? withDB(db) : undefined,
+		database,
 	});
 	return { items, stats: buildBatchStats(items) };
 }
@@ -132,13 +133,13 @@ export async function summariseRepo(
 	}
 	try {
 		const effectiveDeps = resolveSummariseDeps(deps, modelConfig);
-		const svc = createSummariseService({ db });
+		const svc = createSummariseService({ db: database });
 		const [result] = await runSummariseRows([row], {
 			svc,
 			dry,
 			deps: effectiveDeps,
 			logger,
-			database: withDB(db),
+			database,
 		});
 		return result;
 	} catch (e) {

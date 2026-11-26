@@ -1,4 +1,5 @@
 // src/features/summarise/llm.ts
+import type { Database } from "bun:sqlite";
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
 import { loadOllamaModule } from "@lib/ollama-loader";
 import { getPromptsConfig, type PromptsConfig } from "@lib/prompts";
@@ -30,6 +31,7 @@ function buildBaseHints(meta: Meta): string {
 
 async function loadReadme(
 	meta: Meta,
+	database?: Database,
 ): Promise<{ clean: string; chunks: string[]; awesome: boolean; meta: Meta }> {
 	let awesome = isAwesomeList(
 		meta.nameWithOwner,
@@ -42,6 +44,10 @@ async function loadReadme(
 		const raw = await fetchReadmeWithCache(
 			meta.repoId ?? 0,
 			meta.nameWithOwner,
+			undefined,
+			false,
+			undefined,
+			database,
 		);
 		if (raw) {
 			clean = cleanMarkdown(raw);
@@ -172,9 +178,10 @@ ${awesomeSummary}
 export async function summariseRepoOneParagraph(
 	meta: Meta,
 	deps?: SummariseDeps,
+	database?: Database,
 ): Promise<string> {
 	const baseHints = buildBaseHints(meta);
-	const { clean, chunks, awesome } = await loadReadme(meta);
+	const { clean, chunks, awesome } = await loadReadme(meta, database);
 	if (awesome) {
 		const awesomeSummary = summariseAwesomeList(meta.description, meta.topics);
 		// Fast path: unless caller explicitly injects a generator, skip paraphrase to avoid network.
@@ -215,9 +222,10 @@ export async function summariseRepoOneParagraphWithCustomGen(
 	deps: SummariseDeps | undefined,
 	genMain: (p: string, o?: Record<string, unknown>) => Promise<string>,
 	genReduce: (p: string, o?: Record<string, unknown>) => Promise<string>,
+	database?: Database,
 ): Promise<string> {
 	const baseHints = buildBaseHints(meta);
-	const { clean, chunks, awesome } = await loadReadme(meta);
+	const { clean, chunks, awesome } = await loadReadme(meta, database);
 	if (awesome) {
 		const awesomeSummary = summariseAwesomeList(meta.description, meta.topics);
 		if (!deps?.gen) return awesomeSummary;

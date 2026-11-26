@@ -35,13 +35,18 @@ export async function generateSummaryForRow(
 	row: RepoRow,
 	deps?: SummariseDeps,
 	logger?: typeof realLog,
+	database?: Database,
 ) {
 	const label = `Generating summary for ${row.name_with_owner}...`;
 	const { paragraph } = await withSpinner(
 		logger ?? realLog,
 		label,
 		async () => {
-			const p = await summariseRepoOneParagraph(toSummariseInput(row), deps);
+			const p = await summariseRepoOneParagraph(
+				toSummariseInput(row),
+				deps,
+				database,
+			);
 			return { paragraph: p };
 		},
 	);
@@ -57,21 +62,24 @@ export function saveSummaryOrDryRun(
 	paragraph: string,
 	dry: boolean,
 	logger: typeof realLog,
-) {
+): { saved: boolean; error?: string } {
 	if (dry) {
 		logger.info("dry run (not saved)\n");
-		return;
+		return { saved: false };
 	}
 	const spin = logger.spinner("Saving to repo.summary").start();
 	try {
 		svc.saveSummary(rowId, paragraph);
 		spin.succeed("Saved");
+		logger.line("");
+		return { saved: true };
 	} catch (e) {
 		spin.stop();
 		const msg = e instanceof Error ? e.message : String(e);
 		logger.error(msg);
+		logger.line("");
+		return { saved: false, error: msg };
 	}
-	logger.line("");
 }
 
 /* ---------------------------- Orchestrators --------------------------- */
@@ -84,7 +92,8 @@ export async function summariseBatchAllCore(
 	database: Database | undefined,
 	logger: typeof realLog,
 ): Promise<void> {
-	const svc = createSummariseService({ db: database });
+	const operationDb = withDB(database);
+	const svc = createSummariseService({ db: operationDb });
 	const rows = selectSummariseRows(svc, {
 		limit,
 		resummarise: !!opts?.resummarise,
@@ -121,7 +130,7 @@ export async function summariseBatchAllCore(
 				logger.error(`${error}\n`);
 			},
 		},
-		database: database ? withDB(database) : undefined,
+		database: operationDb,
 	});
 }
 
@@ -150,7 +159,7 @@ export async function summariseOneCore(
 	logger.info("URL:", row.url);
 	if (row.primary_language) logger.info("Lang:", row.primary_language);
 
-	const svc = createSummariseService({ db: database });
+	const svc = createSummariseService({ db });
 
 	await runSummariseRows([row], {
 		svc,
@@ -169,6 +178,6 @@ export async function summariseOneCore(
 				logger.error(`${error}\n`);
 			},
 		},
-		database: database ? withDB(database) : undefined,
+		database: db,
 	});
 }

@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS repo (
   activeness REAL
 );
 
+-- Source-keyed recovery and discovery evidence; existing records are preserved.
+CREATE TABLE IF NOT EXISTS recovery_provenance (
+  source TEXT PRIMARY KEY,
+  details_json TEXT NOT NULL
+);
+
 -- === scoring (new tables) ===
 CREATE TABLE IF NOT EXISTS model_run (
   id INTEGER PRIMARY KEY,
