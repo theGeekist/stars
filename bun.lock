@@ -1,20 +1,20 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "@geekist/stars",
       "dependencies": {
         "@jasonnathan/llm-core": "^1.9.1",
         "consola": "^3.4.2",
-        "ollama": "^0.5.17",
+        "ollama": "^0.5.18",
         "ora": "^8.2.0",
-        "yaml": "^2.8.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.2.4",
         "@types/bun": "latest",
         "husky": "^9.1.7",
-        "lint-staged": "^16.1.6",
+        "lint-staged": "^16.2.1",
         "prettier": "^3.6.2",
       },
       "peerDependencies": {

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { summariseRepoOneParagraph } from "@features/summarise/llm";
 import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
+import { inTempDir } from "@src/__test__/helpers/fs";
 import type { Meta } from "./types";
 
 afterEach(() => {
@@ -86,5 +88,54 @@ describe("summariseRepoOneParagraph", () => {
 		const out = await summariseRepoOneParagraph(meta, { embed });
 		expect(typeof out).toBe("string");
 		expect(out.length).toBeGreaterThan(0);
+	});
+
+	it("uses one prompt snapshot throughout a summary operation", async () => {
+		mock.module("@lib/readme", () => ({
+			fetchReadmeWithCache: async () => "README",
+			cleanMarkdown: (text: string) => text,
+			chunkMarkdown: () => ["one chunk"],
+		}));
+
+		const config = (mapHeader: string, reduce: string) =>
+			[
+				"scoring:",
+				'  system: "system"',
+				'  fewshot: "examples"',
+				"  criteria: |",
+				"    ai = criterion",
+				"summarise:",
+				'  one_paragraph: "one paragraph"',
+				`  map_header: "${mapHeader}"`,
+				`  reduce: "${reduce}"`,
+			].join("\n");
+		const prompts: string[] = [];
+		const meta: Meta = {
+			nameWithOwner: "owner/repo",
+			url: "https://example.com",
+			description: "CLI utility",
+		};
+
+		await inTempDir(
+			{ "prompts.yaml": config("FIRST MAP", "FIRST REDUCE") },
+			async () => {
+				await summariseRepoOneParagraph(meta, {
+					gen: async (prompt) => {
+						prompts.push(prompt);
+						if (prompts.length === 1)
+							writeFileSync(
+								"prompts.yaml",
+								config("UPDATED MAP", "UPDATED REDUCE"),
+							);
+						return prompts.length === 1 ? "- insight" : "summary";
+					},
+				});
+			},
+		);
+
+		expect(prompts).toHaveLength(2);
+		expect(prompts[0]).toContain("FIRST MAP");
+		expect(prompts[1]).toContain("FIRST REDUCE");
+		expect(prompts.join("\n")).not.toContain("UPDATED");
 	});
 });

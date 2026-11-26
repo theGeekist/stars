@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "@lib/bootstrap";
-import { parse } from "yaml";
 
 function resolvePromptsPath(): string {
 	return resolve(process.cwd(), "prompts.yaml");
@@ -29,7 +28,7 @@ export function criteriaExamples(): string[] {
 /** Load and validate prompts.yaml from the current working directory. */
 function loadPromptsConfig(): PromptsLoadResult {
 	try {
-		const parsed: unknown = parse(readFileSync(resolvePromptsPath(), "utf-8"));
+		const parsed = Bun.YAML.parse(readFileSync(resolvePromptsPath(), "utf-8"));
 		if (!isRecord(parsed))
 			return {
 				kind: "invalid",
@@ -60,7 +59,7 @@ function loadPromptsConfig(): PromptsLoadResult {
 	}
 }
 
-type PromptsConfig = {
+export type PromptsConfig = {
 	scoring?: {
 		system?: string;
 		fewshot?: string;
