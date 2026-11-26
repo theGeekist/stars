@@ -2,7 +2,7 @@
 
 /**
  * Comprehensive Coverage Reporting Script
- * - Generates HTML reports from individual and merged coverage
+ * - Generates an HTML report from unified coverage
  * - Creates consolidated coverage summary
  * - Provides codecov-compatible output
  */
@@ -13,7 +13,6 @@ import path from "path";
 
 const COVERAGE_DIR = "./coverage";
 const HTML_DIR = `${COVERAGE_DIR}/html`;
-const INDIVIDUAL_HTML_DIR = `${COVERAGE_DIR}/individual`;
 
 interface CoverageStats {
 	name: string;
@@ -23,45 +22,7 @@ interface CoverageStats {
 }
 
 async function ensureDirectories() {
-	for (const dir of [HTML_DIR, INDIVIDUAL_HTML_DIR]) {
-		if (!existsSync(dir)) {
-			mkdirSync(dir, { recursive: true });
-		}
-	}
-}
-
-async function generateIndividualReports() {
-	console.log("📊 Generating individual coverage reports...");
-
-	const coverageFiles = [
-		{ name: "CLI", file: "cli-lcov.info" },
-		{ name: "Lib", file: "lib-lcov.info" },
-		{ name: "Main", file: "main-lcov.info" },
-	];
-
-	for (const { name, file } of coverageFiles) {
-		const filePath = `${COVERAGE_DIR}/${file}`;
-		if (existsSync(filePath)) {
-			const outputDir = `${INDIVIDUAL_HTML_DIR}/${name.toLowerCase()}`;
-			console.log(`  📋 ${name}: ${file} → ${outputDir}`);
-
-			try {
-				await $`genhtml ${filePath} --output-directory ${outputDir} --title "${name} Coverage" --function-coverage --branch-coverage --demangle-cpp --quiet`.quiet();
-				console.log(`  ✅ ${name} report generated`);
-			} catch (error) {
-				console.log(`  ⚠️  ${name} report failed, trying alternative method...`);
-				// Fallback to basic genhtml without all options
-				try {
-					await $`genhtml ${filePath} --output-directory ${outputDir} --title "${name} Coverage" --quiet`.quiet();
-					console.log(`  ✅ ${name} report generated (basic)`);
-				} catch (fallbackError) {
-					console.log(`  ❌ ${name} report failed: ${fallbackError}`);
-				}
-			}
-		} else {
-			console.log(`  ⚠️  ${name}: ${file} not found`);
-		}
-	}
+	if (!existsSync(HTML_DIR)) mkdirSync(HTML_DIR, { recursive: true });
 }
 
 async function generateConsolidatedReport() {
@@ -69,15 +30,15 @@ async function generateConsolidatedReport() {
 
 	if (existsSync(`${COVERAGE_DIR}/lcov.info`)) {
 		try {
-			await $`genhtml ${COVERAGE_DIR}/lcov.info --output-directory ${HTML_DIR} --title "Geekist Stars - Consolidated Coverage" --function-coverage --branch-coverage --demangle-cpp --quiet`.quiet();
-			console.log("  ✅ Consolidated HTML report generated");
+			await $`genhtml ${COVERAGE_DIR}/lcov.info --output-directory ${HTML_DIR} --title "Geekist Stars - Unified Coverage" --function-coverage --branch-coverage --demangle-cpp --quiet`.quiet();
+			console.log("  ✅ Unified HTML report generated");
 		} catch (error) {
 			console.log(
 				"  ⚠️  Consolidated report failed, trying basic generation...",
 			);
 			try {
-				await $`genhtml ${COVERAGE_DIR}/lcov.info --output-directory ${HTML_DIR} --title "Geekist Stars - Consolidated Coverage" --quiet`.quiet();
-				console.log("  ✅ Consolidated HTML report generated (basic)");
+				await $`genhtml ${COVERAGE_DIR}/lcov.info --output-directory ${HTML_DIR} --title "Geekist Stars - Unified Coverage" --quiet`.quiet();
+				console.log("  ✅ Unified HTML report generated (basic)");
 			} catch (fallbackError) {
 				console.log(`  ❌ Consolidated report failed: ${fallbackError}`);
 			}
@@ -149,19 +110,18 @@ async function generateSummaryReport() {
 	console.log("─".repeat(80));
 
 	const coverageFiles = [
-		{ name: "CLI Tests", file: `${COVERAGE_DIR}/cli-lcov.info` },
-		{ name: "Lib Tests", file: `${COVERAGE_DIR}/lib-lcov.info` },
-		{ name: "Main Tests", file: `${COVERAGE_DIR}/main-lcov.info` },
-		{ name: "CONSOLIDATED", file: `${COVERAGE_DIR}/lcov.info` },
+		{ name: "Unified Test Run", file: `${COVERAGE_DIR}/lcov.info` },
 	];
 
-	console.log("Test Suite        Functions        Lines           ");
-	console.log("─".repeat(80));
+	if (!existsSync(`${COVERAGE_DIR}/lcov.info`)) {
+		console.log(
+			"  ⚠️  No coverage artefacts found. Run `bun run coverage:ci` (which now just calls `bun test`) first.",
+		);
+		return;
+	}
 
-	let totalFuncHit = 0,
-		totalFuncFound = 0;
-	let totalLineHit = 0,
-		totalLineFound = 0;
+	console.log("Test Run          Functions        Lines           ");
+	console.log("─".repeat(80));
 
 	for (const { name, file } of coverageFiles) {
 		const stats = await parseLcovSummary(file);
@@ -171,14 +131,6 @@ async function generateSummaryReport() {
 			console.log(
 				`${name.padEnd(16)} ${funcStr.padEnd(15)} ${linesStr.padEnd(15)}`,
 			);
-
-			// Only accumulate for non-consolidated files to avoid double counting
-			if (name !== "CONSOLIDATED") {
-				totalFuncHit += stats.functions.hit;
-				totalFuncFound += stats.functions.found;
-				totalLineHit += stats.lines.hit;
-				totalLineFound += stats.lines.found;
-			}
 		} else {
 			console.log(
 				`${name.padEnd(16)} ${"Not found".padEnd(15)} ${"Not found".padEnd(15)}`,
@@ -187,35 +139,11 @@ async function generateSummaryReport() {
 	}
 
 	console.log("─".repeat(80));
-
-	// Show calculated totals
-	if (totalFuncFound > 0 || totalLineFound > 0) {
-		const totalFuncPercent =
-			totalFuncFound > 0 ? (totalFuncHit / totalFuncFound) * 100 : 0;
-		const totalLinePercent =
-			totalLineFound > 0 ? (totalLineHit / totalLineFound) * 100 : 0;
-		const funcTotalStr = `${totalFuncHit}/${totalFuncFound} (${totalFuncPercent.toFixed(1)}%)`;
-		const linesTotalStr = `${totalLineHit}/${totalLineFound} (${totalLinePercent.toFixed(1)}%)`;
-		console.log(
-			`${"TOTAL COVERAGE".padEnd(16)} ${funcTotalStr.padEnd(15)} ${linesTotalStr.padEnd(15)}`,
-		);
-		console.log("─".repeat(80));
-	}
 }
 
 function printAccessInfo() {
 	console.log("\n🌐 Coverage Reports Available:");
-	console.log(`  📊 Consolidated: file://${path.resolve(HTML_DIR)}/index.html`);
-	console.log(`  📋 Individual:`);
-	console.log(
-		`    • CLI: file://${path.resolve(INDIVIDUAL_HTML_DIR)}/cli/index.html`,
-	);
-	console.log(
-		`    • Lib: file://${path.resolve(INDIVIDUAL_HTML_DIR)}/lib/index.html`,
-	);
-	console.log(
-		`    • Main: file://${path.resolve(INDIVIDUAL_HTML_DIR)}/main/index.html`,
-	);
+	console.log(`  📊 Unified: file://${path.resolve(HTML_DIR)}/index.html`);
 	console.log("");
 	console.log(
 		"💡 Tip: Open these in your browser for detailed line-by-line coverage",
@@ -268,7 +196,6 @@ async function main() {
 	console.log("🚀 Geekist Stars Coverage Report Generator\n");
 
 	await ensureDirectories();
-	await generateIndividualReports();
 	await generateConsolidatedReport();
 	await generateSummaryReport();
 	await validateCodecovFormat();

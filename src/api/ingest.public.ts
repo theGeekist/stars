@@ -25,6 +25,14 @@ interface IngestBaseOptions {
 	db?: Database;
 	logger?: typeof realLog;
 	onProgress?: IngestProgress;
+	deps?: Partial<IngestPublicDependencies>;
+}
+
+export interface IngestPublicDependencies {
+	ingestCore: typeof ingestCore;
+	ingestListedFromGh: typeof ingestListedFromGh;
+	ingestUnlistedFromGh: typeof ingestUnlistedFromGh;
+	ingestFromData: typeof ingestFromData;
 }
 
 /** Options for full list + unlisted ingestion from remote sources. */
@@ -46,12 +54,12 @@ export interface IngestFromMemoryOptions extends IngestBaseOptions {}
 export async function ingestAll(
 	options: IngestOptions = {},
 ): Promise<IngestReturn> {
-	const { db, dir, logger = realLog, onProgress } = options;
+	const { db, dir, logger = realLog, onProgress, deps } = options;
 	await onProgress?.({
 		phase: "ingesting:lists+unlisted",
 		detail: startDetail,
 	});
-	const res = await ingestCore(db, logger, dir);
+	const res = await (deps?.ingestCore ?? ingestCore)(db, logger, dir);
 	await onProgress?.({ phase: "ingesting:lists+unlisted", detail: doneDetail });
 	return res;
 }
@@ -60,9 +68,12 @@ export async function ingestAll(
 export async function ingestListsOnly(
 	options: IngestListsOptions = {},
 ): Promise<IngestReturn> {
-	const { db, logger = realLog, onProgress } = options;
+	const { db, logger = realLog, onProgress, deps } = options;
 	await onProgress?.({ phase: "ingesting:lists", detail: startDetail });
-	const res = await ingestListedFromGh(db, logger);
+	const res = await (deps?.ingestListedFromGh ?? ingestListedFromGh)(
+		db,
+		logger,
+	);
 	await onProgress?.({ phase: "ingesting:lists", detail: doneDetail });
 	return res;
 }
@@ -71,9 +82,12 @@ export async function ingestListsOnly(
 export async function ingestUnlistedOnly(
 	options: IngestUnlistedOptions = {},
 ): Promise<IngestReturn> {
-	const { db, logger = realLog, onProgress } = options;
+	const { db, logger = realLog, onProgress, deps } = options;
 	await onProgress?.({ phase: "ingesting:unlisted", detail: startDetail });
-	const res = await ingestUnlistedFromGh(db, logger);
+	const res = await (deps?.ingestUnlistedFromGh ?? ingestUnlistedFromGh)(
+		db,
+		logger,
+	);
 	await onProgress?.({ phase: "ingesting:unlisted", detail: doneDetail });
 	return res;
 }
@@ -84,9 +98,14 @@ export function ingestFromMemory(
 	unlisted?: RepoInfo[],
 	options: IngestFromMemoryOptions = {},
 ) {
-	const { db, logger = realLog, onProgress } = options;
+	const { db, logger = realLog, onProgress, deps } = options;
 	void onProgress?.({ phase: "ingesting:memory", detail: startDetail });
-	const res = ingestFromData(lists, unlisted, db, logger);
+	const res = (deps?.ingestFromData ?? ingestFromData)(
+		lists,
+		unlisted,
+		db,
+		logger,
+	);
 	void onProgress?.({ phase: "ingesting:memory", detail: doneDetail });
 	return res;
 }

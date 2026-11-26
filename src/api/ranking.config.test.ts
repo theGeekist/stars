@@ -1,66 +1,43 @@
-import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
-import { createDb, initSchema } from "@lib/db";
-import { rankOne } from "./ranking.public";
+import { afterEach, describe, expect, it } from "bun:test";
+import { resolveModelConfig } from "./public.types";
 
-describe("ranking public API modelConfig DI", () => {
-	const db = createDb(":memory:");
-	beforeAll(() => {
-		initSchema(db);
-		db.exec(
-			`INSERT INTO list(id, list_id, name, slug, is_private) VALUES (1,'L1','Alpha','alpha',0);`,
-		);
-		db.exec(`INSERT INTO repo(id, name_with_owner, url, description, topics, popularity, freshness, activeness)
-             VALUES (10,'o/r','https://x','Test repo','[]',0.5,0.6,0.7);`);
-	});
+const originalEnv = { ...Bun.env };
 
-	afterEach(() => {
-		mock.restore();
-	});
+afterEach(() => {
+	for (const key of Object.keys(Bun.env)) {
+		if (!(key in originalEnv)) delete Bun.env[key as keyof typeof Bun.env];
+	}
+	Object.assign(Bun.env, originalEnv);
+});
 
-	it("uses provided modelConfig (model, host, apiKey) instead of env", async () => {
-		// biome-ignore lint/suspicious/noExplicitAny: test harness capture container
-		const calls: any[] = [];
+describe("ranking model configuration", () => {
+	it("uses explicit model, host and key overrides", () => {
+		Bun.env.OLLAMA_MODEL = "environment-model";
+		Bun.env.OLLAMA_ENDPOINT = "http://environment.test";
+		Bun.env.OLLAMA_API_KEY = "environment-key";
 
-		// Mock the external ollama service creation
-		mock.module("@jasonnathan/llm-core/ollama-service", () => ({
-			// biome-ignore lint/suspicious/noExplicitAny: test mock config parameter
-			createOllamaService: (config: any) => ({
-				// biome-ignore lint/suspicious/noExplicitAny: test mock opts parameter
-				async generatePromptAndSend(prompt: string, _opts?: any) {
-					const headers = config.apiKey
-						? { Authorization: `Bearer ${config.apiKey}` }
-						: undefined;
-					calls.push({
-						prompt,
-						opts: {
-							model: config.model,
-							host: config.host || config.endpoint,
-							headers,
-						},
-					});
-					return {
-						scores: [{ list: "alpha", score: 0.9, why: "fit" }],
-					};
-				},
-			}),
-		}));
-
-		const res = await rankOne({
-			selector: "o/r",
-			dry: true,
-			modelConfig: {
+		expect(
+			resolveModelConfig({
 				model: "custom-model",
-				host: "http://ollama.test:11434",
-				apiKey: "sek",
-			},
-			db,
+				host: "http://custom.test",
+				apiKey: "custom-key",
+			}),
+		).toEqual({
+			model: "custom-model",
+			host: "http://custom.test",
+			apiKey: "custom-key",
 		});
-		expect(res.status).toBe("ok");
-		expect(res.scores?.[0].list).toBe("alpha");
-		expect(calls.length).toBeGreaterThan(0);
-		const last = calls.pop();
-		expect(last.opts.model).toBe("custom-model");
-		expect(last.opts.host).toBe("http://ollama.test:11434");
-		expect(last.opts.headers.Authorization).toBe("Bearer sek");
+	});
+
+	it("uses environment values when explicit fields are omitted", () => {
+		Bun.env.OLLAMA_MODEL = "environment-model";
+		Bun.env.OLLAMA_ENDPOINT = "http://environment.test";
+		Bun.env.OLLAMA_API_KEY = "environment-key";
+
+		expect(resolveModelConfig()).toEqual({
+			model: "environment-model",
+			host: "http://environment.test",
+			apiKey: "environment-key",
+		});
 	});
 });

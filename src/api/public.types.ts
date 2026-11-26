@@ -17,6 +17,7 @@ export type {
 import type { SummariseDeps } from "@features/summarise/types";
 // Import for local use
 import { createOllamaService } from "@jasonnathan/llm-core/ollama-service";
+import { loadOllamaModule } from "@lib/ollama-loader";
 import type { ListDef } from "@lib/types";
 
 /* -------------------------------------------------------------------------- */
@@ -201,7 +202,7 @@ export function createScoringLLMFromConfig(cfg: ModelConfig): {
  * Shared helper so summarise.* exports don't duplicate adapter wiring.
  */
 export function createSummariseDepsFromConfig(cfg: ModelConfig): SummariseDeps {
-	const { gen } = require("@lib/ollama");
+	const { gen } = loadOllamaModule();
 	return {
 		gen: async (prompt: string, _opts?: Record<string, unknown>) => {
 			const headers = cfg.apiKey

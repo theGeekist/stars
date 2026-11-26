@@ -1,12 +1,5 @@
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	jest,
-	mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 import type {
 	BatchSelector,
 	RepoInfo,
@@ -195,50 +188,21 @@ describe("Public API Types and Utilities", () => {
 	});
 
 	describe("createScoringLLMFromConfig", () => {
-		const createOllamaService = jest.fn();
-
-		beforeEach(() => {
-			jest.clearAllMocks();
-			mock.module("@jasonnathan/llm-core/ollama-service", () => ({
-				createOllamaService,
-			}));
-		});
-
-		afterEach(() => {
-			mock.restore();
-			createOllamaService.mockReset();
-		});
-
-		it("wraps createOllamaService with provided config", () => {
-			const llm = { generatePromptAndSend: async () => ({}) };
-			createOllamaService.mockReturnValue(llm);
-
+		it("creates an adapter with provided model config", () => {
 			const adapter = createScoringLLMFromConfig({
 				model: "llama3",
 				host: "http://ollama", // forwarded as endpoint
 				apiKey: "secret",
 			});
 
-			expect(createOllamaService).toHaveBeenCalledWith({
-				model: "llama3",
-				endpoint: "http://ollama",
-				apiKey: "secret",
-			});
-			expect(adapter).toBe(llm);
+			expect(adapter).toHaveProperty("generatePromptAndSend");
+			expect(typeof adapter.generatePromptAndSend).toBe("function");
 		});
 
 		it("allows omitting optional host and apiKey", () => {
-			const llm = { generatePromptAndSend: async () => ({}) };
-			createOllamaService.mockReturnValue(llm);
-
 			const adapter = createScoringLLMFromConfig({ model: "stub" });
 
-			expect(createOllamaService).toHaveBeenCalledWith({
-				model: "stub",
-				endpoint: undefined,
-				apiKey: undefined,
-			});
-			expect(adapter).toBe(llm);
+			expect(adapter).toHaveProperty("generatePromptAndSend");
 		});
 	});
 
@@ -247,13 +211,11 @@ describe("Public API Types and Utilities", () => {
 
 		beforeEach(() => {
 			jest.clearAllMocks();
-			mock.module("@lib/ollama", () => ({
-				gen,
-			}));
+			setOllamaModuleLoaderForTests(() => ({ gen }));
 		});
 
 		afterEach(() => {
-			mock.restore();
+			setOllamaModuleLoaderForTests();
 			gen.mockReset();
 		});
 

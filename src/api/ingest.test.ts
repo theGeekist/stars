@@ -1,7 +1,9 @@
 // src/api/ingest.test.ts
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { IngestReporter } from "@features/ingest/types";
+import type { createStarsService } from "@features/stars";
 import { createDb, initSchema } from "@lib/db";
+import { setListsModuleLoaderForTests } from "@lib/lists-loader";
 import type { RepoInfo, StarList } from "@lib/types";
 import { makeLog, makeLogWithLines } from "../__test__/helpers/log";
 import {
@@ -62,7 +64,7 @@ describe("ingest API coverage", () => {
 	afterEach(() => {
 		// Clean up any environment variables
 		delete Bun.env.EXPORTS_DIR;
-		mock.restore();
+		setListsModuleLoaderForTests();
 	});
 
 	test("ingestCore uses dependency injection properly", async () => {
@@ -175,7 +177,7 @@ describe("ingest API coverage", () => {
 		];
 
 		// Mock the lists stream
-		mock.module("@lib/lists", () => ({
+		setListsModuleLoaderForTests(() => ({
 			getAllListsStream: async function* () {
 				for (const list of mockLists) {
 					yield list;
@@ -212,11 +214,13 @@ describe("ingest API coverage", () => {
 			},
 		};
 
-		mock.module("@features/stars", () => ({
-			createStarsService: () => mockStarsService,
-		}));
-
-		const result = await ingestUnlistedFromGh(db, log);
+		const result = await ingestUnlistedFromGh(
+			db,
+			log,
+			undefined,
+			() =>
+				mockStarsService as unknown as ReturnType<typeof createStarsService>,
+		);
 
 		expect(mockStarsService.read.getUnlistedStars).toHaveBeenCalledWith(
 			undefined,
@@ -233,7 +237,7 @@ describe("ingest API coverage", () => {
 		Bun.env.GITHUB_TOKEN = "test-token";
 
 		// Mock stream that responds to abort signal
-		mock.module("@lib/lists", () => ({
+		setListsModuleLoaderForTests(() => ({
 			getAllListsStream: async function* () {
 				if (controller.signal.aborted) {
 					throw new Error("Operation was aborted");

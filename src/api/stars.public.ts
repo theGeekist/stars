@@ -16,6 +16,16 @@ export interface StarsFetchOptions {
 	// NOTE: override token useful for tests / programmatic use
 	GITHUB_TOKEN?: string;
 	onProgress?: ProgressEmitter<"fetching:lists" | "fetching:stars">;
+	deps?: Partial<StarsFetchDependencies>;
+}
+
+export interface StarsFetchDependencies {
+	lists: Pick<
+		typeof import("@lib/lists"),
+		"getAllListsStream" | "getReposFromList" | "collectListMetas"
+	>;
+	stars: Pick<typeof import("@lib/stars"), "getAllStarsStream">;
+	createStarsService: typeof createStarsService;
 }
 
 export type StarListSummary = StarList & { slug: string };
@@ -52,7 +62,7 @@ export async function fetchLists(
 		override: GITHUB_TOKEN,
 		help: "Set GITHUB_TOKEN or pass options.GITHUB_TOKEN to fetch lists.",
 	});
-	const mod = await import("@lib/lists");
+	const mod = opts.deps?.lists ?? (await import("@lib/lists"));
 	// NOTE: streaming iteration used to emit progress events per list
 	const out: StarListSummary[] = [];
 	let idx = 0;
@@ -92,7 +102,7 @@ export async function fetchReposFromList(
 		help: "Set GITHUB_TOKEN or pass options.GITHUB_TOKEN to fetch list repositories.",
 	});
 	if (!listName) throw new Error("listName required");
-	const mod = await import("@lib/lists");
+	const mod = opts.deps?.lists ?? (await import("@lib/lists"));
 	const repos = await (logger?.withSpinner?.(
 		`Fetching repos for ${listName}`,
 		() => mod.getReposFromList(token, listName, undefined, { debug: () => {} }),
@@ -129,7 +139,7 @@ export async function fetchStars(
 		override: GITHUB_TOKEN,
 		help: "Set GITHUB_TOKEN or pass options.GITHUB_TOKEN to fetch stars.",
 	});
-	const mod = await import("@lib/stars");
+	const mod = opts.deps?.stars ?? (await import("@lib/stars"));
 	const out: RepoInfo[] = [];
 	let page = 0;
 	for await (const batch of mod.getAllStarsStream(token, undefined, {
@@ -162,7 +172,9 @@ export async function fetchUnlistedStars(
 	opts: StarsFetchOptions = {},
 ): Promise<UnlistedStarsResult> {
 	const { logger } = opts;
-	const svc = createStarsService({ db: withDB(db) });
+	const svc = (opts.deps?.createStarsService ?? createStarsService)({
+		db: withDB(db),
+	});
 	const unlisted = await (logger?.withSpinner?.(
 		"Computing unlisted stars",
 		() => svc.read.getUnlistedStars(),

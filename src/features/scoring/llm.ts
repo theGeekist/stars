@@ -1,6 +1,6 @@
 // src/llm/scoring.ts
 import { createOllamaService } from "@jasonnathan/llm-core";
-import { promptsConfig as prompts } from "@lib/prompts";
+import { getPromptsConfig } from "@lib/prompts";
 import { toNum } from "@lib/utils";
 
 /* ---------- Public types ---------- */
@@ -180,6 +180,7 @@ export async function scoreRepoAgainstLists(
 	const schema = buildSchema(slugs);
 
 	// STRICT: read strings only; throw if missing
+	const prompts = getPromptsConfig();
 	const system = requireStr(prompts?.scoring?.system, "prompts.scoring.system");
 	const fewshot = requireStr(
 		prompts?.scoring?.fewshot,

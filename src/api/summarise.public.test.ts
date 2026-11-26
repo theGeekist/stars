@@ -1,175 +1,117 @@
-import type { Database } from "bun:sqlite";
-import {
-	afterAll,
-	afterEach,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	mock,
-} from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
-import type { RepoRow } from "@lib/types";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
+import { summariseAll, summariseRepo } from "./summarise.public";
 
-const makeRow = (id: number, name: string): RepoRow => ({
-	id,
-	repo_id: `R_${id}`,
-	name_with_owner: name,
-	url: `https://github.com/${name}`,
-	description: "Test repo",
-	primary_language: "TypeScript",
-	topics: '["testing"]',
-	summary: null,
-	stars: 10,
-	forks: 2,
-	popularity: 0.5,
-	freshness: 0.6,
-	activeness: 0.7,
-	is_archived: 0,
-	is_disabled: 0,
-});
-
-let rows: RepoRow[] = [makeRow(1, "org/one"), makeRow(2, "org/two")];
-const generateSummaryForRow = mock(async (row: RepoRow, deps?: unknown) => {
-	capturedDeps.push(deps);
-	return { paragraph: `Summary for ${row.name_with_owner}`, words: 3 };
-});
-const saveSummaryOrDryRun = mock(() => {});
-const summariseService = {
-	selectRepos: () => rows,
-	saveSummary: () => {},
-};
-const capturedDeps: unknown[] = [];
-const ollamaGen = mock(async () => "paragraph");
-
-mock.module("@features/summarise/service", () => ({
-	createSummariseService: () => summariseService,
-}));
-mock.module("./summarise", () => ({
-	generateSummaryForRow,
-	saveSummaryOrDryRun,
-}));
-mock.module("@lib/ollama", () => ({
-	gen: ollamaGen,
-}));
-
-const { summariseAll, summariseRepo } = await import("./summarise.public");
-
-afterAll(() => {
-	mock.restore();
-});
-
-let db: Database;
-
-beforeAll(() => {
-	db = createDb(":memory:");
+function makeDb(): ReturnType<typeof createDb> {
+	const db = createDb(":memory:");
 	initSchema(db);
-	db.exec(
-		`INSERT INTO repo(id, repo_id, name_with_owner, url, description, primary_language, topics, stars, forks, popularity, freshness, activeness)
-         VALUES (1,'R_1','org/one','https://github.com/org/one','Repo','TypeScript','["testing"]',10,2,0.5,0.6,0.7);`,
-	);
-});
-
-beforeEach(() => {
-	rows = [makeRow(1, "org/one"), makeRow(2, "org/two")];
-	capturedDeps.length = 0;
-	generateSummaryForRow.mockClear();
-	saveSummaryOrDryRun.mockClear();
-	ollamaGen.mockClear();
-});
+	db.exec(`
+		INSERT INTO repo(id, repo_id, name_with_owner, url, description, primary_language, topics, popularity, freshness, activeness, summary)
+		VALUES
+			(1, 'R_1', 'org/one', 'https://github.com/org/one', 'First repo', 'TypeScript', '[]', 0.8, 0.7, 0.9, NULL),
+			(2, 'R_2', 'org/two', 'https://github.com/org/two', 'Second repo', 'TypeScript', '[]', 0.6, 0.8, 0.5, 'Existing summary');
+	`);
+	return db;
+}
 
 afterEach(() => {
-	Bun.env.OLLAMA_MODEL = "test-model";
+	setOllamaModuleLoaderForTests();
 });
 
-describe("summariseAll", () => {
-	it("summarises rows using modelConfig fallback", async () => {
-		const progress: unknown[] = [];
-		const result = await summariseAll({
-			dry: true,
-			modelConfig: { model: "llama3", host: "http://ollama" },
-			onProgress: (evt) => {
-				progress.push(evt);
+describe("summarise public API", () => {
+	it("summarises selected repos with injected model dependencies", async () => {
+		const db = makeDb();
+		const prompts: string[] = [];
+		setOllamaModuleLoaderForTests(() => ({
+			gen: async (prompt) => {
+				prompts.push(prompt);
+				return "A concise summary paragraph.";
 			},
-		});
-
-		expect(result.items).toHaveLength(2);
-		expect(result.items.every((i) => i.status === "ok")).toBeTrue();
-		expect(result.stats).toEqual({
-			processed: 2,
-			succeeded: 2,
-			failed: 0,
-			saved: 0,
-		});
-		expect(progress).toHaveLength(2);
-		expect(generateSummaryForRow).toHaveBeenCalledTimes(2);
-		expect(capturedDeps[0]).toBeDefined();
-	});
-
-	it("returns empty payload when no rows selected", async () => {
-		rows = [];
+		}));
 
 		const result = await summariseAll({
 			dry: true,
-			modelConfig: { model: "stub" },
+			modelConfig: {
+				model: "test-model",
+				host: "http://ollama.test",
+				apiKey: "test-key",
+			},
+			db,
 		});
 
-		expect(result.items).toHaveLength(0);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].nameWithOwner).toBe("org/one");
+		expect(result.items[0].status).toBe("ok");
+		expect(prompts).toHaveLength(1);
 		expect(result.stats).toEqual({
-			processed: 0,
-			succeeded: 0,
+			processed: 1,
+			succeeded: 1,
 			failed: 0,
 			saved: 0,
 		});
 	});
-});
 
-describe("summariseRepo", () => {
-	it("summarises specific repo and saves when dry=false", async () => {
+	it("resummarises existing repos and respects the limit", async () => {
+		const db = makeDb();
+		setOllamaModuleLoaderForTests(() => ({
+			gen: async () => "Regenerated summary.",
+		}));
+
+		const result = await summariseAll({
+			limit: 1,
+			dry: true,
+			resummarise: true,
+			deps: { gen: async () => "Regenerated summary." },
+			db,
+		});
+
+		expect(result.items).toHaveLength(1);
+		expect(result.stats.processed).toBe(1);
+	});
+
+	it("returns an empty payload when no repos match", async () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+
+		const result = await summariseAll({ dry: true, db });
+
+		expect(result.items).toEqual([]);
+		expect(result.stats.processed).toBe(0);
+	});
+
+	it("saves a generated summary for one repo", async () => {
+		const db = makeDb();
 		const result = await summariseRepo({
 			selector: "org/one",
-			dry: false,
-			modelConfig: { model: "stub" },
+			deps: { gen: async () => "Saved summary." },
 			db,
 		});
 
 		expect(result.status).toBe("ok");
-		expect(result.saved).toBeTrue();
-		expect(saveSummaryOrDryRun).toHaveBeenCalledWith(
-			expect.any(Object),
-			1,
-			expect.any(String),
-			false,
-			expect.anything(),
-		);
+		expect(result.saved).toBe(true);
+		expect(db.query("SELECT summary FROM repo WHERE id = 1").get()).toEqual({
+			summary: "Saved summary.",
+		});
 	});
 
-	it("returns error when repo missing", async () => {
-		const result = await summariseRepo({
-			selector: "unknown/repo",
-			dry: true,
-			modelConfig: { model: "stub" },
-			db,
-		});
+	it("returns an error for a missing repo or generation failure", async () => {
+		const db = makeDb();
+		const missing = await summariseRepo({ selector: "unknown/repo", db });
+		expect(missing.status).toBe("error");
+		expect(missing.error).toBe("repo not found");
 
-		expect(result.status).toBe("error");
-		expect(result.error).toBe("repo not found");
-	});
-
-	it("propagates errors from summary generation", async () => {
-		generateSummaryForRow.mockImplementationOnce(async () => {
-			throw new Error("boom");
-		});
-
-		const result = await summariseRepo({
+		const failed = await summariseRepo({
 			selector: "org/one",
+			deps: {
+				gen: async () => {
+					throw new Error("LLM unavailable");
+				},
+			},
 			dry: true,
-			modelConfig: { model: "stub" },
 			db,
 		});
-
-		expect(result.status).toBe("error");
-		expect(result.error).toBe("boom");
+		expect(failed.status).toBe("error");
+		expect(failed.error).toBe("LLM unavailable");
 	});
 });

@@ -10,18 +10,17 @@
 
 ## Testing & coverage workflow
 
-- The default `bun test` target is intentionally unused; run focused groups via `bun run test:cli`, `bun run test:lib`, and `bun run test:main`.
-- For coverage, execute the scoped scripts in order: `bun run test:cli:cov`, `bun run test:lib:cov`, `bun run test:main:cov`, then merge with `bun run coverage:merge`.
-- Each suite writes to `coverage/`—the merge step overwrites `coverage/lcov.info`. Clean the directory if switching between coverage and plain runs.
-- Race conditions arise when multiple suites share sqlite fixtures; avoid invoking a monolithic `bun test` or the coverage scripts in parallel.
+- Use `CI=1 bun test` for the complete suite. `bunfig.toml` enables coverage collection and preloads `test-setup.ts` to restore process and environment state between tests.
+- Bun writes consolidated text and LCOV coverage to `coverage/`; tests, mocks, and `src/__test__/helpers` are excluded from coverage.
+- Use `bun run coverage:report` to summarize the current unified run. Do not merge per-suite LCOV files.
 
 ## Linting
 
-- Run `bun run lint` before committing to keep CI green and avoid formatting drift.
+- Run `CI=1 bun lint --fix` before committing to keep CI green and avoid formatting drift.
 
 ## Build
 
-- Run `bun run build` locally (or at least `bun run scripts/build.ts`) to catch type generation/build regressions before pushing.
+- Run `CI=1 bun run build` and `CI=1 bun run check` to catch build and type regressions before pushing.
 
 ## Operational notes
 

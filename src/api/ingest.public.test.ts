@@ -1,5 +1,11 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type { RepoInfo } from "@lib/types";
+import {
+	ingestAll,
+	ingestFromMemory,
+	ingestListsOnly,
+	ingestUnlistedOnly,
+} from "./ingest.public";
 
 const ingestCore = mock(async () => ({
 	lists: 1,
@@ -22,24 +28,11 @@ const ingestFromData = mock(() => ({
 	unlisted: 1,
 }));
 
-mock.module("./ingest", () => ({
-	ingestCore,
-	ingestListedFromGh,
-	ingestUnlistedFromGh,
-	ingestFromData,
-}));
-
-const { ingestAll, ingestListsOnly, ingestUnlistedOnly, ingestFromMemory } =
-	await import("./ingest.public");
-
-afterAll(() => {
-	mock.restore();
-});
-
 describe("ingestAll", () => {
 	it("wraps core ingest with progress events", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestAll({
+			deps: { ingestCore },
 			onProgress: (evt) => {
 				events.push({ phase: evt.phase, detail: evt.detail });
 			},
@@ -57,6 +50,7 @@ describe("ingestListsOnly", () => {
 	it("invokes listed ingest and emits phases", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestListsOnly({
+			deps: { ingestListedFromGh },
 			onProgress: (evt) => {
 				events.push({ phase: evt.phase, detail: evt.detail });
 			},
@@ -74,6 +68,7 @@ describe("ingestUnlistedOnly", () => {
 	it("invokes unlisted ingest and emits phases", async () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = await ingestUnlistedOnly({
+			deps: { ingestUnlistedFromGh },
 			onProgress: (evt) => {
 				events.push({ phase: evt.phase, detail: evt.detail });
 			},
@@ -91,6 +86,7 @@ describe("ingestFromMemory", () => {
 	it("delegates to ingestFromData and emits phases", () => {
 		const events: Array<{ phase: string; detail?: unknown }> = [];
 		const result = ingestFromMemory([], [] as RepoInfo[], {
+			deps: { ingestFromData },
 			onProgress: (evt) => {
 				events.push({ phase: evt.phase, detail: evt.detail });
 			},

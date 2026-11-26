@@ -1,5 +1,6 @@
-import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { createDb, initSchema } from "@lib/db";
+import { setOllamaModuleLoaderForTests } from "@lib/ollama-loader";
 import { summariseAll, summariseRepo } from "./summarise.public";
 
 describe("summarise public API modelConfig DI", () => {
@@ -12,13 +13,13 @@ describe("summarise public API modelConfig DI", () => {
 	});
 
 	afterEach(() => {
-		mock.restore();
+		setOllamaModuleLoaderForTests();
 	});
 
 	it("uses provided modelConfig (model, host, apiKey) for generation", async () => {
 		// biome-ignore lint/suspicious/noExplicitAny: test harness capture
 		const calls: any[] = [];
-		mock.module("@lib/ollama", () => ({
+		setOllamaModuleLoaderForTests(() => ({
 			// biome-ignore lint/suspicious/noExplicitAny: mock signature
 			gen: async (prompt: string, opts: any) => {
 				calls.push({ prompt, opts });
@@ -59,14 +60,14 @@ describe("summarise public API coverage", () => {
 	});
 
 	afterEach(() => {
-		mock.restore();
+		setOllamaModuleLoaderForTests();
 	});
 
 	describe("summariseAll", () => {
 		it("processes repos without existing summaries by default", async () => {
 			// biome-ignore lint/suspicious/noExplicitAny: test harness capture
 			const calls: any[] = [];
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (prompt: string, _opts: any) => {
 					calls.push(prompt);
@@ -91,7 +92,7 @@ describe("summarise public API coverage", () => {
 		it("processes all repos when resummarise=true", async () => {
 			// biome-ignore lint/suspicious/noExplicitAny: test harness capture
 			const calls: any[] = [];
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (prompt: string, _opts: any) => {
 					calls.push(prompt);
@@ -114,7 +115,7 @@ describe("summarise public API coverage", () => {
 		});
 
 		it("respects limit parameter", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => "Limited summary.",
 			}));
@@ -130,7 +131,7 @@ describe("summarise public API coverage", () => {
 		});
 
 		it("handles errors gracefully", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => {
 					throw new Error("LLM service unavailable");
@@ -168,7 +169,7 @@ describe("summarise public API coverage", () => {
 		});
 
 		it("calls onProgress callback during processing", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => "Progress test summary.",
 			}));
@@ -201,7 +202,7 @@ describe("summarise public API coverage", () => {
 
 	describe("summariseRepo", () => {
 		it("successfully summarises existing repo", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => "Single repo summary.",
 			}));
@@ -235,7 +236,7 @@ describe("summarise public API coverage", () => {
 		});
 
 		it("handles generation errors", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => {
 					throw new Error("Generation failed");
@@ -256,7 +257,7 @@ describe("summarise public API coverage", () => {
 		});
 
 		it("actually saves when dry=false", async () => {
-			mock.module("@lib/ollama", () => ({
+			setOllamaModuleLoaderForTests(() => ({
 				// biome-ignore lint/suspicious/noExplicitAny: mock signature
 				gen: async (_prompt: string, _opts: any) => "Summary to be saved.",
 			}));
