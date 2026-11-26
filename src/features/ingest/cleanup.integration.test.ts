@@ -7,6 +7,43 @@ import { createIngestService } from "@features/ingest/service";
 import { createDb, initSchema } from "@lib/db";
 
 describe("export-based cleanup integration", () => {
+	test("partial in-memory imports do not prune unrelated repositories", () => {
+		const db = createDb(":memory:");
+		initSchema(db);
+		try {
+			db.run(
+				"INSERT INTO repo (repo_id, name_with_owner, url) VALUES ('R_old', 'user/old', 'https://github.com/user/old')",
+			);
+			createIngestService({ db }).ingestFromData([], []);
+			expect(
+				db.query("SELECT repo_id FROM repo WHERE repo_id = 'R_old'").all(),
+			).toHaveLength(1);
+		} finally {
+			db.close();
+		}
+	});
+
+	test("partial exports never prune existing repositories", async () => {
+		for (const present of ["index.json", "unlisted.json", "neither"]) {
+			const db = createDb(":memory:");
+			initSchema(db);
+			const dir = await mkdtemp(join(tmpdir(), "stars-partial-"));
+			try {
+				db.run(
+					"INSERT INTO repo (repo_id, name_with_owner, url) VALUES ('R_old', 'user/old', 'https://github.com/user/old')",
+				);
+				if (present !== "neither") await writeFile(join(dir, present), "[]");
+				await createIngestService({ db }).ingestFromExports(dir);
+				expect(
+					db.query("SELECT repo_id FROM repo WHERE repo_id = 'R_old'").all(),
+				).toHaveLength(1);
+			} finally {
+				db.close();
+				await rm(dir, { recursive: true, force: true });
+			}
+		}
+	});
+
 	test("ingestFromExports automatically cleans up repos not in export files", async () => {
 		const db = createDb(":memory:");
 		initSchema(db);

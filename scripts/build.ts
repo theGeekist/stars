@@ -26,7 +26,7 @@ async function main() {
 		outdir: "dist",
 		target: "bun",
 		minify: true,
-		sourcemap: false,
+		sourcemap: "none",
 		external: ["@jasonnathan/llm-core", "ollama"],
 	});
 

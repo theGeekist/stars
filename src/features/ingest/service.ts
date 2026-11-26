@@ -408,6 +408,7 @@ async function loadFromExports(
 	lists: StarList[];
 	unlisted: RepoInfo[];
 	currentExportRepos: Set<string>;
+	complete: boolean;
 }> {
 	const currentExportRepos = new Set<string>();
 
@@ -449,7 +450,12 @@ async function loadFromExports(
 		reporter?.start?.(0);
 	}
 
-	return { lists, unlisted, currentExportRepos };
+	return {
+		lists,
+		unlisted,
+		currentExportRepos,
+		complete: index !== null && unlistedArr !== null,
+	};
 }
 
 /**
@@ -534,10 +540,13 @@ export const createIngestService = makeCreateService(({ db }) => {
 			reporter?: IngestReporter,
 		): Promise<{ lists: number; reposFromLists: number; unlisted: number }> {
 			// Load data from export files
-			const { lists, unlisted } = await loadFromExports(dir, reporter);
+			const { lists, unlisted, complete } = await loadFromExports(
+				dir,
+				reporter,
+			);
 
-			// Process the data (includes automatic cleanup)
-			const result = this.ingestFromData(lists, unlisted, reporter);
+			// Partial exports can be imported, but must not determine deletions.
+			const result = this.ingestFromData(lists, unlisted, reporter, complete);
 
 			// Return without cleanup info to maintain backward compatibility
 			return {
@@ -547,11 +556,12 @@ export const createIngestService = makeCreateService(({ db }) => {
 			};
 		},
 
-		/** Ingest from in-memory data (optionally with unlisted first, then lists) with automatic cleanup. */
+		/** Ingest in-memory data; cleanup requires an explicitly complete snapshot. */
 		ingestFromData(
 			lists: StarList[],
 			unlisted?: RepoInfo[],
 			reporter?: IngestReporter,
+			allowCleanup = false,
 		): {
 			lists: number;
 			reposFromLists: number;
@@ -590,7 +600,9 @@ export const createIngestService = makeCreateService(({ db }) => {
 
 			// Automatic cleanup based on current data
 			const currentRepoNames = extractCurrentRepoNames(lists, unlisted);
-			const cleanupResult = this.cleanupRemovedFromExports(currentRepoNames);
+			const cleanupResult = allowCleanup
+				? this.cleanupRemovedFromExports(currentRepoNames)
+				: { removed: 0, preserved: 0, checkedCount: 0 };
 
 			return {
 				lists: res.lists,
@@ -626,6 +638,11 @@ export const createIngestService = makeCreateService(({ db }) => {
 			let removed = 0;
 			let preserved = 0;
 
+			const discoveryExists = !!db
+				.query(
+					"SELECT 1 FROM sqlite_master WHERE type='table' AND name='discovery_target'",
+				)
+				.get();
 			for (const repo of reposToCheck) {
 				// Check if repo has overrides (manual curation protection)
 				const hasOverrides = db
@@ -635,6 +652,21 @@ export const createIngestService = makeCreateService(({ db }) => {
 					.get(repo.id);
 
 				if (hasOverrides && hasOverrides.count > 0) {
+					preserved++;
+					continue;
+				}
+
+				// Keep previously discovered research even after its last source disappears.
+				// An absent export is still authoritative for direct List membership.
+				const discovered =
+					discoveryExists &&
+					db
+						.query(
+							`SELECT 1 FROM discovery_target d JOIN repo r ON r.repo_id=d.repo_node_id WHERE r.id=? LIMIT 1`,
+						)
+						.get(repo.id);
+				if (discovered) {
+					db.query("DELETE FROM list_repo WHERE repo_id=?").run(repo.id);
 					preserved++;
 					continue;
 				}
