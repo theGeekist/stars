@@ -2,7 +2,7 @@
 id: s01-research-architecture
 title: S01 — Research capability and architecture audit
 stage: research
-status: in_progress
+status: review
 priority: normal
 evidence_milestone: s01-research-architecture-evidence
 depends_on: []
@@ -59,3 +59,8 @@ Establish what Stars can expose immediately and what is genuinely missing. Inspe
 - Recorded current coverage and research gaps in `docs/research/architecture.md`; source code and live service state are distinguished.
 - Reused the existing MCP Hub, loopback Gateway and Cloudflare Access route. No separate public endpoint was added.
 - Validation: local health and overview reads succeeded; public unauthenticated MCP returned 401 with OAuth challenge. Internal authenticated-owner browser call remains unverified because browser control was unavailable.
+
+## Review references
+
+- PR: https://github.com/theGeekist/stars/pull/7
+- Human acceptance is pending.

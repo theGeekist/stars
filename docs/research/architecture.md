@@ -67,8 +67,9 @@ readback.
 At inspection, `geekist-stars-research-api.service`,
 `stars-research-mcp-gateway.service` and `mcp-hub.service` were active. The
 SaaS candidate pipeline had been running since 2026-11-28 02:19 +08 and
-continued through repository index 54; three recent summarisation requests
-timeout and their scoring steps were skipped. The 03:00 topics service run
+had progressed through index 58 and was working on index 59. Two summaries
+saved, while their scoring calls failed with `Invalid LLM response`; earlier
+summary timeouts for indices 52–54 also skipped scoring. The 03:00 topics service run
 failed at 03:10 after its ten-minute lock wait, while an earlier run refreshed
 6,562 topics. Lock contention with the active pipeline is a likely explanation,
 not a proven failure cause. Neither service was retried or restarted.

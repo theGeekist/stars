@@ -42,9 +42,9 @@ Complete the existing PR #6 operation without changing the established local pip
 - Record live dry-run and apply receipts with account, manifest revision, canonical counts and exceptions; reconcile actual GitHub state before accepting. No new list creation or unstar operation.
 - Capture existing pipeline stage results, excluding only related-repository discovery/collection backfilling, and distinguish failures from skipped steps. Do not claim live acceptance from a script test.
 
-## Current operational evidence (2026-11-28 04:36 +08)
+## Current operational evidence (2026-11-28 04:48 +08)
 
 - Inspected the existing state directory, receipt filenames/metadata, systemd units and recent journals before taking action. No live dry-run/apply receipt for the current SaaS reconciliation was present in the receipt set inspected; historical scheduled receipts and pre-operation SQLite backups remain preserved.
-- `geekist-stars-saas-candidate-pipeline.service` was active since 02:19 +08 and still processing at repository index 54. Summary calls for `marmelab/react-admin`, `medusajs/medusa` and `mercurjs/mercur` timed out; corresponding score stages were skipped. The process was left running.
+- `geekist-stars-saas-candidate-pipeline.service` remains active since 02:19 +08. It progressed through repository index 58; the summary for `modelcontextprotocol/modelcontextprotocol` saved successfully but scoring failed with `Invalid LLM response`, and `modelcontextprotocol/typescript-sdk` summary saved while its scoring also failed with that error. At the 04:48 check, index 59 (`moutsea/agentflowing`) was being summarized. Earlier summaries for `marmelab/react-admin`, `medusajs/medusa` and `mercurjs/mercur` timed out and their scoring stages were skipped. The process was left running.
 - `geekist-stars-topics.service` succeeded earlier and refreshed 6,562 topics. Its 03:00 run failed after ten minutes, consistent with its configured lock wait; lock contention from the active pipeline is likely but not proven. It was not retried.
-- No reconciliation, ingestion, backfill or other pipeline mutation was run as part of MCP delivery. S00 remains incomplete pending its live dry-run/apply receipts and final pipeline-stage outcomes.
+- No reconciliation apply, related-repository discovery, collection backfill or manual pipeline rerun was initiated as part of MCP delivery; the already-running pipeline continued its normal stages. S00 remains incomplete pending its live dry-run/apply receipts and final pipeline-stage outcomes.

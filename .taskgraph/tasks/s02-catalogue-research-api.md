@@ -2,7 +2,7 @@
 id: s02-catalogue-research-api
 title: S02 — Shared catalogue research API
 stage: implementation
-status: in_progress
+status: review
 priority: normal
 evidence_milestone: s02-catalogue-research-api-evidence
 depends_on:
@@ -65,3 +65,8 @@ Provide one typed domain query surface for existing catalogue research. Reuse FT
 - Added six focused regression tests for the review findings and partial/missing research behavior.
 - Validation on Fedora host: `CI=1 bun run build`, `CI=1 bun lint --fix`, and `CI=1 bun test` all passed; full suite reported 381 passed, 0 failed, 912 expectations.
 - Live API reads were read-only; snapshot on 2026-11-28 04:36 +08 is recorded in `docs/research/architecture.md`.
+
+## Review references
+
+- PR: https://github.com/theGeekist/stars/pull/7
+- Human acceptance is pending.

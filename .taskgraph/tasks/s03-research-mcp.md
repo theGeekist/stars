@@ -2,7 +2,7 @@
 id: s03-research-mcp
 title: S03 — Authenticated Stars research MCP
 stage: implementation
-status: in_progress
+status: review
 priority: normal
 evidence_milestone: s03-research-mcp-evidence
 depends_on:
@@ -54,3 +54,8 @@ Expose the initial Stars research surface through MCP using the shared API. Reus
 - WordPress search returned 52 matches and related-topic results. spotDL resolved to `spotDL/spotify-downloader` (26,990 stars); profile has description and topics but zero score history, discovery targets and provenance. This absence is reported explicitly.
 - Authentication through a signed-in ChatGPT browser remains unverified: the computer-use browser host returned unavailable. `docs/research/mcp.md` records the actual endpoint and connection steps.
 - No catalogue, GitHub account, or pipeline mutations were performed by research tool calls.
+
+## Review references
+
+- PR: https://github.com/theGeekist/stars/pull/7 and https://github.com/theGeekist/mcp-hub/pull/2
+- Human acceptance is pending.
