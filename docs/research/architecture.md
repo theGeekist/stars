@@ -64,12 +64,13 @@ readback.
 
 ## Operational readback
 
-At inspection, `geekist-stars-research-api.service`,
+At 05:05 +08, `geekist-stars-research-api.service`,
 `stars-research-mcp-gateway.service` and `mcp-hub.service` were active. The
-SaaS candidate pipeline had been running since 2026-11-28 02:19 +08 and
-had progressed through index 58 and was working on index 59. Two summaries
-saved, while their scoring calls failed with `Invalid LLM response`; earlier
-summary timeouts for indices 52–54 also skipped scoring. The 03:00 topics service run
-failed at 03:10 after its ten-minute lock wait, while an earlier run refreshed
-6,562 topics. Lock contention with the active pipeline is a likely explanation,
-not a proven failure cause. Neither service was retried or restarted.
+SaaS candidate pipeline had been running since 2026-11-28 02:19 +08 and had
+progressed through index 68; index 69 was in progress. Summary stages saved at
+indices 57–58 and 67, with scoring failures reported as `Invalid LLM response`.
+Summary timeouts at indices 52–54 and 68 skipped scoring. The 03:00 topics
+service run failed at 03:10 after its ten-minute lock wait, while an earlier run
+refreshed 6,562 topics. Lock contention with the active pipeline is a likely
+explanation, not a proven failure cause. Neither pipeline was retried or
+restarted; the read-only API alone was restarted to load the reviewed handler.
