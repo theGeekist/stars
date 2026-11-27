@@ -82,10 +82,18 @@ function observationReference(value: unknown): Row {
 		const item = observation[field];
 		if (typeof item === "string" && item.length <= 500) reference[field] = item;
 	}
-	if (Array.isArray(observation.context_topics))
-		reference.context_topics = observation.context_topics
-			.filter((item) => typeof item === "string")
+	if (Array.isArray(observation.context_topics)) {
+		const contextTopics = observation.context_topics.filter(
+			(item): item is string => typeof item === "string",
+		);
+		const boundedTopics = contextTopics
+			.filter((topic) => Buffer.byteLength(topic) <= 256)
 			.slice(0, 20);
+		reference.context_topics = boundedTopics;
+		if (boundedTopics.length < contextTopics.length)
+			reference.context_topics_omitted =
+				contextTopics.length - boundedTopics.length;
+	}
 	return reference;
 }
 
@@ -504,7 +512,7 @@ function profileDiscovery(
 		const edges = available.edges
 			? rows(
 					db,
-					"SELECT source,observation_json FROM discovery_edge WHERE target_key=? ORDER BY source LIMIT 5",
+					"SELECT source,observation_json FROM discovery_edge WHERE target_key=? ORDER BY source,observation_json LIMIT 5",
 					[String(target.key)],
 				).map((edge) => {
 					const observation = parseJson(edge.observation_json, {});
@@ -530,9 +538,12 @@ function profileDiscovery(
 				...record
 			} = item;
 			const context = parseJson(sourceContext, []);
+			const resultEvidence = evidence(result);
+			const sourceContextEvidence =
+				includeEvidence && includeContext ? evidence(sourceContext) : null;
 			return {
 				...record,
-				...evidence(result),
+				...resultEvidence,
 				sourceContextCount: Array.isArray(context) ? context.length : 0,
 				sourceReferences: Array.isArray(context)
 					? context.slice(0, 10).map((entry) => {
@@ -543,8 +554,14 @@ function profileDiscovery(
 							};
 						})
 					: [],
-				...(includeEvidence && includeContext
-					? { sourceContext: evidence(sourceContext).body }
+				...(sourceContextEvidence
+					? {
+							sourceContext: sourceContextEvidence.body,
+							sourceContextTruncated:
+								sourceContextEvidence.bodyTruncated === true,
+							sourceContextOmitted: sourceContextEvidence.bodyOmitted === true,
+							sourceContextBytes: sourceContextEvidence.bodyBytes,
+						}
 					: {}),
 			};
 		});
@@ -840,7 +857,7 @@ function handleDiscoveries(url: URL, db: Database): Response {
 		const edges = available.edges
 			? rows(
 					db,
-					"SELECT source, observation_json FROM discovery_edge WHERE target_key=? ORDER BY source LIMIT 5",
+					"SELECT source, observation_json FROM discovery_edge WHERE target_key=? ORDER BY source, observation_json LIMIT 5",
 					[String(target.key)],
 				).map((edge) => {
 					const observation = parseJson(edge.observation_json, {});
@@ -866,9 +883,14 @@ function handleDiscoveries(url: URL, db: Database): Response {
 						...record
 					} = item;
 					const context = parseJson(sourceContext, []);
+					const resultEvidence = evidence(result);
+					const sourceContextEvidence =
+						includeEvidence && hasSourceContext
+							? evidence(sourceContext)
+							: null;
 					return {
 						...record,
-						...evidence(result),
+						...resultEvidence,
 						sourceContextCount: Array.isArray(context) ? context.length : 0,
 						sourceReferences: Array.isArray(context)
 							? context.slice(0, 10).map((entry) => {
@@ -879,8 +901,15 @@ function handleDiscoveries(url: URL, db: Database): Response {
 									};
 								})
 							: [],
-						...(includeEvidence && hasSourceContext
-							? { sourceContext: evidence(sourceContext).body }
+						...(sourceContextEvidence
+							? {
+									sourceContext: sourceContextEvidence.body,
+									sourceContextTruncated:
+										sourceContextEvidence.bodyTruncated === true,
+									sourceContextOmitted:
+										sourceContextEvidence.bodyOmitted === true,
+									sourceContextBytes: sourceContextEvidence.bodyBytes,
+								}
 							: {}),
 					};
 				})

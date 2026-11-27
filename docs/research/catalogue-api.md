@@ -34,7 +34,15 @@ require an explicit bounded request. Missing optional discovery tables are
 reported as unavailable instead of being represented as an empty complete
 catalogue.
 
-The API remains backward-compatible for existing HTTP consumers. Regression
-tests focus on latest applicable scores, one-read-snapshot result consistency,
-malformed FTS input, provenance-only repositories, subpath identity matching,
-bounded nested evidence, validated pagination and stable order.
+The HTTP paths and JSON response structures remain in place, with stricter
+input validation. Numeric pagination and booleans must be valid values; invalid
+values now return 400 instead of being coerced or clamped. Topic and repository
+search pages accept at most 100 rows; discovery pages accept at most 25, and
+score-history pages at most 100. Keep `limit` at or below the route maximum and
+use `offset` to page through larger results. Opt-in source-context bodies include
+`sourceContextTruncated`, `sourceContextOmitted` and `sourceContextBytes` so
+clients can distinguish complete, truncated and omitted evidence. Regression
+tests focus on latest
+applicable scores, one-read-snapshot consistency, malformed FTS input,
+provenance-only repositories, subpath identity matching, bounded nested
+evidence, validated pagination and stable order.

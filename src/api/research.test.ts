@@ -114,16 +114,35 @@ describe("research API", () => {
 			"github:node-1:resource:docs/readme.md",
 			JSON.stringify({
 				target: "https://github.com/acme/one/blob/main/docs/readme.md",
-				revision: "abc123",
+				revision: "z-revision",
+				context_topics: ["wordpress", "x".repeat(1_000)],
+			}),
+		);
+		db.query("INSERT INTO discovery_edge VALUES (?,?,?)").run(
+			"awesome-list",
+			"github:node-1:resource:docs/readme.md",
+			JSON.stringify({
+				target: "https://github.com/acme/one/blob/main/docs/readme.md",
+				revision: "a-revision",
+				context_topics: ["wordpress"],
 			}),
 		);
 		const result = await body(get(db, "/research/repository?key=acme%2Fone"));
 		const targets = list(object(result.discovery).targets);
 		expect(targets).toHaveLength(1);
 		expect(targets[0].key).toBe("github:node-1:resource:docs/readme.md");
-		expect(list(targets[0].edges)[0]).toMatchObject({
+		const edges = list(targets[0].edges);
+		expect(edges.map((edge) => edge.revision)).toEqual([
+			"a-revision",
+			"z-revision",
+		]);
+		expect(edges[0]).toMatchObject({
 			source: "awesome-list",
-			revision: "abc123",
+			context_topics: ["wordpress"],
+		});
+		expect(edges[1]).toMatchObject({
+			context_topics: ["wordpress"],
+			context_topics_omitted: 1,
 		});
 		db.close();
 	});
@@ -177,6 +196,100 @@ describe("research API", () => {
 		expect(
 			list(result.repositories).map((item) => item.name_with_owner),
 		).toEqual(["acme/one", "acme/two"]);
+		db.close();
+	});
+	it("reports source-context truncation on profile and discovery evidence", async () => {
+		const db = createDb();
+		db.query(
+			"INSERT INTO repo(id,repo_id,name_with_owner,url,description) VALUES (1,'node-1','acme/one','https://github.com/acme/one','')",
+		).run();
+		db.query(
+			"CREATE TABLE discovery_target(key TEXT PRIMARY KEY,url TEXT NOT NULL,repo_node_id TEXT,status TEXT NOT NULL,error TEXT,result_json TEXT)",
+		).run();
+		db.query(
+			"CREATE TABLE discovery_research(id INTEGER PRIMARY KEY,target_key TEXT NOT NULL,completed_at TEXT NOT NULL,result_json TEXT NOT NULL,source_context_json TEXT NOT NULL)",
+		).run();
+		const targetKey = "github:node-1:resource:docs/readme.md";
+		const context = JSON.stringify([
+			{
+				source: "docs",
+				observation: { revision: "r1" },
+				note: "x".repeat(5_000),
+			},
+		]);
+		db.query("INSERT INTO discovery_target VALUES (?,?,?,?,?,?)").run(
+			targetKey,
+			"https://github.com/acme/one/blob/main/docs/readme.md",
+			"node-1",
+			"done",
+			null,
+			"{}",
+		);
+		db.query(
+			"INSERT INTO discovery_research(target_key,completed_at,result_json,source_context_json) VALUES (?,?,?,?)",
+		).run(targetKey, "2026-01-01", "{}", context);
+
+		const profile = await body(
+			get(db, "/research/repository?key=acme%2Fone&includeEvidence=true"),
+		);
+		const profileResearch = list(
+			list(object(profile.discovery).targets)[0].research,
+		)[0];
+		expect(profileResearch.sourceContextTruncated).toBe(true);
+		expect(profileResearch.sourceContextOmitted).toBe(false);
+		expect(Number(profileResearch.sourceContextBytes)).toBeGreaterThan(4_096);
+
+		const discoveries = await body(
+			get(db, "/research/discoveries?limit=1&includeEvidence=true"),
+		);
+		const discoveryResearch = list(
+			list(list(discoveries.discoveries)[0].research),
+		)[0];
+		expect(discoveryResearch.sourceContextTruncated).toBe(true);
+		expect(discoveryResearch.sourceContextOmitted).toBe(false);
+		expect(Number(discoveryResearch.sourceContextBytes)).toBeGreaterThan(4_096);
+		db.close();
+	});
+
+	it("marks source context omitted when the shared evidence budget is spent", async () => {
+		const db = createDb();
+		db.query(
+			"CREATE TABLE discovery_target(key TEXT PRIMARY KEY,url TEXT NOT NULL,repo_node_id TEXT,status TEXT NOT NULL,error TEXT,result_json TEXT)",
+		).run();
+		db.query(
+			"CREATE TABLE discovery_research(id INTEGER PRIMARY KEY,target_key TEXT NOT NULL,completed_at TEXT NOT NULL,result_json TEXT NOT NULL,source_context_json TEXT NOT NULL)",
+		).run();
+		db.query(
+			"CREATE TABLE discovery_edge(source TEXT NOT NULL,target_key TEXT NOT NULL,observation_json TEXT NOT NULL)",
+		).run();
+		const targetKey = "github:node-1:resource:docs/readme.md";
+		const large = JSON.stringify({ evidence: "x".repeat(40_000) });
+		db.query("INSERT INTO discovery_target VALUES (?,?,?,?,?,?)").run(
+			targetKey,
+			"https://github.com/acme/one/blob/main/docs/readme.md",
+			"node-1",
+			"done",
+			null,
+			large,
+		);
+		for (let index = 0; index < 5; index++)
+			db.query("INSERT INTO discovery_edge VALUES (?,?,?)").run(
+				`source-${index}`,
+				targetKey,
+				large,
+			);
+		db.query(
+			"INSERT INTO discovery_research(target_key,completed_at,result_json,source_context_json) VALUES (?,?,?,?)",
+		).run(targetKey, "2026-01-01", large, JSON.stringify([{ source: "docs" }]));
+
+		const result = await body(
+			get(db, "/research/discoveries?limit=1&includeEvidence=true"),
+		);
+		const research = list(list(result.discoveries)[0].research)[0];
+		expect(research.sourceContextOmitted).toBe(true);
+		expect(research.sourceContextTruncated).toBe(false);
+		expect(research.sourceContextBytes).toBeGreaterThan(0);
+		expect(research.sourceContext).toBeUndefined();
 		db.close();
 	});
 });
