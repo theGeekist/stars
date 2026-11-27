@@ -161,19 +161,34 @@ Summaries prefer explicit `deps` over `modelConfig`, then use environment defaul
 
 ## Local web interface and HTTP API
 
-`bun run dev` starts [src/server.ts](src/server.ts) on port 8787 and serves the assets in `public`. `bun run serve` runs the same server in watch mode. The server source contains no authentication layer, so access control belongs to its deployment.
+`bun run dev` starts [src/server.ts](src/server.ts) on port 8788 by default and serves the assets in `public`; set `STARS_API_PORT` to override the port. `bun run serve` runs the same server in watch mode. In the Geekist environment, external access goes through the common MCP bridge and Cloudflare deployment boundary; the local HTTP service supplies the API routes.
 
-| Route                                  | Purpose                                                                                                                             |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `/health`                              | Returns health status.                                                                                                              |
-| `/dashboard`                           | Returns export counts and SQLite counts for Lists, repositories, summaries and scores.                                              |
-| `/lists`, `/list/:slug`                | Read Lists and repositories assigned to a List.                                                                                     |
-| `/search?q=...`                        | Searches repository FTS, with a name/description fallback if the FTS query fails; results are capped at 100.                        |
-| `/logs`                                | Streams task logs using server-sent events.                                                                                         |
-| `POST /run/:task`                      | Starts `lists`, `ingest`, `summarise`, `score` or `topics:enrich`. Only one in-process task runs at a time.                         |
-| `/run/status`, `POST /run/cancel/:pid` | Report running tasks or request cancellation. Cancellation is cooperative and depends on the task passing the abort signal through. |
+| Route                                  | Purpose                                                                                                                                                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/health`                              | Returns health status.                                                                                                                                                                                                                                                         |
+| `/dashboard`                           | Returns export counts and SQLite counts for Lists, repositories, summaries and scores.                                                                                                                                                                                         |
+| `/lists`, `/list/:slug`                | Read Lists and repositories assigned to a List.                                                                                                                                                                                                                                |
+| `/search?q=...`                        | Searches repository FTS, with a name/description fallback if the FTS query fails; results are capped at 100.                                                                                                                                                                   |
+| `/research/overview`                   | Reports catalogue size, enrichment coverage, latest score run, topic coverage and stored discovery/provenance counts.                                                                                                                                                          |
+| `/research/repositories`               | Paginated research search. Supports `q`, `list`, `topic`, `language`, `minStars`, `minScore`, `archived`, `fork`, `hasSummary`, `hasReadme`, `sort`, `limit`, `offset`, and `includeReadme=true`. Results include List memberships and latest per-List scores with rationales. |
+| `/research/repository?key=...`         | Returns a repository profile by `owner/name`, GitHub node ID or database ID: stored metadata, memberships, enriched topics, score history, curated overrides, collection observations and research results. Use `includeReadme=true` to return the full README text.           |
+| `/research/repository/:owner/:repo`    | Path form of the repository profile lookup.                                                                                                                                                                                                                                    |
+| `/research/topics?topic=...`           | Lists enriched topics or returns a topic profile with aliases, related topics and associated repositories.                                                                                                                                                                     |
+| `/research/discoveries`                | Pages through stored discovery targets, current source observations and fetched research results. Supports `status`, `repo_node_id`, `source`, `limit`, and `offset`.                                                                                                          |
+| `/logs`                                | Streams task logs using server-sent events.                                                                                                                                                                                                                                    |
+| `POST /run/:task`                      | Starts `lists`, `ingest`, `summarise`, `score` or `topics:enrich`. Only one in-process task runs at a time.                                                                                                                                                                    |
+| `/run/status`, `POST /run/cancel/:pid` | Report running tasks or request cancellation. Cancellation is cooperative and depends on the task passing the abort signal through.                                                                                                                                            |
 
-The server's `ingest` task fetches GitHub Lists and unlisted Stars directly, unlike the main CLI's export-based `ingest`. Server summaries and scoring run in apply mode. The server has no discovery task or research-work endpoint.
+The server's `ingest` task fetches GitHub Lists and unlisted Stars directly, unlike the main CLI's export-based `ingest`. Server summaries and scoring run in apply mode. Research endpoints expose discovery records already stored in SQLite; they do not backfill collections or fetch new sources. Discovery execution remains a separate CLI/consumer workflow.
+
+Example research calls:
+
+```text
+GET /research/repositories?q=workflow&topic=automation&minStars=500&sort=stars&limit=20
+GET /research/repository?key=owner/repository&includeReadme=true
+GET /research/topics?topic=agents
+GET /research/discoveries?status=done&source=https%3A%2F%2Fgithub.com%2Fowner%2Fcollection
+```
 
 ## Sequential runner and development tools
 

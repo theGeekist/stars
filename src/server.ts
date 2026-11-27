@@ -11,6 +11,7 @@ import { rankAll } from "@src/api/ranking.public";
 import { runListsCore } from "@src/api/stars";
 import { summariseAll } from "@src/api/summarise.public";
 import { enrichAllRepoTopics } from "@src/api/topics";
+import { handleResearchApi } from "@src/api/research";
 import type { ApiRepo, ListDetail, ListRow } from "./types";
 
 let qLists!: Statement<ListRow, []>;
@@ -380,13 +381,15 @@ function handleCancel(pidStr: string): Response {
 }
 
 Bun.serve({
-	port: 8787,
+	port: Number(Bun.env.STARS_API_PORT ?? 8788),
 	fetch(req) {
 		try {
 			const url = new URL(req.url);
 			const { pathname } = url;
 
 			if (pathname === "/health") return handleHealth();
+			const researchResponse = handleResearchApi(url, getDefaultDb());
+			if (researchResponse) return researchResponse;
 			if (pathname === "/dashboard") {
 				const dir = url.searchParams.get("dir") ?? undefined;
 				return handleDashboard(dir);
@@ -474,4 +477,4 @@ Bun.serve({
 	},
 });
 
-taskLog.success("API → http://localhost:8787");
+taskLog.success(`API → http://localhost:${Bun.env.STARS_API_PORT ?? 8788}`);
