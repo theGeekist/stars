@@ -17,7 +17,7 @@ const group = {
 	"automation-workflows": `activepieces/activepieces inngest/inngest n8n-io/n8n NangoHQ/nango PipedreamHQ/pipedream triggerdotdev/trigger.dev`,
 	"ai-machine-learning": `a2ui-project/a2ui dyad-sh/dyad stackblitz-labs/bolt.diy totalumlabs/ai-app-builder-open vercel-labs/json-render modelcontextprotocol/modelcontextprotocol modelcontextprotocol/typescript-sdk cloudflare/vibesdk moutsea/agentflowing`,
 	"productivity-utilities": `alchemy-run/alchemy AmanVarshney01/create-better-t-stack copier-org/copier hashicorp/terraform nrwl/nx opentofu/opentofu plopjs/plop sst/sst nextlevelbuilder/ui-ux-pro-max-skill pbakaus/impeccable nexu-io/open-design cloudflare/cf cloudflare/workers-sdk jdx/mise moonrepo/proto volta-cli/volta Schniz/fnm devcontainers/cli jetify-com/devbox cachix/devenv NixOS/nix projen/projen yeoman/yo moonrepo/moon vercel/turborepo go-task/task casey/just bazelbuild/bazel vitejs/vite evanw/esbuild rolldown/tsdown containers/podman docker/compose dagger/dagger moby/buildkit renovatebot/renovate dependabot/dependabot-core changesets/changesets googleapis/release-please`,
-	"valuable-resources": `alibaba/formily apache/echarts baidu/amis better-auth/better-auth casbin/casbin cytoscape/cytoscape.js drizzle-team/drizzle-orm epicweb-dev/epic-stack epicweb-dev/epicflare farshidpourlatifi/edgeseed foson-co/arkite-ui frappe/frappe frappe/frappe-ui frappe/studio github/docs grafana/scenes honojs/hono Kanaries/graphic-walker keenthemes/reui leeoniya/uPlot marmelab/react-admin mimukit/saasaloy mockkey/flarekit mui/base-ui neo4j-contrib/neodash nocobase/nocobase OAI/OpenAPI-Specification objectstack-ai/objectstack objectstack-ai/objectui observablehq/plot perspective-dev/perspective redwoodjs/sdk refinedev/refine saas-js/saas-ui saasflare-dev/starter shadcn-ui/ui sourceplane/next-forge TanStack/form TanStack/query TanStack/router TanStack/table TanStack/virtual uwdata/mosaic vega/vega vega/vega-lite zenstackhq/zenstack googleapis/google-api-nodejs-client great-expectations/great_expectations OpenLineage/OpenLineage jacomyal/sigma.js open-metadata/OpenMetadata sodadata/soda-core oven-sh/bun nodejs/node microsoft/TypeScript hey-api/openapi-ts orval-labs/orval testcontainers/testcontainers-node cloudflare/workerd devcontainers/spec rocketflare-dev/rocketflare tremorlabs/tremor alepha-dev/alepha awecode/autoadmin MUKE-coder/flare-framework pocketbase/pocketbase SoftwareBrothers/adminjs wasp-lang/wasp websideproject/nuxt-auto`,
+	"valuable-resources": `alibaba/formily apache/echarts baidu/amis better-auth/better-auth casbin/casbin cytoscape/cytoscape.js drizzle-team/drizzle-orm epicweb-dev/epic-stack epicweb-dev/epicflare farshidpourlatifi/edgeseed foson-co/arkite-ui frappe/frappe frappe/frappe-ui frappe/studio github/docs grafana/scenes honojs/hono Kanaries/graphic-walker keenthemes/reui leeoniya/uPlot marmelab/react-admin mimukit/saasaloy mockkey/flarekit mui/base-ui neo4j-contrib/neodash nocobase/nocobase OAI/OpenAPI-Specification objectstack-ai/objectstack objectstack-ai/objectui observablehq/plot perspective-dev/perspective redwoodjs/sdk refinedev/refine saas-js/saas-ui saasflare-dev/starter shadcn-ui/ui sourceplane/next-forge TanStack/form TanStack/query TanStack/router TanStack/table TanStack/virtual uwdata/mosaic vega/vega vega/vega-lite zenstackhq/zenstack googleapis/google-api-nodejs-client great-expectations/great_expectations OpenLineage/OpenLineage jacomyal/sigma.js open-metadata/OpenMetadata sodadata/soda-core oven-sh/bun nodejs/node microsoft/TypeScript hey-api/openapi-ts orval-labs/orval testcontainers/testcontainers-node cloudflare/workerd devcontainers/spec rocketflare-dev/rocketflare tremorlabs/tremor alepha-dev/alepha awecode/autoadmin MUKE-coder/flare-framework pocketbase/pocketbase SoftwareBrothers/adminjs wasp-lang/wasp websideproject/nuxt-auto apache/casbin-node-casbin better-auth-ui/better-auth-ui cerbos/query-plan-adapters cloudflare/workers-oauth-provider stalniy/casl`,
 };
 // Deliberately leave these unassigned instead of treating every platform as a utility.
 const noFit = {
@@ -29,6 +29,8 @@ const noFit = {
 	"logto-io/logto": "Identity and access infrastructure",
 	"openfga/openfga": "Identity and access infrastructure",
 	"ory/kratos": "Identity and access infrastructure",
+	"cerbos/cerbos": "Identity and access infrastructure",
+	"valuemelody/melody-auth": "Identity and access infrastructure",
 	"pillar/z-cloudbase": "Operator / hosting infrastructure",
 };
 // Extra explicit report links and named A11/A12 leads. These identities are resolved
@@ -128,144 +130,176 @@ const manifest = loadManifest();
 if (!Array.isArray(manifest.repositories))
 	throw new Error("Invalid source manifest");
 const candidates = new Map();
-for (const x of manifest.repositories)
-	candidates.set(x.id.toLowerCase(), {
-		repo: x.id,
-		packets: x.packets,
-		optional: !!x.optional,
+for (const x of manifest.repositories) {
+	if (typeof x?.id !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(x.id))
+		throw new Error(`Invalid repository identity: ${JSON.stringify(x)}`);
+	const key = x.id.toLowerCase();
+	const previous = candidates.get(key);
+	candidates.set(key, {
+		repo: previous?.repo ?? x.id,
+		packets: [...new Set([...(previous?.packets ?? []), ...(x.packets ?? [])])],
+		optional: (previous?.optional ?? true) && !!x.optional,
 		source: "manifest",
 	});
-for (const [s, names] of [
-	["report lead", reportExtras],
-	["A12 initial lead", a12Extras],
-])
-	for (const repo of split(names))
-		if (!candidates.has(repo.toLowerCase()))
-			candidates.set(repo.toLowerCase(), { repo, source: s, optional: true });
-// A live manifest addition never silently receives an invented classification.
-const state = listState();
-if (
-	(apply || account) &&
-	(!account || account.toLowerCase() !== state.login.toLowerCase())
-)
-	throw new Error(`Apply requires --account=${state.login}`);
-const listIds = new Map();
-for (const list of state.lists) {
-	const key = slug(list.name);
-	if (listIds.has(key)) throw new Error(`Duplicate list slug: ${key}`);
-	listIds.set(key, list.id);
 }
-const names = new Map(state.lists.map((l) => [l.id, l.name]));
+// An explicit reviewed manifest is authoritative. Default preview alone shows extra leads.
+if (!source)
+	for (const [s, names] of [
+		["report lead", reportExtras],
+		["A12 initial lead", a12Extras],
+	])
+		for (const repo of split(names))
+			if (!candidates.has(repo.toLowerCase()))
+				candidates.set(repo.toLowerCase(), { repo, source: s, optional: true });
+const state = listState();
+function verifyAccount(snapshot) {
+	if (
+		(apply || account) &&
+		(!account || account.toLowerCase() !== snapshot.login.toLowerCase())
+	)
+		throw new Error(`Apply requires --account=${snapshot.login}`);
+}
+verifyAccount(state);
+function indexLists(snapshot) {
+	const ids = new Map();
+	for (const list of snapshot.lists) {
+		const key = slug(list.name);
+		if (ids.has(key)) throw new Error(`Duplicate list slug: ${key}`);
+		ids.set(key, list.id);
+	}
+	return ids;
+}
+indexLists(state);
 const results = [];
 const seen = new Map();
+// Resolve every alias and union classification before any mutation.
 for (const [key, candidate] of candidates) {
-	const row = {
-		...candidate,
-		desiredLists: map.get(key) ?? [],
-		reason: noFit[key] ?? null,
-	};
+	const row = { ...candidate };
 	try {
 		const [owner, name] = candidate.repo.split("/");
 		const repo = gql(repoQuery, { owner, name }).repository;
-		if (!repo) throw new Error("Repository not found or not accessible");
-		row.canonical = repo.nameWithOwner;
-		row.archived = repo.isArchived;
-		row.description = repo.description;
-		row.alreadyStarred = repo.viewerHasStarred;
+		if (!repo?.id || !repo.nameWithOwner)
+			throw new Error("Repository not found or not accessible");
 		if (repo.isPrivate)
 			throw new Error(
 				"Unexpected private candidate; review identity before starring",
 			);
-		const old = state.membership.get(repo.id) ?? new Set();
+		row.canonical = repo.nameWithOwner;
+		row.repositoryId = repo.id;
+		row.archived = repo.isArchived;
+		row.description = repo.description;
+		const canonicalKey = repo.nameWithOwner.toLowerCase();
+		const desired = [
+			...new Set([...(map.get(key) ?? []), ...(map.get(canonicalKey) ?? [])]),
+		];
 		const previous = seen.get(repo.id);
 		if (previous) {
-			row.duplicateOf = previous.row.canonical;
-			previous.row.desiredLists = [
-				...new Set([...previous.row.desiredLists, ...row.desiredLists]),
+			row.duplicateOf = previous.canonical;
+			previous.aliases.push(candidate.repo);
+			previous.desiredLists = [
+				...new Set([...previous.desiredLists, ...desired]),
 			];
-			previous.row.addLists = previous.row.desiredLists.filter(
-				(s) => listIds.has(s) && !old.has(listIds.get(s)),
-			);
-			row.desiredLists = previous.row.desiredLists;
-			row.addLists = previous.row.addLists;
+			previous.packets = [
+				...new Set([...(previous.packets ?? []), ...(candidate.packets ?? [])]),
+			];
+			previous.optional = previous.optional && !!candidate.optional;
+			if (!previous.reason)
+				previous.reason = noFit[key] ?? noFit[canonicalKey] ?? null;
 		} else {
-			seen.set(repo.id, { canonical: repo.nameWithOwner, row });
-		}
-		row.existingLists = [...old].map((id) => names.get(id) ?? id);
-		row.missingTargetLists = row.desiredLists.filter((s) => !listIds.has(s));
-		row.addLists = row.desiredLists.filter(
-			(s) => listIds.has(s) && !old.has(listIds.get(s)),
-		);
-		if (!row.desiredLists.length && !row.reason)
-			row.reason =
-				"No curated mapping; inspect repository description before assigning a list";
-		if (apply) {
-			if (!repo.viewerHasStarred) {
-				const out = gql(starMutation, { id: repo.id });
-				if (!out.addStar?.starrable?.viewerHasStarred)
-					throw new Error("Star not confirmed");
-				row.starAdded = true;
-			}
-			if (row.addLists.length) {
-				// Preserve all memberships in the preflight snapshot. Do not edit lists concurrently.
-				const fresh = state;
-				const existing = state.membership.get(repo.id) ?? new Set();
-				const allDesired = previous?.row.desiredLists ?? row.desiredLists;
-				const additions = allDesired.map((s) => listIds.get(s)).filter(Boolean);
-				const next = [...new Set([...existing, ...additions])];
-				if (next.some((id) => !existing.has(id))) {
-					const out = gql(listsMutation, { itemId: repo.id, listIds: next });
-					const confirmed = new Set(
-						out.updateUserListsForItem?.lists?.map((l) => l.id),
-					);
-					if (!next.every((id) => confirmed.has(id)))
-						throw new Error(
-							"List mutation not fully confirmed; inspect account",
-						);
-					row.listsAdded = next
-						.filter((id) => !existing.has(id))
-						.map((id) => fresh.lists.find((l) => l.id === id)?.name ?? id);
-					if (previous)
-						previous.row.listsAdded = [
-							...new Set([
-								...(previous.row.listsAdded ?? []),
-								...row.listsAdded,
-							]),
-						];
-				}
-			}
+			row.aliases = [candidate.repo];
+			row.alreadyStarred = repo.viewerHasStarred;
+			row.desiredLists = desired;
+			row.reason = noFit[key] ?? noFit[canonicalKey] ?? null;
+			seen.set(repo.id, row);
 		}
 	} catch (error) {
 		row.error = String(error.message ?? error);
 	}
 	results.push(row);
+}
+// Refresh after identity resolution; replacement mutations still require exclusive list editing.
+const executionState = apply ? listState() : state;
+verifyAccount(executionState);
+const listIds = indexLists(executionState);
+const names = new Map(executionState.lists.map((l) => [l.id, l.name]));
+for (const [id, row] of seen) {
+	const existing = executionState.membership.get(id) ?? new Set();
+	row.existingLists = [...existing].map(
+		(listId) => names.get(listId) ?? listId,
+	);
+	row.missingTargetLists = row.desiredLists.filter((s) => !listIds.has(s));
+	row.addLists = row.desiredLists.filter(
+		(s) => listIds.has(s) && !existing.has(listIds.get(s)),
+	);
+	row.reason = row.desiredLists.length
+		? null
+		: (row.reason ??
+			"No curated mapping; inspect repository description before assigning a list");
+	try {
+		if (apply) {
+			// Re-read canonical identity and star state before writing.
+			const [owner, name] = row.canonical.split("/");
+			const current = gql(repoQuery, { owner, name }).repository;
+			if (current?.id !== id || current.isPrivate)
+				throw new Error("Repository identity or visibility changed");
+			row.alreadyStarred = current.viewerHasStarred;
+			if (!current.viewerHasStarred) {
+				const out = gql(starMutation, { id });
+				if (!out.addStar?.starrable?.viewerHasStarred)
+					throw new Error("Star not confirmed");
+				row.starAdded = true;
+			}
+			if (row.addLists.length) {
+				const additions = row.addLists.map((s) => listIds.get(s));
+				const next = [...new Set([...existing, ...additions])];
+				const out = gql(listsMutation, { itemId: id, listIds: next });
+				const confirmed = new Set(
+					out.updateUserListsForItem?.lists?.map((l) => l.id),
+				);
+				row.listsAdded = additions
+					.filter((listId) => confirmed.has(listId))
+					.map((listId) => names.get(listId) ?? listId);
+				if (!next.every((listId) => confirmed.has(listId)))
+					throw new Error("List mutation not fully confirmed; inspect account");
+				executionState.membership.set(id, confirmed);
+			}
+		}
+	} catch (error) {
+		row.error = String(error.message ?? error);
+	}
+}
+for (const row of results) {
 	console.log(
-		`${row.error ? "ERROR" : row.alreadyStarred ? "STARRED" : "UNSTARRED"} ${candidate.repo} ${row.addLists?.join(", ") ?? ""} ${row.reason ?? ""} ${row.error ?? ""}`,
+		`${row.error ? "ERROR" : row.duplicateOf ? "ALIAS" : row.starAdded ? "ADDED" : row.alreadyStarred ? "STARRED" : "UNSTARRED"} ${row.repo} ${row.addLists?.join(", ") ?? ""} ${row.reason ?? ""} ${row.error ?? ""}`,
 	);
 }
+const canonical = [...seen.values()];
 const summary = {
 	mode: apply ? "apply" : "dry-run",
-	account: state.login,
+	account: executionState.login,
 	manifestCount: manifest.repositories.length,
 	candidateCount: candidates.size,
-	alreadyStarred: results.filter((r) => r.alreadyStarred && !r.duplicateOf)
-		.length,
-	starsAdded: results.filter((r) => r.starAdded).length,
-	newListMemberships: results.reduce(
+	canonicalCount: canonical.length,
+	alreadyStarred: canonical.filter((r) => r.alreadyStarred).length,
+	starsAdded: canonical.filter((r) => r.starAdded).length,
+	newListMemberships: canonical.reduce(
 		(n, r) => n + (r.listsAdded?.length ?? 0),
 		0,
 	),
-	unclassified: results.filter((r) => r.reason && !r.duplicateOf).length,
-	missingTargetLists: results.filter(
-		(r) => r.missingTargetLists?.length && !r.duplicateOf,
-	).length,
+	unclassified: canonical.filter((r) => r.reason).length,
+	missingTargetLists: canonical.filter((r) => r.missingTargetLists?.length)
+		.length,
 	errors: results.filter((r) => r.error).length,
 	unresolved,
 };
 writeFileSync(
 	report,
 	JSON.stringify(
-		{ summary, lists: state.lists.map(({ before, ...l }) => l), results },
+		{
+			summary,
+			lists: executionState.lists.map(({ before, ...l }) => l),
+			results,
+		},
 		null,
 		2,
 	) + "\n",

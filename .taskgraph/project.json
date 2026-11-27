@@ -1,0 +1,58 @@
+{
+	"schemaVersion": 1,
+	"taskSchemaVersion": 2,
+	"outputContractVersion": 2,
+	"project": {
+		"id": "stars",
+		"label": "Geekist Stars"
+	},
+	"externalReadingSources": [],
+	"planning": {
+		"root": ".taskgraph",
+		"tracking": "tracked"
+	},
+	"localState": {
+		"root": ".taskgraph/local",
+		"tracking": "ignored"
+	},
+	"graphs": [
+		{
+			"id": "stars",
+			"label": "Geekist Stars",
+			"tasksRoot": "tasks",
+			"decisionsRoot": "decisions",
+			"governingReading": [
+				"AGENTS.md",
+				"README.md",
+				".taskgraph/ROADMAP.md",
+				".taskgraph/tasks/README.md"
+			]
+		}
+	],
+	"commands": [
+		{
+			"id": "quality.check",
+			"label": "Repository quality checks",
+			"requiresTask": false,
+			"mutates": false,
+			"invocations": [
+				{
+					"heading": "Build",
+					"command": ["env", "CI=1", "bun", "run", "build"],
+					"cwd": "."
+				},
+				{
+					"heading": "Lint check",
+					"command": ["env", "CI=1", "bun", "lint"],
+					"cwd": "."
+				},
+				{
+					"heading": "Tests",
+					"command": ["env", "CI=1", "bun", "test"],
+					"cwd": "."
+				}
+			],
+			"description": "Run non-mutating build, lint and test checks. Follow AGENTS.md for formatting fixes and commit requirements."
+		}
+	]
+}
