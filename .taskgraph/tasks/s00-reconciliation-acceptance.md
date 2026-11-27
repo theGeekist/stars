@@ -2,7 +2,7 @@
 id: s00-reconciliation-acceptance
 title: S00 — SaaS candidate reconciliation and pipeline acceptance
 stage: operations
-status: ready
+status: in_progress
 priority: normal
 evidence_milestone: s00-reconciliation-acceptance-evidence
 depends_on: []
@@ -41,3 +41,10 @@ Complete the existing PR #6 operation without changing the established local pip
 - Test dry-run no mutation, alias union, repeat apply/idempotence, missing lists, incomplete confirmation, and manifest validation with a mocked GitHub transport.
 - Record live dry-run and apply receipts with account, manifest revision, canonical counts and exceptions; reconcile actual GitHub state before accepting. No new list creation or unstar operation.
 - Capture existing pipeline stage results, excluding only related-repository discovery/collection backfilling, and distinguish failures from skipped steps. Do not claim live acceptance from a script test.
+
+## Current operational evidence (2026-11-28 04:36 +08)
+
+- Inspected the existing state directory, receipt filenames/metadata, systemd units and recent journals before taking action. No live dry-run/apply receipt for the current SaaS reconciliation was present in the receipt set inspected; historical scheduled receipts and pre-operation SQLite backups remain preserved.
+- `geekist-stars-saas-candidate-pipeline.service` was active since 02:19 +08 and still processing at repository index 54. Summary calls for `marmelab/react-admin`, `medusajs/medusa` and `mercurjs/mercur` timed out; corresponding score stages were skipped. The process was left running.
+- `geekist-stars-topics.service` succeeded earlier and refreshed 6,562 topics. Its 03:00 run failed after ten minutes, consistent with its configured lock wait; lock contention from the active pipeline is likely but not proven. It was not retried.
+- No reconciliation, ingestion, backfill or other pipeline mutation was run as part of MCP delivery. S00 remains incomplete pending its live dry-run/apply receipts and final pipeline-stage outcomes.

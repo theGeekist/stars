@@ -2,7 +2,7 @@
 id: s01-research-architecture
 title: S01 — Research capability and architecture audit
 stage: research
-status: ready
+status: in_progress
 priority: normal
 evidence_milestone: s01-research-architecture-evidence
 depends_on: []
@@ -51,3 +51,11 @@ Establish what Stars can expose immediately and what is genuinely missing. Inspe
 - Inventory implemented capabilities, missing contracts, current auth boundary, operational deployment and actual access limitations.
 - Provide a minimal read-first tool surface and staged implementation boundaries for S02–S05, with bounded examples and acceptance checks.
 - Record material gaps with an actionable test or resolution; no broad rewrite and no deployment commissioned in this task.
+
+## Delivery evidence
+
+- Read the merged PR #6, its review findings, Fedora estate runbook, Stars service runbook, MCP Hub and shared Gateway conventions.
+- Verified actual database path and service port: `/var/lib/geekist-local/repolists.db`, `127.0.0.1:8788`, dedicated read-only research unit.
+- Recorded current coverage and research gaps in `docs/research/architecture.md`; source code and live service state are distinguished.
+- Reused the existing MCP Hub, loopback Gateway and Cloudflare Access route. No separate public endpoint was added.
+- Validation: local health and overview reads succeeded; public unauthenticated MCP returned 401 with OAuth challenge. Internal authenticated-owner browser call remains unverified because browser control was unavailable.
