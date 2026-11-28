@@ -381,6 +381,7 @@ function handleCancel(pidStr: string): Response {
 }
 
 Bun.serve({
+	hostname: "127.0.0.1",
 	port: Number(Bun.env.STARS_API_PORT ?? 8788),
 	fetch(req) {
 		try {

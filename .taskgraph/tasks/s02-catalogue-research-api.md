@@ -2,7 +2,7 @@
 id: s02-catalogue-research-api
 title: S02 — Shared catalogue research API
 stage: implementation
-status: ready
+status: review
 priority: normal
 evidence_milestone: s02-catalogue-research-api-evidence
 depends_on:
@@ -57,3 +57,17 @@ Provide one typed domain query surface for existing catalogue research. Reuse FT
 - Search, repository detail, related topic/collection lookup, and evidence retrieval support bounded inputs and typed outputs with source and coverage metadata.
 - Test malformed search, filters, empty/partial results, curated versus discovered relationships, pagination and isolated databases; never fabricate freshness or membership.
 - Demonstrate existing HTTP compatibility and SDK usage; keep side-effectful refresh/ranking outside read-only operations.
+
+## Delivery evidence
+
+- Reused `src/api/research.ts` and its existing SQLite contract. No second query layer or schema change was introduced.
+- Corrected per-repository latest score selection, consistent deferred read transactions, malformed FTS evaluation, provenance-only and subpath/identity matches, bounded nested evidence/history, input validation, and stable ordering.
+- Focused `src/api/research.test.ts` coverage now has eight cases for review findings and partial/missing research behavior, including explicit source-context truncation/omission metadata, oversized context-topic bounds and deterministic discovery-edge selection.
+- Validation on Fedora host: `CI=1 bun run build`, `CI=1 bun lint --fix`, and `CI=1 bun test` all passed; latest full suite reports 383 passed, 0 failed, 924 expectations after the review fixes.
+- Live API reads were read-only; snapshot on 2026-11-28 04:36 +08 is recorded in `docs/research/architecture.md`.
+- Follow-up review findings from Codex and CodeRabbit were verified and corrected in PR #7; HTTP page maxima and stricter numeric validation are documented.
+
+## Review references
+
+- PR: https://github.com/theGeekist/stars/pull/7
+- Human acceptance is pending.
