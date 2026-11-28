@@ -61,3 +61,8 @@ Complete the existing PR #6 operation without changing the established local pip
 
 - The previously running candidate pipeline completed naturally after 5h 57m 51s; it was not restarted. Its receipt/journal counted 159 candidates, 2 missing, 103 summaries saved, 54 summary failures, 148 score failures, and 9 no-fit skips. No candidates were successfully scored in that run. Per-item errors included summary timeouts/embedding failure and invalid model scoring responses; these remain operational defects outside the lock fix.
 - After lock release, the failed scheduled refresh and topics services were each started once using the corrected 24-hour wait policy. At 08:22 the refresh had fetched all 13 lists and was fetching starred repositories; the topics service remained queued behind the shared lock. Final service receipts are pending and will be recorded when they complete.
+
+## Scheduled refresh recovery receipt (2026-11-28 08:28 +08)
+
+- The previously failed refresh completed successfully after waiting on the shared Stars lock. Its receipt identifies GitHub account `pipewrk`, 799 starred repositories, 13 Lists, 1,113 repositories from Lists, and 102 unlisted repositories. Cleanup removed 0 and preserved 0; 3 stale memberships were retained; 0 List memberships were added. The receipt recorded a local SQLite backup and snapshot under `~/.local/state/geekist-stars/`.
+- The refresh triggered the ordinary configured downstream workflow. The topics service began after refresh released the lock; the draft service is queued on the same lock. Both remain active/queued under the corrected wait policy. No failure or overlap has been observed.
