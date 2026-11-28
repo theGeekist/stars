@@ -2,6 +2,7 @@ node_modules
 dist
 .DS_Store
 .env
+.modelrc.json
 *.log
 exports
 exports-test

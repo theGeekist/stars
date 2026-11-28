@@ -1,49 +1,105 @@
-# Stars research in ChatGPT
+# Geekist Stars MCP
 
-Stars is exposed through the existing Geekist MCP Hub. The owner-only route is
-`https://mcp.geekist.co/mcp`; it remains protected by the shared Cloudflare
-Access OAuth flow. No Stars-specific token is required. In ChatGPT web, open Plugins, select +, then Add custom MCP server. Enter the
-URL and choose OAuth when prompted, then review the discovered read-only tools.
-Custom MCP access depends on account and workspace permissions; see the [OpenAI
-connection guide](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt). If the existing Hub
-connection is already installed, reconnect or refresh it to discover the Stars
-tools. The actual public unauthenticated request returns HTTP 401 with a Bearer
-OAuth challenge. Internal Hub initialization, tool discovery, and WordPress /
-spotDL calls passed. A signed-in ChatGPT browser call has not yet been verified
-because the available browser-control host was unavailable in this session.
+Stars is available through the existing Geekist MCP Hub at
+`https://mcp.geekist.co/mcp`. The endpoint remains behind the shared Cloudflare
+Access owner OAuth flow. In ChatGPT web, add a custom MCP server, enter this
+URL, choose OAuth, then review the discovered tools. No Stars-specific token is
+needed. The current ChatGPT connection flow is documented in the [OpenAI
+connection guide](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
 
-The Hub publishes the five tools under the `stars__` prefix:
+The Hub prefixes these tools with `stars__`. Tools have typed inputs and
+descriptions that state their data source and effects.
 
-- `stars__stars_overview` — catalogue counts, research coverage, score-run and
-  discovery availability.
-- `stars__stars_search_repositories` — text search and filters for list, topic,
-  language, stars, saved score, archive/fork state and coverage.
-- `stars__stars_repository_profile` — saved metadata, summary, latest scores,
-  paged score history, topic relationships, curated overrides, provenance and
-  discovery references. README and large evidence bodies are opt-in.
-- `stars__stars_explore_topics` — browse topics or resolve a topic/alias with
-  related topics and repositories.
-- `stars__stars_search_discoveries` — page retained discovery targets,
-  observation sources and previous research. Evidence bodies are opt-in.
+## Research and catalogue reads
 
-Inputs have explicit length and page bounds. Empty results are returned as
-empty results with coverage and availability fields; they are not filled with
-new GitHub research. Source references and saved observation metadata are
-returned when present. Evidence bodies are deliberately requested with
-`include_evidence=true` and remain capped. Calls never invoke GitHub, ingestion,
-scoring, or Stars mutation routes.
+- `stars__stars_overview` reports catalogue and research coverage, saved score
+  freshness, and discovery availability.
+- `stars__stars_search_repositories` searches the saved catalogue by text,
+  list, topic, language, stars, score, metadata and coverage.
+- `stars__stars_repository_profile` returns saved metadata, summaries, topics,
+  list membership, score history, provenance and discovery references. README
+  and evidence bodies are opt-in and bounded.
+- `stars__stars_explore_topics` lists saved topics or resolves aliases,
+  related topics and associated repositories.
+- `stars__stars_search_discoveries` retrieves saved discovery targets, source
+  references and previous research. Evidence bodies are opt-in.
 
-## Host path
+These tools read stored Stars data; they do not refresh GitHub or fill missing
+research. Empty or incomplete results report the observed coverage rather than
+inventing evidence.
 
-The API listener is a separate read-only process bound to `127.0.0.1:8788`.
-It opens `DB_FILE` read-only and serves only `/health` and `/research/*`; it
-does not run schema setup or expose the Stars dashboard, `/run` routes, shell,
-or filesystem access. The existing Fedora MCP SDK adapter calls those fixed
-research routes over loopback using typed tool schemas. The shared Rust Gateway
-bridges its stdio transport to Streamable HTTP. The existing Hub registers
-that local Gateway as a read-only upstream. Public traffic still enters through
-the established `mcp.geekist.co/mcp` Access, Worker and Tunnel route; the raw
-Stars API and the new local Gateway are not public routes.
+## GitHub fetches and ingestion
+
+- `stars__stars_fetch_lists` reads the configured GitHub account's current
+  Lists and metadata.
+- `stars__stars_fetch_list_repositories` reads repositories from one exact
+  GitHub List.
+- `stars__stars_fetch_starred_repositories` reads the account's starred
+  repositories.
+- `stars__stars_get_unlisted_repositories` lists unlisted repositories already
+  present in the local catalogue.
+- `stars__stars_ingest_all`, `stars__stars_ingest_list_repositories`, and
+  `stars__stars_ingest_unlisted_repositories` fetch from GitHub and write
+  repository data and memberships to the local SQLite catalogue. Ingestion
+  does not delete stale catalogue rows.
+
+Fetch tools only read GitHub. Ingestion tools write local catalogue data. The
+host's authenticated `gh` identity is used internally; credentials are not
+tool arguments or results.
+
+## Summaries, scores and topics
+
+- `stars__stars_summarise_repositories` and
+  `stars__stars_summarise_repository` use the host's configured model. Both
+  default to `dry_run=true`; set it to false to save generated summaries.
+- `stars__stars_score_repositories` and
+  `stars__stars_score_repository` default to `dry_run=true`. Applying scores
+  saves score history and can update GitHub List membership under the configured
+  curation policy.
+- `stars__stars_enrich_topics` reads repository topics and writes refreshed
+  topic metadata, aliases and relationships to the local catalogue.
+
+Model and GitHub credentials stay on the host. Mutating long-running operations
+queue on the existing Stars run lock for up to 24 hours. If the SaaS candidate
+pipeline or another Stars job owns it, the MCP job stays queued and starts when
+that operation releases the lock; it does not fail immediately or overlap.
+
+## Setup operations and job control
+
+- `stars__stars_get_prompts` reads fixed Stars prompt configuration;
+  `stars__stars_get_prompt_state` checks whether it matches its template; and
+  `stars__stars_update_prompts` regenerates those fixed local prompt files.
+- `stars__stars_get_model_config` reads the saved model name and endpoint,
+  without returning API keys. `stars__stars_set_model_config` replaces the
+  saved config. It accepts only an HTTP(S) endpoint without embedded
+  credentials; omitted fields are cleared.
+- `stars__stars_test_model_connectivity` probes the configured model service.
+- `stars__stars_operation_status` lists queued, running or completed jobs, or
+  retrieves a job by its returned
+  id. `stars__stars_cancel_operation` removes a queued job before it starts, or
+  stops a running worker. This is not a rollback; changes already committed
+  locally or applied to GitHub remain.
+
+Long-running operations return a job id promptly. Poll status to retrieve the
+final bounded result. Repository/list fetch results include at most 25 items
+per operation response and report truncation when applicable. Tool input sizes
+and batch counts are constrained by the schemas.
+
+## Host path and checks
+
+The research API and operation dispatcher bind only to `127.0.0.1:8788`. The
+research queries use the existing SQLite research handlers; action requests
+accept a finite operation allowlist and validated JSON fields. They cannot
+select a database path, run SQL or shell commands, access arbitrary files, or
+provide GitHub/model credentials. The existing Fedora MCP SDK adapter calls
+these fixed routes. The shared Rust Gateway bridges stdio to Streamable HTTP;
+the Hub forwards it under the `stars__` prefix. The raw API and Gateway have no
+public route.
+
+Public MCP traffic continues through the existing Cloudflare Access owner
+OAuth, Worker and Tunnel route. A public unauthenticated MCP request must
+receive an HTTP 401 Bearer challenge. Use the existing endpoint in ChatGPT and
+refresh its tool catalogue after an update.
 
 Operational checks:
 
@@ -53,8 +109,6 @@ curl --fail http://127.0.0.1:8788/health
 curl -i https://mcp.geekist.co/mcp
 ```
 
-The public unauthenticated request must receive the Cloudflare Access OAuth
-challenge. After OAuth, initialize the MCP session, list tools and call
-`stars__stars_overview` or `stars__stars_search_repositories` before relying on
-the connection. Keep Gateway and Hub secrets in their existing private host
-configuration; the Stars research services require no new credentials.
+The first operation smoke test should inspect active jobs and use a fetch or
+dry-run scoring/summary tool. Start ingestion or an apply-mode model operation
+only when its stated effects are intended.
