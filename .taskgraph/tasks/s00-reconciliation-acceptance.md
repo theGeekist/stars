@@ -56,3 +56,8 @@ Complete the existing PR #6 operation without changing the established local pip
 - The research API queues operations on this same lock. An `ingest:all` queue smoke test while S00 held the lock returned `queued`; it was cancelled before the runner acquired the lock. The receipt states the operation had not started, so this test made no ingestion, catalogue or GitHub changes.
 - At 08:11 the unmodified S00 pipeline was still active and processing candidate index 158. Its ordinary summarisation/scoring stage continues; a summary timeout and invalid model score were recorded as per-item errors. No pipeline restart, rerun or lock-file deletion was performed.
 - This fixes lock contention behavior and its deployment regression, but does not complete the separate SaaS candidate reconciliation acceptance: live dry-run/apply receipts and final pipeline outcomes remain pending.
+
+## S00 pipeline completion (2026-11-28 08:17 +08)
+
+- The previously running candidate pipeline completed naturally after 5h 57m 51s; it was not restarted. Its receipt/journal counted 159 candidates, 2 missing, 103 summaries saved, 54 summary failures, 148 score failures, and 9 no-fit skips. No candidates were successfully scored in that run. Per-item errors included summary timeouts/embedding failure and invalid model scoring responses; these remain operational defects outside the lock fix.
+- After lock release, the failed scheduled refresh and topics services were each started once using the corrected 24-hour wait policy. At 08:22 the refresh had fetched all 13 lists and was fetching starred repositories; the topics service remained queued behind the shared lock. Final service receipts are pending and will be recorded when they complete.
