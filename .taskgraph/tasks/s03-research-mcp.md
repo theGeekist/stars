@@ -2,7 +2,7 @@
 id: s03-research-mcp
 title: S03 — Authenticated Stars research MCP
 stage: implementation
-status: in_progress
+status: review
 priority: normal
 evidence_milestone: s03-research-mcp-evidence
 depends_on:
@@ -68,7 +68,8 @@ observable and respect the shared Stars job lock.
 - Authentication through a signed-in ChatGPT browser remains unverified: the computer-use browser host returned unavailable. `docs/research/mcp.md` records the actual endpoint and connection steps.
 - The existing S00 candidate pipeline remains active under the shared Stars run lock. It was left running and was never restarted. A harmless `ingest:all` MCP queue smoke test returned `queued`, then was cancelled before lock acquisition; its job receipt confirms ingestion never started.
 - Root cause was lock contention being treated as an ingestion failure: scheduled refresh and draft units used `flock -n`, while topics and discovery-visibility gave up after 10 minutes. Their host units and tracked deployment source now wait up to 24 hours on the existing `/home/jasonjn/.local/state/geekist-stars/run.lock`, with a 48-hour systemd start timeout. API operations use that same lock and expose queued/running/cancelled job state. No new lock was introduced.
-- Host verification: the API is active on its configured port, the S00 pipeline remains active, and the four installed units report the 24-hour wait command and 48-hour start timeout. The scheduled 06:00 refresh and 03:00 topics failures predate the correction and were not replayed while S00 held the lock.
+- Host verification: the API is active on its configured port; all four installed ingestion units and the API use the same run-lock path; `systemd-analyze verify` passed; a contention probe waited for the deadline; anonymous public `/mcp` returned HTTP 401. The failed 06:00 refresh and 03:00 topics jobs were each restarted once after S00 completed and are being observed under the repaired policy.
+- Delivery commit: `7f33e81` on PR #7. Host checks passed: build, lint, 389 tests / 946 expectations. Git commit hooks and push TypeScript check passed. PR checks are current; human acceptance remains pending.
 
 ## Review references
 
